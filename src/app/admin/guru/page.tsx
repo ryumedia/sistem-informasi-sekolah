@@ -5,7 +5,7 @@ import { db, firebaseConfig } from "@/lib/firebase";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from "firebase/firestore";
 import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
-import { Plus, X, Pencil, Trash2, Lock } from "lucide-react";
+import { Plus, X, Pencil, Trash2, Lock, Search } from "lucide-react";
 
 interface Guru {
   id: string;
@@ -23,6 +23,8 @@ export default function DataGuruPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterCabang, setFilterCabang] = useState("");
 
   // State untuk Form
   const [formData, setFormData] = useState({
@@ -146,6 +148,14 @@ export default function DataGuruPage() {
     setEditId(null);
   };
 
+  // Filter Data Logic
+  const filteredGuruList = guruList.filter((guru) => {
+    const matchesSearch = guru.nama.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          guru.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCabang = filterCabang ? guru.cabang === filterCabang : true;
+    return matchesSearch && matchesCabang;
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -156,6 +166,28 @@ export default function DataGuruPage() {
         >
           <Plus className="w-4 h-4" /> Tambah Guru
         </button>
+      </div>
+
+      {/* Filter & Search Bar */}
+      <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Cari nama atau email guru..."
+            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#581c87] outline-none"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <select
+          className="border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none min-w-[200px]"
+          value={filterCabang}
+          onChange={(e) => setFilterCabang(e.target.value)}
+        >
+          <option value="">Semua Cabang</option>
+          {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
+        </select>
       </div>
 
       {/* Tabel Data */}
@@ -175,10 +207,10 @@ export default function DataGuruPage() {
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr><td colSpan={7} className="p-8 text-center">Memuat data...</td></tr>
-            ) : guruList.length === 0 ? (
-              <tr><td colSpan={7} className="p-8 text-center">Belum ada data guru.</td></tr>
+            ) : filteredGuruList.length === 0 ? (
+              <tr><td colSpan={7} className="p-8 text-center">Data tidak ditemukan.</td></tr>
             ) : (
-              guruList.map((guru, index) => (
+              filteredGuruList.map((guru, index) => (
                 <tr key={guru.id} className="hover:bg-gray-50">
                   <td className="p-4 text-center">{index + 1}</td>
                   <td className="p-4 font-medium text-gray-900">{guru.nama}</td>
@@ -266,6 +298,7 @@ export default function DataGuruPage() {
                     <option value="Admin">Admin</option>
                     <option value="Kepala Sekolah">Kepala Sekolah</option>
                     <option value="Direktur">Direktur</option>
+                    <option value="Yayasan">Yayasan</option>
                   </select>
                 </div>
                 <div>

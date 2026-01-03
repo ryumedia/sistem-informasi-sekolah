@@ -73,7 +73,9 @@ export default function AnggaranPage() {
     const monthIndex = date.getMonth();
     const month = monthNames[monthIndex];
 
-    return filterTahun === year && filterBulan === month && (filterCabang ? item.cabang === filterCabang : true);
+    const matchTahun = filterTahun ? filterTahun === year : true;
+    const matchBulan = filterBulan ? filterBulan === month : true;
+    return matchTahun && matchBulan && (filterCabang ? item.cabang === filterCabang : true);
   });
 
   const totalAnggaran = filteredData.reduce((acc, curr) => acc + (curr.total || 0), 0);
@@ -86,11 +88,13 @@ export default function AnggaranPage() {
         {/* Filter Area */}
         <div className="flex gap-2">
           <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
+            <option value="">Semua Tahun</option>
             {years.map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
           <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterBulan} onChange={(e) => setFilterBulan(e.target.value)}>
+            <option value="">Semua Bulan</option>
             {monthNames.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
@@ -107,7 +111,7 @@ export default function AnggaranPage() {
 
       {/* Card Resume */}
       <div className="bg-[#581c87] text-white p-6 rounded-xl shadow-lg">
-        <p className="text-purple-200 text-sm mb-1">Total Anggaran {filterBulan} {filterTahun}</p>
+        <p className="text-purple-200 text-sm mb-1">Total Anggaran {filterBulan || "Semua Bulan"} {filterTahun || "Semua Tahun"}</p>
         <h2 className="text-3xl font-bold">Rp {totalAnggaran.toLocaleString("id-ID")}</h2>
       </div>
 

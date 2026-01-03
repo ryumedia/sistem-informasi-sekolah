@@ -28,6 +28,7 @@ export default function PengajuanPage() {
   const [filterTahun, setFilterTahun] = useState(currentYear.toString());
   const [filterBulan, setFilterBulan] = useState(monthNames[new Date().getMonth()]);
   const [filterCabang, setFilterCabang] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [nomenklaturList, setNomenklaturList] = useState<any[]>([]);
   
@@ -132,8 +133,9 @@ export default function PengajuanPage() {
     const matchTahun = filterTahun === year;
     const matchBulan = filterBulan === month;
     const matchCabang = filterCabang ? item.cabang === filterCabang : true;
+    const matchStatus = filterStatus ? item.status === filterStatus : true;
 
-    return matchTahun && matchBulan && matchCabang;
+    return matchTahun && matchBulan && matchCabang && matchStatus;
   });
 
   // 5. Logic Approval Berjenjang
@@ -224,6 +226,13 @@ export default function PengajuanPage() {
           <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)}>
             <option value="">Semua Cabang</option>
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
+          </select>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+            <option value="">Semua Status</option>
+            <option value="Menunggu KS">Menunggu KS</option>
+            <option value="Menunggu Direktur">Menunggu Direktur</option>
+            <option value="Disetujui">Disetujui</option>
+            <option value="Ditolak">Ditolak</option>
           </select>
           <button className="bg-gray-100 p-2 rounded-lg text-gray-600 hover:bg-gray-200">
             <Filter className="w-4 h-4" />

@@ -157,7 +157,7 @@ export default function UserHome() {
               {/* Menu Akun */}
               <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                 {/* Tombol Khusus Admin */}
-                {["Admin", "Kepala Sekolah", "Direktur"].includes(userData?.role) && (
+                {["Admin", "Kepala Sekolah", "Direktur", "Yayasan"].includes(userData?.role) && (
                   <Link href="/admin" className="flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition">
                     <div className="bg-[#581c87]/10 p-2 rounded-lg text-[#581c87]">
                       <Shield className="w-5 h-5" />
@@ -170,7 +170,7 @@ export default function UserHome() {
                 )}
 
                 {/* Tombol Pengajuan Anggaran */}
-                {["Guru", "Admin", "Kepala Sekolah"].includes(userData?.role) && (
+                {["Guru", "Admin", "Kepala Sekolah", "Direktur", "Yayasan"].includes(userData?.role) && (
                   <button onClick={() => setPengajuanModalOpen(true)} className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition text-left">
                     <div className="bg-green-100 p-2 rounded-lg text-green-600">
                       <FilePlus className="w-5 h-5" />
