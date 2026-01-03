@@ -35,15 +35,23 @@ export default function UserHome() {
 
       // Ambil data detail user dari Firestore (Cek koleksi 'guru' dulu)
       try {
-        const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
-        const querySnapshot = await getDocs(q);
+        const qGuru = query(collection(db, "guru"), where("email", "==", currentUser.email));
+        const snapshotGuru = await getDocs(qGuru);
         
-        if (!querySnapshot.empty) {
+        if (!snapshotGuru.empty) {
           // Jika ditemukan di data Guru
-          setUserData(querySnapshot.docs[0].data());
+          setUserData(snapshotGuru.docs[0].data());
         } else {
-          // Jika tidak, mungkin Siswa (Logic bisa ditambahkan nanti) atau user biasa
-          setUserData({ nama: currentUser.email, role: "User" });
+          // Jika tidak ada di 'guru', cek di koleksi 'siswa'
+          const qSiswa = query(collection(db, "siswa"), where("email", "==", currentUser.email));
+          const snapshotSiswa = await getDocs(qSiswa);
+
+          if (!snapshotSiswa.empty) {
+            setUserData(snapshotSiswa.docs[0].data());
+          } else {
+            // Jika tidak ditemukan di keduanya
+            setUserData({ nama: currentUser.email, role: "User" });
+          }
         }
       } catch (error) {
         console.error("Error fetching user data:", error);
@@ -157,7 +165,7 @@ export default function UserHome() {
               {/* Menu Akun */}
               <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                 {/* Tombol Khusus Admin */}
-                {["Admin", "Kepala Sekolah", "Direktur", "Yayasan"].includes(userData?.role) && (
+                {["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru"].includes(userData?.role) && (
                   <Link href="/admin" className="flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition">
                     <div className="bg-[#581c87]/10 p-2 rounded-lg text-[#581c87]">
                       <Shield className="w-5 h-5" />
@@ -305,15 +313,15 @@ function ChangePasswordModal({ user, onClose }: { user: any; onClose: () => void
           {success && <p className="text-green-500 text-sm">{success}</p>}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password Lama</label>
-            <input required type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} className="w-full border rounded-lg p-2" />
+            <input required type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} className="w-full border rounded-lg p-2 text-gray-900" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password Baru</label>
-            <input required type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full border rounded-lg p-2" />
+            <input required type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full border rounded-lg p-2 text-gray-900" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Konfirmasi Password Baru</label>
-            <input required type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full border rounded-lg p-2" />
+            <input required type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full border rounded-lg p-2 text-gray-900" />
           </div>
           <button disabled={submitting} type="submit" className="w-full bg-[#581c87] text-white py-2 rounded-lg hover:bg-[#45156b] transition font-medium mt-2 disabled:opacity-50">
             {submitting ? "Menyimpan..." : "Simpan Password"}
@@ -395,7 +403,7 @@ function PengajuanModal({ user, userData, onClose }: { user: any; userData: any;
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Tanggal</label>
-              <input required type="date" className="w-full border rounded-lg p-2 text-sm"
+              <input required type="date" className="w-full border rounded-lg p-2 text-sm text-gray-900"
                 value={formData.tanggal} onChange={(e) => setFormData({...formData, tanggal: e.target.value})} />
             </div>
             <div>
@@ -411,7 +419,7 @@ function PengajuanModal({ user, userData, onClose }: { user: any; userData: any;
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Nomenklatur (Pos Anggaran)</label>
-            <select required className="w-full border rounded-lg p-2 text-sm bg-white"
+            <select required className="w-full border rounded-lg p-2 text-sm bg-white text-gray-900"
               value={formData.nomenklatur} onChange={(e) => setFormData({...formData, nomenklatur: e.target.value})}>
               <option value="">Pilih Nomenklatur</option>
               {nomenklaturList
@@ -423,13 +431,13 @@ function PengajuanModal({ user, userData, onClose }: { user: any; userData: any;
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Nama Barang / Jasa</label>
-            <input required type="text" className="w-full border rounded-lg p-2 text-sm" placeholder="Contoh: Kertas HVS A4"
+            <input required type="text" className="w-full border rounded-lg p-2 text-sm text-gray-900" placeholder="Contoh: Kertas HVS A4"
               value={formData.barang} onChange={(e) => setFormData({...formData, barang: e.target.value})} />
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-gray-500 mb-1">Harga Satuan (Rp)</label>
-              <input required type="text" className="w-full border rounded-lg p-2 text-sm"
+              <input required type="text" className="w-full border rounded-lg p-2 text-sm text-gray-900"
                 value={formData.harga === 0 ? "" : formData.harga.toLocaleString("id-ID")} 
                 onChange={(e) => {
                   const rawValue = e.target.value.replace(/\./g, "");
@@ -441,7 +449,7 @@ function PengajuanModal({ user, userData, onClose }: { user: any; userData: any;
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Qty</label>
-              <input required type="number" min="1" className="w-full border rounded-lg p-2 text-sm"
+              <input required type="number" min="1" className="w-full border rounded-lg p-2 text-sm text-gray-900"
                 value={formData.qty} onChange={(e) => setFormData({...formData, qty: Number(e.target.value)})} />
             </div>
           </div>

@@ -175,13 +175,13 @@ export default function DataGuruPage() {
           <input
             type="text"
             placeholder="Cari nama atau email guru..."
-            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#581c87] outline-none"
+            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
         <select
-          className="border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none min-w-[200px]"
+          className="border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none min-w-[200px] text-gray-900"
           value={filterCabang}
           onChange={(e) => setFilterCabang(e.target.value)}
         >
@@ -257,12 +257,12 @@ export default function DataGuruPage() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nama Lengkap</label>
-                <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.nama} onChange={(e) => setFormData({...formData, nama: e.target.value})} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input required type="email" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                <input required type="email" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
               </div>
               
@@ -272,7 +272,7 @@ export default function DataGuruPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Password (Login)</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                    <input required type="text" minLength={6} className="w-full pl-9 border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                    <input required type="text" minLength={6} className="w-full pl-9 border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                       value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} placeholder="Min. 6 karakter" />
                   </div>
                 </div>
@@ -280,7 +280,7 @@ export default function DataGuruPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cabang Sekolah</label>
-                <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.cabang} onChange={(e) => setFormData({...formData, cabang: e.target.value})}>
                   <option value="">Pilih Cabang</option>
                   {cabangList.map((cabang) => (
@@ -292,7 +292,7 @@ export default function DataGuruPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                  <select className="w-full border rounded-lg p-2 bg-white"
+                  <select className="w-full border rounded-lg p-2 bg-white text-gray-900"
                     value={formData.role} onChange={(e) => setFormData({...formData, role: e.target.value})}>
                     <option value="Guru">Guru</option>
                     <option value="Admin">Admin</option>
@@ -303,7 +303,7 @@ export default function DataGuruPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                  <select className="w-full border rounded-lg p-2 bg-white"
+                  <select className="w-full border rounded-lg p-2 bg-white text-gray-900"
                     value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}>
                     <option value="Aktif">Aktif</option>
                     <option value="Nonaktif">Nonaktif</option>

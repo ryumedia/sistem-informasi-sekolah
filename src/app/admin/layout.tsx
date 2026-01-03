@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, query, where, getDocs } from "firebase/firestore";
-import { ChevronDown, ChevronRight, ArrowLeft } from "lucide-react";
+import { ChevronDown, ChevronRight, ArrowLeft, Menu, X } from "lucide-react";
 
 export default function AdminLayout({
   children,
@@ -15,8 +15,10 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [userData, setUserData] = useState<any>(null);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -39,40 +41,82 @@ export default function AdminLayout({
     return () => unsubscribe();
   }, []);
 
+  // Redirect Guru from dashboard to performance page
+  useEffect(() => {
+    if (userData?.role === 'Guru' && pathname === '/admin') {
+      router.replace('/admin/performance');
+    }
+  }, [userData, pathname, router]);
+
   const toggleMenu = (name: string) => {
     setExpandedMenu(expandedMenu === name ? null : name);
   };
 
-  const menuItems = [
-    { name: "Dashboard", href: "/admin" },
-    { name: "Data Siswa", href: "#" },
-    { name: "Data Guru", href: "/admin/guru" },
-    { name: "Jadwal Pelajaran", href: "#" },
+  const allMenuItems = [
+    { name: "Dashboard", href: "/admin", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
+    { name: "Data Siswa", href: "/admin/siswa", roles: ["Admin", "Kepala Sekolah"] },
+    { name: "Data Guru", href: "/admin/guru", roles: ["Admin", "Kepala Sekolah", "Yayasan"] },
+    { name: "Performance", href: "/admin/performance", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru"] },
+    { name: "Akademik", href: "#", roles: ["Admin", "Kepala Sekolah"] },
     { 
       name: "Keuangan", 
       href: "#",
+      roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"],
       submenu: [
-        { name: "Pengajuan", href: "/admin/keuangan/pengajuan" },
-        { name: "Anggaran", href: "/admin/keuangan/anggaran" },
-        { name: "Realisasi", href: "/admin/keuangan/realisasi" },
-        { name: "Arus Kas", href: "/admin/keuangan/aruskas" },
+        { name: "Pengajuan", href: "/admin/keuangan/pengajuan", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
+        { name: "Anggaran", href: "/admin/keuangan/anggaran", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
+        { name: "Realisasi", href: "/admin/keuangan/realisasi", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
+        { name: "Arus Kas", href: "/admin/keuangan/aruskas", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
       ]
     },
     { 
       name: "Pengaturan", 
       href: "#",
+      roles: ["Admin"],
       submenu: [
-        { name: "Pengaturan Keuangan", href: "/admin/pengaturan/keuangan" },
-        { name: "Pengaturan Cabang", href: "/admin/pengaturan/cabang" }
+        { name: "Pengaturan Keuangan", href: "/admin/pengaturan/keuangan", roles: ["Admin"] },
+        { name: "Pengaturan Cabang", href: "/admin/pengaturan/cabang", roles: ["Admin"] },
+        { name: "Pengaturan Kelas", href: "/admin/pengaturan/kelas", roles: ["Admin"] },
+        { name: "Pengaturan Performance", href: "/admin/pengaturan/performance", roles: ["Admin"] }
       ]
     },
   ];
 
+  // Filter menu items based on user's role
+  const menuItems = allMenuItems
+    .filter(item => item.roles && userData?.role && item.roles.includes(userData.role))
+    .map(item => {
+      if (item.submenu) {
+        return {
+          ...item,
+          submenu: item.submenu.filter(subItem => subItem.roles && userData?.role && subItem.roles.includes(userData.role))
+        };
+      }
+      return item;
+    });
+
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
-      {/* Sidebar Desktop */}
-      <aside className="w-64 bg-[#581c87] text-white hidden md:flex flex-col">
-        <div className="p-6 border-b border-[#45156b] flex flex-col items-center text-center">
+      {/* Mobile Overlay (Background Gelap saat menu terbuka) */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar (Responsive: Slide-in di Mobile, Tetap di Desktop) */}
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-64 bg-[#581c87] text-white flex flex-col transition-transform duration-300 ease-in-out
+        md:relative md:translate-x-0
+        ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"}
+      `}>
+        <div className="p-6 border-b border-[#45156b] flex flex-col items-center text-center relative">
+          {/* Tombol Close di Mobile */}
+          <button onClick={() => setIsMobileMenuOpen(false)} className="absolute top-4 right-4 md:hidden text-purple-200 hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+
           <div className="mb-3 bg-white p-2 rounded-full">
             <Image src="/logo.png" alt="Logo" width={40} height={40} className="object-contain" />
           </div>
@@ -80,7 +124,7 @@ export default function AdminLayout({
           <p className="text-xs text-purple-200 mt-1">Sistem Informasi Sekolah</p>
         </div>
         
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {menuItems.map((item) => {
             // Logika untuk Menu dengan Submenu
             if (item.submenu) {
@@ -107,6 +151,7 @@ export default function AdminLayout({
                           <Link
                             key={subItem.name}
                             href={subItem.href}
+                            onClick={() => setIsMobileMenuOpen(false)} // Tutup menu saat link diklik
                             className={`block px-4 py-2 rounded-lg text-sm transition ${
                               isSubActive ? "bg-[#ff984e] text-white shadow-sm" : "text-purple-200 hover:text-white hover:bg-[#45156b]"
                             }`}
@@ -130,6 +175,7 @@ export default function AdminLayout({
               <Link 
                 key={item.name}
                 href={item.href} 
+                onClick={() => setIsMobileMenuOpen(false)} // Tutup menu saat link diklik
                 className={`block px-4 py-3 rounded-lg text-sm font-medium transition ${
                   isActive 
                     ? "bg-[#ff984e] text-white shadow-sm" 
@@ -147,8 +193,18 @@ export default function AdminLayout({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Header Admin */}
-        <header className="h-16 bg-white shadow-sm flex items-center justify-between px-8">
-          <h3 className="text-gray-700 font-semibold">Dashboard Overview</h3>
+        <header className="h-16 bg-white shadow-sm flex items-center justify-between px-4 md:px-8">
+          <div className="flex items-center gap-3">
+            {/* Tombol Hamburger (Hanya muncul di Mobile) */}
+            <button 
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="md:hidden p-1 text-gray-600 hover:bg-gray-100 rounded-lg"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <h3 className="text-gray-700 font-semibold">Dashboard Overview</h3>
+          </div>
+
           <div className="flex items-center gap-4">
             <Link href="/" className="flex items-center gap-2 text-sm text-gray-500 hover:text-[#581c87] transition">
               <ArrowLeft className="w-4 h-4" />
