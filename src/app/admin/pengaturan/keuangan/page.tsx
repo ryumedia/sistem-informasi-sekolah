@@ -109,7 +109,8 @@ export default function PengaturanKeuanganPage() {
         <div className="p-4 border-b bg-gray-50">
           <h2 className="font-semibold text-gray-700">Daftar Nomenklatur Keuangan</h2>
         </div>
-        <table className="w-full text-left text-sm text-gray-600">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-gray-600 min-w-[600px]">
           <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
             <tr>
               <th className="p-4 w-16">No</th>
@@ -148,6 +149,7 @@ export default function PengaturanKeuanganPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {isModalOpen && (
@@ -165,7 +167,7 @@ export default function PengaturanKeuanganPage() {
                 <input 
                   required 
                   type="text" 
-                  className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                  className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   placeholder="Contoh: SPP, Uang Gedung, Gaji Guru"
                   value={formData.nama} 
                   onChange={(e) => setFormData({...formData, nama: e.target.value})} 
@@ -174,7 +176,7 @@ export default function PengaturanKeuanganPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
                 <select 
-                  className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                  className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.kategori} 
                   onChange={(e) => setFormData({...formData, kategori: e.target.value})}
                 >

@@ -87,19 +87,19 @@ export default function AnggaranPage() {
         
         {/* Filter Area */}
         <div className="flex gap-2">
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
             <option value="">Semua Tahun</option>
             {years.map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterBulan} onChange={(e) => setFilterBulan(e.target.value)}>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterBulan} onChange={(e) => setFilterBulan(e.target.value)}>
             <option value="">Semua Bulan</option>
             {monthNames.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)}>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)}>
             <option value="">Semua Cabang</option>
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
@@ -117,7 +117,8 @@ export default function AnggaranPage() {
 
       {/* Tabel Anggaran */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-left text-sm text-gray-600">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-gray-600 min-w-[800px]">
           <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
             <tr>
               <th className="p-4">No</th>
@@ -147,6 +148,7 @@ export default function AnggaranPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

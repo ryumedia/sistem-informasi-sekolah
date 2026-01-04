@@ -301,7 +301,7 @@ export default function PerformancePage() {
       {/* Filters */}
       <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
         <select
-          className="border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+          className="border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
           value={filterPeriode}
           onChange={(e) => setFilterPeriode(e.target.value)}
         >
@@ -316,14 +316,14 @@ export default function PerformancePage() {
             <input
               type="text"
               placeholder="Cari Nama Guru..."
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#581c87] outline-none"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
               value={searchGuru}
               onChange={(e) => setSearchGuru(e.target.value)}
             />
           </div>
             {['Admin', 'Direktur', 'Yayasan'].includes(currentUserData.role) && (
               <select
-                className="border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                className="border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                 value={filterCabang}
                 onChange={(e) => setFilterCabang(e.target.value)}
               >
@@ -337,7 +337,8 @@ export default function PerformancePage() {
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-left text-sm text-gray-600">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-gray-600 min-w-[900px]">
           <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
             <tr>
               <th className="p-4 w-16">No</th>
@@ -391,6 +392,7 @@ export default function PerformancePage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Modal */}
@@ -407,7 +409,7 @@ export default function PerformancePage() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Periode KPI</label>
-                <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.periodeId} onChange={handlePeriodeChange}>
                   <option value="">Pilih Periode</option>
                   {periodeList.map((p) => (
@@ -420,7 +422,7 @@ export default function PerformancePage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nama Guru</label>
                 <select 
                   required 
-                  className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                  className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.guruId} 
                   onChange={handleGuruChange}
                   disabled={!!editId || currentUserData?.role === 'Guru'} // Disable changing guru on edit or if user is a Guru
@@ -448,7 +450,7 @@ export default function PerformancePage() {
                   required 
                   type="text" 
                   placeholder="Contoh: Kehadiran Mengajar"
-                  className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                  className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.indikator} 
                   onChange={(e) => setFormData({...formData, indikator: e.target.value})} 
                 />
@@ -461,7 +463,7 @@ export default function PerformancePage() {
                     required 
                     type="number" 
                     min="1"
-                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                     value={formData.target} 
                     onChange={(e) => setFormData({...formData, target: Number(e.target.value)})} 
                   />
@@ -472,7 +474,7 @@ export default function PerformancePage() {
                     required 
                     type="number" 
                     min="0"
-                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                     value={formData.tercapai} 
                     onChange={(e) => setFormData({...formData, tercapai: Number(e.target.value)})} 
                   />

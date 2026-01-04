@@ -213,21 +213,21 @@ export default function PengajuanPage() {
         
         {/* Filter Area */}
         <div className="flex gap-2">
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
             {years.map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterBulan} onChange={(e) => setFilterBulan(e.target.value)}>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterBulan} onChange={(e) => setFilterBulan(e.target.value)}>
             {monthNames.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)}>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)}>
             <option value="">Semua Cabang</option>
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
             <option value="">Semua Status</option>
             <option value="Menunggu KS">Menunggu KS</option>
             <option value="Menunggu Direktur">Menunggu Direktur</option>
@@ -241,7 +241,8 @@ export default function PengajuanPage() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-left text-sm text-gray-600">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-gray-600 min-w-[900px]">
           <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
             <tr>
               <th className="p-4">No</th>
@@ -295,6 +296,7 @@ export default function PengajuanPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Modal Detail Pengajuan */}
@@ -365,12 +367,12 @@ export default function PengajuanPage() {
             <form onSubmit={handleUpdate} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal</label>
-                <input required type="date" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                <input required type="date" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={editFormData.tanggal} onChange={(e) => setEditFormData({...editFormData, tanggal: e.target.value})} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cabang</label>
-                <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={editFormData.cabang} onChange={(e) => setEditFormData({...editFormData, cabang: e.target.value})}>
                   <option value="">Pilih Cabang</option>
                   {cabangList.map((c) => (
@@ -380,7 +382,7 @@ export default function PengajuanPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nomenklatur</label>
-                <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={editFormData.nomenklatur} onChange={(e) => setEditFormData({...editFormData, nomenklatur: e.target.value})}>
                   <option value="">Pilih Nomenklatur</option>
                   {nomenklaturList.map((n) => (
@@ -390,18 +392,18 @@ export default function PengajuanPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Barang / Jasa</label>
-                <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={editFormData.barang} onChange={(e) => setEditFormData({...editFormData, barang: e.target.value})} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Harga Satuan</label>
-                  <input required type="number" min="0" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                  <input required type="number" min="0" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                     value={editFormData.hargaSatuan} onChange={(e) => setEditFormData({...editFormData, hargaSatuan: Number(e.target.value)})} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Qty</label>
-                  <input required type="number" min="1" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                  <input required type="number" min="1" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                     value={editFormData.qty} onChange={(e) => setEditFormData({...editFormData, qty: Number(e.target.value)})} />
                 </div>
               </div>

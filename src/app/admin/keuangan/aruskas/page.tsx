@@ -206,19 +206,19 @@ export default function ArusKasPage() {
         <h1 className="text-2xl font-bold text-gray-800">Arus Kas Sekolah</h1>
         
         <div className="flex flex-wrap gap-2 items-center justify-end">
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
             <option value="">Semua Tahun</option>
             {years.map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterBulan} onChange={(e) => setFilterBulan(e.target.value)}>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterBulan} onChange={(e) => setFilterBulan(e.target.value)}>
             <option value="">Semua Bulan</option>
             {monthNames.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)}>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)}>
             <option value="">Semua Cabang</option>
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
@@ -266,7 +266,8 @@ export default function ArusKasPage() {
 
       {/* Tabel Arus Kas */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-left text-sm text-gray-600">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-gray-600 min-w-[800px]">
           <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
             <tr>
               <th className="p-4">Tanggal</th>
@@ -311,6 +312,7 @@ export default function ArusKasPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Modal Input Arus Kas */}
@@ -328,12 +330,12 @@ export default function ArusKasPage() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal</label>
-                <input required type="date" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                <input required type="date" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.tanggal} onChange={(e) => setFormData({...formData, tanggal: e.target.value})} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cabang</label>
-                <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.cabang} onChange={(e) => setFormData({...formData, cabang: e.target.value})}>
                   <option value="">Pilih Cabang</option>
                   {cabangList.map((c) => (
@@ -343,7 +345,7 @@ export default function ArusKasPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nomenklatur</label>
-                <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.nomenklatur} onChange={(e) => setFormData({...formData, nomenklatur: e.target.value})}>
                   <option value="">Pilih Nomenklatur</option>
                   {nomenklaturList
@@ -355,13 +357,13 @@ export default function ArusKasPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Kegiatan / Keterangan</label>
-                <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   placeholder="Contoh: Pembayaran SPP, Beli ATK"
                   value={formData.keterangan} onChange={(e) => setFormData({...formData, keterangan: e.target.value})} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nominal (Rp)</label>
-                <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.nominal === 0 ? "" : formData.nominal.toLocaleString("id-ID")} 
                   onChange={(e) => {
                     // Hapus titik untuk mendapatkan nilai angka murni

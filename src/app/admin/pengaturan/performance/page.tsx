@@ -110,7 +110,8 @@ export default function PengaturanPerformancePage() {
 
       {/* Tabel Data */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-left text-sm text-gray-600">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-gray-600 min-w-[500px]">
           <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
             <tr>
               <th className="p-4 w-16">No</th>
@@ -141,6 +142,7 @@ export default function PengaturanPerformancePage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Modal Tambah/Edit */}
@@ -161,7 +163,7 @@ export default function PengaturanPerformancePage() {
                   required 
                   type="text" 
                   placeholder="Contoh: Semester Ganjil 2024/2025" 
-                  className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                  className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.namaPeriode} 
                   onChange={(e) => setFormData({ namaPeriode: e.target.value })} 
                 />

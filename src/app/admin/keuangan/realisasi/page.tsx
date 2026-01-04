@@ -119,17 +119,17 @@ export default function RealisasiPage() {
         
         {/* Filter Area */}
         <div className="flex gap-2">
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
             {years.map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterBulan} onChange={(e) => setFilterBulan(e.target.value)}>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterBulan} onChange={(e) => setFilterBulan(e.target.value)}>
             {monthNames.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]" value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)}>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)}>
             <option value="">Semua Cabang</option>
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
@@ -140,7 +140,8 @@ export default function RealisasiPage() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-left text-sm text-gray-600">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-gray-600 min-w-[900px]">
           <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
             <tr>
               <th className="p-4">No</th>
@@ -184,6 +185,7 @@ export default function RealisasiPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Modal Laporan Realisasi */}
@@ -207,7 +209,7 @@ export default function RealisasiPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Realisasi (Rp)</label>
-                <input required type="number" min="0" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                <input required type="number" min="0" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={realisasiInput} onChange={(e) => setRealisasiInput(Number(e.target.value))} />
               </div>
               <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">

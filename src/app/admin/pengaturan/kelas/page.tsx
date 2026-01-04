@@ -158,7 +158,8 @@ export default function PengaturanKelasPage() {
 
       {/* Tabel Data */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-left text-sm text-gray-600">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-gray-600 min-w-[600px]">
           <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
             <tr>
               <th className="p-4 w-16">No</th>
@@ -193,6 +194,7 @@ export default function PengaturanKelasPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Modal Tambah/Edit */}
@@ -209,13 +211,13 @@ export default function PengaturanKelasPage() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nama Kelas</label>
-                <input required type="text" placeholder="Contoh: TK A" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                <input required type="text" placeholder="Contoh: TK A" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.namaKelas} onChange={(e) => setFormData({...formData, namaKelas: e.target.value})} />
               </div>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cabang</label>
-                <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.cabang} onChange={(e) => setFormData({...formData, cabang: e.target.value})}>
                   <option value="">Pilih Cabang</option>
                   {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
@@ -227,7 +229,7 @@ export default function PengaturanKelasPage() {
                 <select 
                   multiple 
                   required
-                  className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none h-32"
+                  className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none h-32 text-gray-900"
                   value={formData.guruKelas} 
                   onChange={handleGuruSelection}
                 >

@@ -84,7 +84,8 @@ export default function AdminDashboard() {
         <div className="p-6 border-b border-gray-100">
           <h3 className="font-bold text-gray-800">Aktivitas Terbaru</h3>
         </div>
-        <table className="w-full text-left text-sm text-gray-600">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-gray-600 min-w-[600px]">
           <thead className="bg-gray-50 text-gray-900 font-semibold">
             <tr>
               <th className="p-4">User</th>
@@ -117,6 +118,7 @@ export default function AdminDashboard() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
