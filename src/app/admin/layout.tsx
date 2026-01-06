@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { ChevronDown, ChevronRight, ArrowLeft, Menu, X } from "lucide-react";
 
 export default function AdminLayout({
@@ -19,6 +19,8 @@ export default function AdminLayout({
   const [userData, setUserData] = useState<any>(null);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [pengajuanCount, setPengajuanCount] = useState(0);
+  const [realisasiCount, setRealisasiCount] = useState(0);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -47,6 +49,26 @@ export default function AdminLayout({
       router.replace('/admin/performance');
     }
   }, [userData, pathname, router]);
+
+  // Realtime Listener untuk Badge Notifikasi
+  useEffect(() => {
+    // 1. Hitung Pengajuan Belum Approve (Menunggu KS / Direktur)
+    const qPengajuan = query(collection(db, "pengajuan"), where("status", "in", ["Menunggu KS", "Menunggu Direktur"]));
+    const unsubPengajuan = onSnapshot(qPengajuan, (snap) => {
+      setPengajuanCount(snap.size);
+    });
+
+    // 2. Hitung Anggaran Belum Terealisasi (Status Disetujui)
+    const qRealisasi = query(collection(db, "pengajuan"), where("status", "==", "Disetujui"));
+    const unsubRealisasi = onSnapshot(qRealisasi, (snap) => {
+      setRealisasiCount(snap.size);
+    });
+
+    return () => {
+      unsubPengajuan();
+      unsubRealisasi();
+    };
+  }, []);
 
   const toggleMenu = (name: string) => {
     setExpandedMenu(expandedMenu === name ? null : name);
@@ -131,6 +153,12 @@ export default function AdminLayout({
               const isExpanded = expandedMenu === item.name;
               const isActiveParent = item.submenu.some(sub => pathname === sub.href);
               
+              // Hitung Badge Parent (Khusus Keuangan)
+              let parentBadge = 0;
+              if (item.name === "Keuangan") {
+                parentBadge = pengajuanCount + realisasiCount;
+              }
+
               return (
                 <div key={item.name}>
                   <button
@@ -139,24 +167,42 @@ export default function AdminLayout({
                        isActiveParent || isExpanded ? "text-white" : "text-purple-100 hover:bg-[#45156b]"
                     }`}
                   >
-                    {item.name}
-                    {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    <span>{item.name}</span>
+                    <div className="flex items-center gap-2">
+                      {parentBadge > 0 && (
+                        <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                          {parentBadge}
+                        </span>
+                      )}
+                      {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    </div>
                   </button>
                   
                   {isExpanded && (
                     <div className="ml-4 mt-1 space-y-1 border-l border-[#45156b] pl-2">
                       {item.submenu.map((subItem) => {
                         const isSubActive = pathname === subItem.href;
+                        
+                        // Logic Badge
+                        let badge = 0;
+                        if (subItem.name === "Pengajuan") badge = pengajuanCount;
+                        if (subItem.name === "Realisasi") badge = realisasiCount;
+
                         return (
                           <Link
                             key={subItem.name}
                             href={subItem.href}
                             onClick={() => setIsMobileMenuOpen(false)} // Tutup menu saat link diklik
-                            className={`block px-4 py-2 rounded-lg text-sm transition ${
+                            className={`flex items-center justify-between px-4 py-2 rounded-lg text-sm transition ${
                               isSubActive ? "bg-[#ff984e] text-white shadow-sm" : "text-purple-200 hover:text-white hover:bg-[#45156b]"
                             }`}
                           >
-                            {subItem.name}
+                            <span>{subItem.name}</span>
+                            {badge > 0 && (
+                              <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full ml-2" title={`${badge} Item Perlu Tindakan`}>
+                                {badge}
+                              </span>
+                            )}
                           </Link>
                         );
                       })}
