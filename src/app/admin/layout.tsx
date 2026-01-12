@@ -79,7 +79,17 @@ export default function AdminLayout({
     { name: "Data Siswa", href: "/admin/siswa", roles: ["Admin", "Kepala Sekolah"] },
     { name: "Data Guru", href: "/admin/guru", roles: ["Admin", "Kepala Sekolah", "Yayasan"] },
     { name: "Performance", href: "/admin/performance", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru"] },
-    { name: "Akademik", href: "#", roles: ["Admin", "Kepala Sekolah"] },
+    { 
+      name: "Akademik", 
+      href: "#", 
+      roles: ["Admin", "Kepala Sekolah"],
+      submenu: [
+        { name: "RPPH", href: "/admin/akademik/rpph", roles: ["Admin", "Kepala Sekolah"] },
+        { name: "Tahap Perkembangan", href: "/admin/akademik/tahap-perkembangan", roles: ["Admin", "Kepala Sekolah"] },
+        { name: "Indikator", href: "/admin/akademik/indikator", roles: ["Admin", "Kepala Sekolah"] },
+        { name: "Trilogi Mainriang", href: "/admin/akademik/trilogi-mainriang", roles: ["Admin", "Kepala Sekolah"] },
+      ]
+    },
     { 
       name: "Keuangan", 
       href: "#",
