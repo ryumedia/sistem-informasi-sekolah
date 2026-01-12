@@ -5,18 +5,26 @@ import { useState, useEffect } from "react";
 import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
-import { Plus, X, Pencil, Trash2, Search } from "lucide-react";
+import { Plus, X, Pencil, Trash2, Search, ListChecks } from "lucide-react";
+
+interface KeyResult {
+  id: string;
+  nama: string;
+  targetWaktu: string;
+  indikator: string;
+  keberhasilan: number; // 0-100
+}
 
 interface KPI {
   id: string;
   guruId: string;
   namaGuru: string;
   cabang: string;
-  indikator: string;
-  target: number;
-  tercapai: number;
+  objective: string;
   periodeId: string;
   namaPeriode: string;
+  keyResults?: KeyResult[];
+  persentase?: number;
 }
 
 interface Guru {
@@ -42,6 +50,12 @@ export default function PerformancePage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [currentUserData, setCurrentUserData] = useState<any>(null);
 
+  // State for KR Modal
+  const [isKrModalOpen, setIsKrModalOpen] = useState(false);
+  const [selectedObjective, setSelectedObjective] = useState<KPI | null>(null);
+  const [currentKrs, setCurrentKrs] = useState<KeyResult[]>([]);
+  const [newKr, setNewKr] = useState({ nama: "", targetWaktu: "", indikator: "", keberhasilan: 0 });
+
   // Filters
   const [filterCabang, setFilterCabang] = useState("");
   const [filterPeriode, setFilterPeriode] = useState("");
@@ -52,9 +66,7 @@ export default function PerformancePage() {
     guruId: "",
     namaGuru: "",
     cabang: "",
-    indikator: "",
-    target: 0,
-    tercapai: 0,
+    objective: "",
     periodeId: "",
     namaPeriode: "",
   });
@@ -85,7 +97,22 @@ export default function PerformancePage() {
       // Fetch KPI
       const qKpi = query(collection(db, "kpi_guru"), orderBy("createdAt", "desc"));
       const kpiSnap = await getDocs(qKpi);
-      const kpiData = kpiSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as KPI[];
+      const kpiData = kpiSnap.docs.map(doc => {
+        const data = doc.data();
+        const keyResults: KeyResult[] = data.keyResults || [];
+        let persentase = 0;
+        if (keyResults.length > 0) {
+            const totalKeberhasilan = keyResults.reduce((sum, kr) => sum + (Number(kr.keberhasilan) || 0), 0);
+            persentase = totalKeberhasilan / keyResults.length;
+        }
+        return {
+          id: doc.id,
+          ...data,
+          objective: data.objective || data.indikator || "",
+          keyResults: keyResults,
+          persentase: persentase
+        }
+      }) as KPI[];
       setKpiList(kpiData);
 
       // Fetch Guru
@@ -129,8 +156,6 @@ export default function PerformancePage() {
     try {
       const payload = {
         ...formData,
-        target: Number(formData.target),
-        tercapai: Number(formData.tercapai),
       };
 
       if (editId) {
@@ -174,9 +199,7 @@ export default function PerformancePage() {
       guruId: item.guruId,
       namaGuru: item.namaGuru,
       cabang: item.cabang,
-      indikator: item.indikator,
-      target: item.target,
-      tercapai: item.tercapai,
+      objective: item.objective,
       periodeId: item.periodeId || "",
       namaPeriode: item.namaPeriode || "",
     });
@@ -186,7 +209,7 @@ export default function PerformancePage() {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditId(null);
-    setFormData({ guruId: "", namaGuru: "", cabang: "", indikator: "", target: 0, tercapai: 0, periodeId: "", namaPeriode: "" });
+    setFormData({ guruId: "", namaGuru: "", cabang: "", objective: "", periodeId: "", namaPeriode: "" });
   };
 
   // Handle Guru Selection in Form
@@ -213,6 +236,66 @@ export default function PerformancePage() {
       setFormData({ ...formData, periodeId: selectedId, namaPeriode: selectedPeriode.namaPeriode });
     } else {
       setFormData({ ...formData, periodeId: "", namaPeriode: "" });
+    }
+  };
+
+  // --- KR MODAL FUNCTIONS ---
+  const openKrModal = (objective: KPI) => {
+    setSelectedObjective(objective);
+    setCurrentKrs(objective.keyResults || []);
+    setIsKrModalOpen(true);
+  };
+
+  const closeKrModal = () => {
+    setIsKrModalOpen(false);
+    setSelectedObjective(null);
+    setCurrentKrs([]);
+    setNewKr({ nama: "", targetWaktu: "", indikator: "", keberhasilan: 0 });
+  };
+
+  const addCurrentKr = () => {
+    if (!newKr.nama || !newKr.targetWaktu || !newKr.indikator) {
+      alert("Harap isi semua field Key Result.");
+      return;
+    }
+    setCurrentKrs([...currentKrs, { ...newKr, id: Date.now().toString() }]);
+    setNewKr({ nama: "", targetWaktu: "", indikator: "", keberhasilan: 0 }); // Reset form
+  };
+
+  const removeCurrentKr = (index: number) => {
+    const updatedKrs = [...currentKrs];
+    updatedKrs.splice(index, 1);
+    setCurrentKrs(updatedKrs);
+  };
+
+  const updateCurrentKrKeberhasilan = (index: number, value: number) => {
+    const updatedKrs = [...currentKrs];
+    const clampedValue = Math.max(0, Math.min(100, isNaN(value) ? 0 : value));
+    updatedKrs[index].keberhasilan = clampedValue;
+    setCurrentKrs(updatedKrs);
+  };
+
+  const handleSaveKrs = async () => {
+    if (!selectedObjective) return;
+    setSubmitting(true);
+    try {
+      let persentase = 0;
+      if (currentKrs.length > 0) {
+        const total = currentKrs.reduce((sum, kr) => sum + (Number(kr.keberhasilan) || 0), 0);
+        persentase = total / currentKrs.length;
+      }
+      await updateDoc(doc(db, "kpi_guru", selectedObjective.id), {
+        keyResults: currentKrs,
+        persentase: persentase
+      });
+      alert("Key Results berhasil disimpan!");
+      closeKrModal();
+      fetchData();
+    } catch (error) {
+      console.error("Error saving Key Results:", error);
+      alert("Gagal menyimpan Key Results.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -249,8 +332,7 @@ export default function PerformancePage() {
 
   // Calculate Average Score & Label
   const totalScore = filteredKpi.reduce((acc, item) => {
-    const score = item.target > 0 ? (item.tercapai / item.target) * 100 : 0;
-    return acc + Math.min(score, 100); // Cap individual score at 100 for average calculation? Or allow >100? Assuming cap for standard KPI.
+    return acc + (item.persentase || 0);
   }, 0);
   
   const averageScore = filteredKpi.length > 0 ? totalScore / filteredKpi.length : 0;
@@ -278,7 +360,7 @@ export default function PerformancePage() {
           onClick={openTambahModal}
           className="bg-[#581c87] text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-[#45156b] transition"
         >
-          <Plus className="w-4 h-4" /> Tambah KPI
+          <Plus className="w-4 h-4" /> Tambah Objective
         </button>
       </div>
 
@@ -344,9 +426,7 @@ export default function PerformancePage() {
               <th className="p-4 w-16">No</th>
               <th className="p-4">Nama Guru</th>
               <th className="p-4">Periode</th>
-              <th className="p-4">Indikator</th>
-              <th className="p-4">Target</th>
-              <th className="p-4">Tercapai</th>
+              <th className="p-4">Objective</th>
               <th className="p-4">Persentase</th>
               <th className="p-4">Aksi</th>
             </tr>
@@ -358,12 +438,6 @@ export default function PerformancePage() {
               <tr><td colSpan={7} className="p-8 text-center">Data tidak ditemukan.</td></tr>
             ) : (
               filteredKpi.map((item, index) => {
-                const percentage = item.target > 0 ? (item.tercapai / item.target) * 100 : 0;
-                let colorClass = "text-red-600";
-                if (percentage >= 100) colorClass = "text-green-600";
-                else if (percentage >= 75) colorClass = "text-blue-600";
-                else if (percentage >= 50) colorClass = "text-orange-600";
-
                 return (
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="p-4 text-center">{index + 1}</td>
@@ -372,13 +446,32 @@ export default function PerformancePage() {
                       <div className="text-xs text-gray-400">{item.cabang}</div>
                     </td>
                     <td className="p-4 text-gray-600 text-xs">{item.namaPeriode}</td>
-                    <td className="p-4">{item.indikator}</td>
-                    <td className="p-4">{item.target}</td>
-                    <td className="p-4">{item.tercapai}</td>
-                    <td className={`p-4 font-bold ${colorClass}`}>
-                      {percentage.toFixed(1)}%
+                    <td className="p-4">
+                      <div className="font-medium text-gray-900">{item.objective}</div>
+                        {item.keyResults && item.keyResults.length > 0 && (
+                          <div className="mt-2 space-y-1 text-xs text-gray-500">
+                            {item.keyResults.map((kr) => (
+                            <div key={kr.id} className="flex justify-between items-center border-b border-gray-100 pb-1 last:border-0">
+                                <span>• {kr.nama}</span>
+                                <span className={`font-mono px-1.5 py-0.5 rounded text-[10px] ${kr.keberhasilan >= 85 ? 'bg-green-100 text-green-700' : kr.keberhasilan >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                                {kr.keberhasilan}%
+                                </span>
+                            </div>
+                            ))}
+                          </div>
+                        )}
+                    </td>
+                    <td className={`p-4 font-bold text-lg ${
+                      (item.persentase || 0) >= 85 ? 'text-green-600' :
+                      (item.persentase || 0) >= 50 ? 'text-yellow-600' :
+                      'text-red-600'
+                    }`}>
+                      {item.persentase !== undefined ? `${item.persentase.toFixed(1)}%` : 'N/A'}
                     </td>
                     <td className="p-4 flex gap-2">
+                      <button onClick={() => openKrModal(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Kelola Key Results">
+                        <ListChecks className="w-4 h-4" />
+                      </button>
                       <button onClick={() => handleEdit(item)} className="p-2 text-[#581c87] hover:bg-[#581c87]/10 rounded-lg transition" title="Edit">
                         <Pencil className="w-4 h-4" />
                       </button>
@@ -395,12 +488,12 @@ export default function PerformancePage() {
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Modal Add/Edit Objective */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-              <h3 className="font-bold text-gray-800">{editId ? "Edit KPI" : "Tambah KPI"}</h3>
+              <h3 className="font-bold text-gray-800">{editId ? "Edit Objective" : "Tambah Objective"}</h3>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
@@ -445,46 +538,110 @@ export default function PerformancePage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Indikator KPI</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Objective</label>
                 <input 
                   required 
                   type="text" 
-                  placeholder="Contoh: Kehadiran Mengajar"
+                  placeholder="Contoh: Meningkatkan kedisiplinan siswa"
                   className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                  value={formData.indikator} 
-                  onChange={(e) => setFormData({...formData, indikator: e.target.value})} 
+                  value={formData.objective} 
+                  onChange={(e) => setFormData({...formData, objective: e.target.value})} 
                 />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Target</label>
-                  <input 
-                    required 
-                    type="number" 
-                    min="1"
-                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.target} 
-                    onChange={(e) => setFormData({...formData, target: Number(e.target.value)})} 
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tercapai</label>
-                  <input 
-                    required 
-                    type="number" 
-                    min="0"
-                    className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.tercapai} 
-                    onChange={(e) => setFormData({...formData, tercapai: Number(e.target.value)})} 
-                  />
-                </div>
               </div>
 
               <button disabled={submitting} type="submit" className="w-full bg-[#581c87] text-white py-2 rounded-lg hover:bg-[#45156b] transition font-medium mt-2">
                 {submitting ? "Menyimpan..." : "Simpan Data"}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Key Results */}
+      {isKrModalOpen && selectedObjective && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl">
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+              <div>
+                <h3 className="font-bold text-gray-800">Kelola Key Results</h3>
+                <p className="text-xs text-gray-500">Objective: {selectedObjective.objective}</p>
+              </div>
+              <button onClick={closeKrModal} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Form Tambah KR */}
+              <div className="bg-gray-50 p-4 rounded-lg border space-y-3">
+                <h4 className="font-semibold text-gray-700 text-sm">Tambah Key Result Baru</h4>
+                <div>
+                  <input type="text" placeholder="Key Result (cth: Menyusun laporan bulanan tepat waktu)" value={newKr.nama} onChange={(e) => setNewKr({...newKr, nama: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#581c87] outline-none" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input type="text" placeholder="Target Waktu (cth: Setiap Akhir Bulan)" value={newKr.targetWaktu} onChange={(e) => setNewKr({...newKr, targetWaktu: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#581c87] outline-none" />
+                  <input type="text" placeholder="Indikator Keberhasilan (cth: Laporan dikirim maks H+1)" value={newKr.indikator} onChange={(e) => setNewKr({...newKr, indikator: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#581c87] outline-none" />
+                </div>
+                <button onClick={addCurrentKr} className="bg-purple-200 text-[#581c87] px-4 py-2 rounded-lg text-sm font-semibold hover:bg-purple-300 transition w-full">
+                  <Plus className="w-4 h-4 inline-block mr-1" /> Tambahkan ke Daftar
+                </button>
+              </div>
+
+              {/* Tabel KR */}
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-left text-sm text-gray-600">
+                  <thead className="bg-gray-100 text-gray-800 font-semibold">
+                    <tr>
+                      <th className="p-3 w-10">No</th>
+                      <th className="p-3">Key Result</th>
+                      <th className="p-3">Target Waktu</th>
+                      <th className="p-3">Indikator</th>
+                      <th className="p-3">Keberhasilan</th>
+                      <th className="p-3 w-16">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {currentKrs.length === 0 ? (
+                      <tr><td colSpan={6} className="p-6 text-center italic text-gray-500">Belum ada Key Results.</td></tr>
+                    ) : (
+                      currentKrs.map((kr, index) => (
+                        <tr key={kr.id} className="hover:bg-gray-50">
+                          <td className="p-3 text-center">{index + 1}</td>
+                          <td className="p-3 font-medium">{kr.nama}</td>
+                          <td className="p-3 text-xs">{kr.targetWaktu}</td>
+                          <td className="p-3">{kr.indikator}</td>
+                          <td className="p-3">
+                            <div className="relative">
+                              <input 
+                                type="number" 
+                                min="0" 
+                                max="100" 
+                                value={kr.keberhasilan} 
+                                onChange={(e) => updateCurrentKrKeberhasilan(index, Number(e.target.value))}
+                                className="w-24 border rounded-lg p-2 text-sm focus:ring-1 focus:ring-[#581c87] outline-none pr-6"
+                              />
+                              <span className="absolute right-2 top-2.5 text-gray-400 text-sm">%</span>
+                            </div>
+                          </td>
+                          <td className="p-3 text-center">
+                            <button onClick={() => removeCurrentKr(index)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="p-4 bg-gray-50 border-t flex justify-end gap-3">
+              <button onClick={closeKrModal} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100 transition text-sm font-medium">Batal</button>
+              <button onClick={handleSaveKrs} disabled={submitting} className="bg-[#581c87] text-white px-4 py-2 rounded-lg hover:bg-[#45156b] transition text-sm font-medium">
+                {submitting ? "Menyimpan..." : "Simpan Perubahan"}
+              </button>
+            </div>
           </div>
         </div>
       )}

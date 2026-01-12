@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, query, orderBy, where, doc, updateDoc } from "firebase/firestore";
-import { FileText, Filter, X, Save } from "lucide-react";
+import { FileText, Filter, X, Save, Eye } from "lucide-react";
 
 interface Pengajuan {
   id: string;
@@ -16,6 +16,7 @@ interface Pengajuan {
   status: string;
   realisasi?: number;
   selisih?: number;
+  buktiRealisasi?: string;
 }
 
 export default function RealisasiPage() {
@@ -34,6 +35,8 @@ export default function RealisasiPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Pengajuan | null>(null);
   const [realisasiInput, setRealisasiInput] = useState<number>(0);
+  const [buktiInput, setBuktiInput] = useState<string>("");
+  const [viewBukti, setViewBukti] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -88,6 +91,7 @@ export default function RealisasiPage() {
   const handleOpenModal = (item: Pengajuan) => {
     setSelectedItem(item);
     setRealisasiInput(item.realisasi || 0);
+    setBuktiInput(item.buktiRealisasi || "");
     setIsModalOpen(true);
   };
 
@@ -99,7 +103,8 @@ export default function RealisasiPage() {
       const selisih = selectedItem.total - realisasiInput;
       await updateDoc(doc(db, "pengajuan", selectedItem.id), {
         realisasi: realisasiInput,
-        selisih: selisih
+        selisih: selisih,
+        buktiRealisasi: buktiInput
       });
       alert("Laporan realisasi berhasil disimpan!");
       setIsModalOpen(false);
@@ -109,6 +114,17 @@ export default function RealisasiPage() {
       alert("Gagal menyimpan laporan.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setBuktiInput(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -171,7 +187,7 @@ export default function RealisasiPage() {
                   <td className={`p-4 ${item.selisih && item.selisih < 0 ? "text-red-500" : "text-gray-500"}`}>
                     {item.selisih !== undefined ? `Rp ${item.selisih.toLocaleString("id-ID")}` : "-"}
                   </td>
-                  <td className="p-4">
+                  <td className="p-4 flex items-center gap-2">
                     <button 
                       onClick={() => handleOpenModal(item)}
                       className="p-2 text-[#581c87] hover:bg-[#581c87]/10 rounded-lg flex items-center gap-1" 
@@ -179,6 +195,15 @@ export default function RealisasiPage() {
                     >
                       <FileText className="w-4 h-4" />
                     </button>
+                    {item.buktiRealisasi && (
+                      <button 
+                        onClick={() => setViewBukti(item.buktiRealisasi || null)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg flex items-center gap-1" 
+                        title="Lihat Bukti"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
@@ -212,6 +237,20 @@ export default function RealisasiPage() {
                 <input required type="number" min="0" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={realisasiInput} onChange={(e) => setRealisasiInput(Number(e.target.value))} />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bukti Realisasi (Gambar)</label>
+                <input 
+                  type="file" 
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-[#581c87] hover:file:bg-purple-100"
+                />
+                {buktiInput && (
+                  <div className="mt-2">
+                    <img src={buktiInput} alt="Preview" className="h-20 object-contain border rounded" />
+                  </div>
+                )}
+              </div>
               <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
                 <label className="block text-xs font-medium text-blue-600 mb-1">Selisih (Sisa Anggaran)</label>
                 <div className={`text-lg font-bold ${(selectedItem.total - realisasiInput) < 0 ? "text-red-600" : "text-blue-700"}`}>
@@ -222,6 +261,23 @@ export default function RealisasiPage() {
                 <Save className="w-4 h-4" /> {submitting ? "Menyimpan..." : "Kirim Laporan"}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Lihat Bukti */}
+      {viewBukti && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setViewBukti(null)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+              <h3 className="font-bold text-gray-800">Bukti Realisasi</h3>
+              <button onClick={() => setViewBukti(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 flex justify-center bg-gray-100">
+              <img src={viewBukti} alt="Bukti" className="max-h-[70vh] object-contain rounded-lg shadow-sm" />
+            </div>
           </div>
         </div>
       )}
