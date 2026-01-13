@@ -121,7 +121,7 @@ export default function AdminLayout({
         { name: "Pengaturan Keuangan", href: "/admin/pengaturan/keuangan", roles: ["Admin"] },
         { name: "Pengaturan Cabang", href: "/admin/pengaturan/cabang", roles: ["Admin"] },
         { name: "Pengaturan Kelas", href: "/admin/pengaturan/kelas", roles: ["Admin"] },
-        { name: "Pengaturan Performance", href: "/admin/pengaturan/performance", roles: ["Admin"] }
+        { name: "Pengaturan Semester", href: "/admin/pengaturan/performance", roles: ["Admin"] }
       ]
     },
   ];

@@ -1,7 +1,7 @@
 // src/app/admin/performance/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
@@ -37,6 +37,7 @@ interface Guru {
 interface PeriodeKPI {
   id: string;
   namaPeriode: string;
+  isDefault?: boolean;
 }
 
 export default function PerformancePage() {
@@ -49,6 +50,7 @@ export default function PerformancePage() {
   const [submitting, setSubmitting] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [currentUserData, setCurrentUserData] = useState<any>(null);
+  const isFirstLoad = useRef(true);
 
   // State for KR Modal
   const [isKrModalOpen, setIsKrModalOpen] = useState(false);
@@ -137,6 +139,14 @@ export default function PerformancePage() {
       const periodeSnap = await getDocs(qPeriode);
       const periodeData = periodeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as PeriodeKPI[];
       setPeriodeList(periodeData);
+
+      if (isFirstLoad.current) {
+        const defaultPeriode = periodeData.find(p => p.isDefault);
+        if (defaultPeriode) {
+          setFilterPeriode(defaultPeriode.id);
+        }
+        isFirstLoad.current = false;
+      }
 
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -327,6 +337,16 @@ export default function PerformancePage() {
 
   const openTambahModal = () => {
     if (currentUserData?.role === 'Guru') handleGuruChange({ target: { value: currentUserData.id } } as any);
+    
+    // Set default semester
+    const defaultPeriode = periodeList.find(p => p.isDefault);
+    if (defaultPeriode) {
+      setFormData(prev => ({
+        ...prev,
+        periodeId: defaultPeriode.id,
+        namaPeriode: defaultPeriode.namaPeriode
+      }));
+    }
     setIsModalOpen(true);
   }
 
@@ -387,7 +407,7 @@ export default function PerformancePage() {
           value={filterPeriode}
           onChange={(e) => setFilterPeriode(e.target.value)}
         >
-          <option value="">Semua Periode</option>
+          <option value="">Semua Semester</option>
           {periodeList.map((p) => <option key={p.id} value={p.id}>{p.namaPeriode}</option>)}
         </select>
 
@@ -425,7 +445,7 @@ export default function PerformancePage() {
             <tr>
               <th className="p-4 w-16">No</th>
               <th className="p-4">Nama Guru</th>
-              <th className="p-4">Periode</th>
+              <th className="p-4">Semester</th>
               <th className="p-4">Objective</th>
               <th className="p-4">Persentase</th>
               <th className="p-4">Aksi</th>
@@ -501,10 +521,10 @@ export default function PerformancePage() {
             
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Periode KPI</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Semester</label>
                 <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.periodeId} onChange={handlePeriodeChange}>
-                  <option value="">Pilih Periode</option>
+                  <option value="">Pilih Semester</option>
                   {periodeList.map((p) => (
                     <option key={p.id} value={p.id}>{p.namaPeriode}</option>
                   ))}

@@ -17,7 +17,7 @@ import {
 import { Plus, Pencil, Trash2, X, Save } from "lucide-react";
 
 // --- Interfaces ---
-interface NilaiPerkembangan {
+interface NilaiIndikator {
   id: string;
   tanggal: string;
   cabangId: string;
@@ -28,8 +28,10 @@ interface NilaiPerkembangan {
   namaSiswa: string;
   semesterId: string;
   namaSemester: string;
-  tahapId: string;
-  namaTahap: string;
+  indikatorId: string;
+  namaIndikator: string;
+  subIndikatorId: string;
+  namaSubIndikator: string;
   nilai: number; // 1, 2, 3
 }
 
@@ -48,7 +50,6 @@ interface Siswa {
   id: string;
   nama: string;
   kelas: string;
-  jenjangUsia?: string; // Sesuai field di Firebase
 }
 
 interface Semester {
@@ -57,20 +58,20 @@ interface Semester {
   isDefault?: boolean;
 }
 
-interface TahapPerkembangan {
+interface Indikator {
+  id: string;
+  nama: string;
+}
+
+interface SubIndikator {
   id: string;
   deskripsi: string;
-  kelompokUsiaId: string; // Sesuai field di Firebase
+  groupId: string;
 }
 
-interface KelompokUsia {
-  id: string;
-  usia: string;
-}
-
-export default function NilaiPerkembanganPage() {
+export default function NilaiIndikatorPage() {
   // --- State Data Utama ---
-  const [dataList, setDataList] = useState<NilaiPerkembangan[]>([]);
+  const [dataList, setDataList] = useState<NilaiIndikator[]>([]);
   const [loading, setLoading] = useState(true);
 
   // --- State Dropdowns (Master Data) ---
@@ -78,9 +79,8 @@ export default function NilaiPerkembanganPage() {
   const [kelasList, setKelasList] = useState<Kelas[]>([]); // Filtered by Cabang
   const [siswaList, setSiswaList] = useState<Siswa[]>([]); // Filtered by Kelas
   const [semesterList, setSemesterList] = useState<Semester[]>([]);
-  const [tahapList, setTahapList] = useState<TahapPerkembangan[]>([]); // All Tahap
-  const [filteredTahapList, setFilteredTahapList] = useState<TahapPerkembangan[]>([]); // Filtered by Siswa Usia
-  const [usiaList, setUsiaList] = useState<KelompokUsia[]>([]); // Master Kelompok Usia
+  const [indikatorList, setIndikatorList] = useState<Indikator[]>([]);
+  const [subIndikatorList, setSubIndikatorList] = useState<SubIndikator[]>([]); // Filtered by Indikator
 
   // --- State Form ---
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -98,8 +98,10 @@ export default function NilaiPerkembanganPage() {
     namaSiswa: "",
     semesterId: "",
     namaSemester: "",
-    tahapId: "",
-    namaTahap: "",
+    indikatorId: "",
+    namaIndikator: "",
+    subIndikatorId: "",
+    namaSubIndikator: "",
     nilai: 1,
   });
 
@@ -108,9 +110,9 @@ export default function NilaiPerkembanganPage() {
     const fetchInitialData = async () => {
       try {
         // 1. Fetch Data Nilai (Tabel Utama)
-        const qNilai = query(collection(db, "nilai_perkembangan"), orderBy("tanggal", "desc"));
+        const qNilai = query(collection(db, "nilai_indikator"), orderBy("tanggal", "desc"));
         const snapNilai = await getDocs(qNilai);
-        const nilaiData = snapNilai.docs.map((d) => ({ id: d.id, ...d.data() })) as NilaiPerkembangan[];
+        const nilaiData = snapNilai.docs.map((d) => ({ id: d.id, ...d.data() })) as NilaiIndikator[];
         setDataList(nilaiData);
 
         // 2. Fetch Master Cabang
@@ -122,13 +124,9 @@ export default function NilaiPerkembanganPage() {
         const semesters = snapSemester.docs.map((d) => ({ id: d.id, ...d.data() })) as Semester[];
         setSemesterList(semesters);
 
-        // 4. Fetch Master Tahap Perkembangan
-        const snapTahap = await getDocs(collection(db, "tahap_perkembangan"));
-        setTahapList(snapTahap.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as TahapPerkembangan[]);
-
-        // 5. Fetch Master Kelompok Usia (Untuk mapping jenjangUsia -> kelompokUsiaId)
-        const snapUsia = await getDocs(query(collection(db, "kelompok_usia"), orderBy("usia", "asc")));
-        setUsiaList(snapUsia.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as KelompokUsia[]);
+        // 4. Fetch Master Indikator
+        const snapIndikator = await getDocs(collection(db, "indikator_groups"));
+        setIndikatorList(snapIndikator.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Indikator[]);
 
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -153,10 +151,8 @@ export default function NilaiPerkembanganPage() {
       namaCabang: selectedCabang?.nama || "",
       kelasId: "", namaKelas: "", // Reset bawahnya
       siswaId: "", namaSiswa: "",
-      tahapId: "", namaTahap: ""
     }));
     setSiswaList([]);
-    setFilteredTahapList([]);
 
     if (selectedCabangId && selectedCabang) {
       const qKelas = query(collection(db, "kelas"), where("cabang", "==", selectedCabang.nama));
@@ -177,9 +173,7 @@ export default function NilaiPerkembanganPage() {
       kelasId: selectedKelasId,
       namaKelas: selectedKelas?.namaKelas || "",
       siswaId: "", namaSiswa: "", // Reset bawahnya
-      tahapId: "", namaTahap: ""
     }));
-    setFilteredTahapList([]);
 
     if (selectedKelasId && selectedKelas) {
       const qSiswa = query(collection(db, "siswa"), where("kelas", "==", selectedKelas.namaKelas));
@@ -190,7 +184,7 @@ export default function NilaiPerkembanganPage() {
     }
   };
 
-  // 3. Handle Siswa Change -> Filter Tahap Perkembangan by Usia
+  // 3. Handle Siswa Change
   const handleSiswaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedSiswaId = e.target.value;
     const selectedSiswa = siswaList.find((s) => s.id === selectedSiswaId);
@@ -199,21 +193,7 @@ export default function NilaiPerkembanganPage() {
       ...prev,
       siswaId: selectedSiswaId,
       namaSiswa: selectedSiswa?.nama || "",
-      tahapId: "", namaTahap: ""
     }));
-
-    if (selectedSiswa && selectedSiswa.jenjangUsia) {
-      // Cari ID Kelompok Usia (jika jenjangUsia berupa nama, kita cari ID-nya di usiaList)
-      // Jika jenjangUsia sudah berupa ID, maka akan cocok dengan u.id
-      const usiaMatch = usiaList.find(u => u.id === selectedSiswa.jenjangUsia || u.usia === selectedSiswa.jenjangUsia);
-      const targetUsiaId = usiaMatch ? usiaMatch.id : selectedSiswa.jenjangUsia;
-
-      const filtered = tahapList.filter((t) => t.kelompokUsiaId === targetUsiaId);
-      setFilteredTahapList(filtered);
-    } else {
-      // Fallback jika tidak ada kelompok usia, tampilkan semua atau kosongkan (opsional)
-      setFilteredTahapList(tahapList); 
-    }
   };
 
   // 4. Handle Semester Change
@@ -227,14 +207,35 @@ export default function NilaiPerkembanganPage() {
     }));
   };
 
-  // 5. Handle Tahap Change
-  const handleTahapChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  // 5. Handle Indikator Change -> Fetch Sub Indikator
+  const handleIndikatorChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedId = e.target.value;
-    const selectedTahap = tahapList.find((t) => t.id === selectedId);
+    const selectedIndikator = indikatorList.find((i) => i.id === selectedId);
+
     setForm((prev) => ({
       ...prev,
-      tahapId: selectedId,
-      namaTahap: selectedTahap?.deskripsi || ""
+      indikatorId: selectedId,
+      namaIndikator: selectedIndikator?.nama || "",
+      subIndikatorId: "", namaSubIndikator: "" // Reset sub indikator
+    }));
+
+    if (selectedId) {
+      const qSub = query(collection(db, "sub_indikators"), where("groupId", "==", selectedId));
+      const snapSub = await getDocs(qSub);
+      setSubIndikatorList(snapSub.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as SubIndikator[]);
+    } else {
+      setSubIndikatorList([]);
+    }
+  };
+
+  // 6. Handle Sub Indikator Change
+  const handleSubIndikatorChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedId = e.target.value;
+    const selectedSub = subIndikatorList.find((s) => s.id === selectedId);
+    setForm((prev) => ({
+      ...prev,
+      subIndikatorId: selectedId,
+      namaSubIndikator: selectedSub?.deskripsi || ""
     }));
   };
 
@@ -245,13 +246,13 @@ export default function NilaiPerkembanganPage() {
     setSubmitting(true);
     try {
       if (isEditing && currentId) {
-        await updateDoc(doc(db, "nilai_perkembangan", currentId), {
+        await updateDoc(doc(db, "nilai_indikator", currentId), {
           ...form,
           updatedAt: serverTimestamp(),
         });
         alert("Data berhasil diperbarui!");
       } else {
-        await addDoc(collection(db, "nilai_perkembangan"), {
+        await addDoc(collection(db, "nilai_indikator"), {
           ...form,
           createdAt: serverTimestamp(),
         });
@@ -259,9 +260,9 @@ export default function NilaiPerkembanganPage() {
       }
       closeModal();
       // Refresh Data Table
-      const qNilai = query(collection(db, "nilai_perkembangan"), orderBy("tanggal", "desc"));
+      const qNilai = query(collection(db, "nilai_indikator"), orderBy("tanggal", "desc"));
       const snapNilai = await getDocs(qNilai);
-      setDataList(snapNilai.docs.map((d) => ({ id: d.id, ...d.data() })) as NilaiPerkembangan[]);
+      setDataList(snapNilai.docs.map((d) => ({ id: d.id, ...d.data() })) as NilaiIndikator[]);
     } catch (error) {
       console.error("Error saving data:", error);
       alert("Gagal menyimpan data.");
@@ -273,7 +274,7 @@ export default function NilaiPerkembanganPage() {
   const handleDelete = async (id: string) => {
     if (confirm("Yakin ingin menghapus data penilaian ini?")) {
       try {
-        await deleteDoc(doc(db, "nilai_perkembangan", id));
+        await deleteDoc(doc(db, "nilai_indikator", id));
         setDataList((prev) => prev.filter((item) => item.id !== id));
       } catch (error) {
         console.error("Error deleting:", error);
@@ -291,15 +292,16 @@ export default function NilaiPerkembanganPage() {
       kelasId: "", namaKelas: "",
       siswaId: "", namaSiswa: "",
       semesterId: defaultSem?.id || "", namaSemester: defaultSem?.namaPeriode || "",
-      tahapId: "", namaTahap: "",
+      indikatorId: "", namaIndikator: "",
+      subIndikatorId: "", namaSubIndikator: "",
       nilai: 1,
     });
+    setSubIndikatorList([]);
     setIsEditing(false);
     setIsModalOpen(true);
   };
 
-  const handleEdit = async (item: NilaiPerkembangan) => {
-    // Perlu fetch ulang dropdown kelas & siswa agar terisi saat edit
+  const handleEdit = async (item: NilaiIndikator) => {
     // 1. Set Form Basic
     setForm({
       tanggal: item.tanggal,
@@ -307,7 +309,8 @@ export default function NilaiPerkembanganPage() {
       kelasId: item.kelasId, namaKelas: item.namaKelas,
       siswaId: item.siswaId, namaSiswa: item.namaSiswa,
       semesterId: item.semesterId, namaSemester: item.namaSemester,
-      tahapId: item.tahapId, namaTahap: item.namaTahap,
+      indikatorId: item.indikatorId, namaIndikator: item.namaIndikator,
+      subIndikatorId: item.subIndikatorId, namaSubIndikator: item.namaSubIndikator,
       nilai: item.nilai,
     });
 
@@ -320,18 +323,12 @@ export default function NilaiPerkembanganPage() {
     if (item.namaKelas) {
       const qSiswa = query(collection(db, "siswa"), where("kelas", "==", item.namaKelas));
       const snapSiswa = await getDocs(qSiswa);
-      const siswas = snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[];
-      setSiswaList(siswas);
-
-      // Filter Tahap based on Siswa Usia
-      const currentSiswa = siswas.find(s => s.id === item.siswaId);
-      if (currentSiswa && currentSiswa.jenjangUsia) {
-        const usiaMatch = usiaList.find(u => u.id === currentSiswa.jenjangUsia || u.usia === currentSiswa.jenjangUsia);
-        const targetUsiaId = usiaMatch ? usiaMatch.id : currentSiswa.jenjangUsia;
-        setFilteredTahapList(tahapList.filter(t => t.kelompokUsiaId === targetUsiaId));
-      } else {
-        setFilteredTahapList(tahapList);
-      }
+      setSiswaList(snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[]);
+    }
+    if (item.indikatorId) {
+      const qSub = query(collection(db, "sub_indikators"), where("groupId", "==", item.indikatorId));
+      const snapSub = await getDocs(qSub);
+      setSubIndikatorList(snapSub.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as SubIndikator[]);
     }
 
     setCurrentId(item.id);
@@ -347,7 +344,7 @@ export default function NilaiPerkembanganPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-800">Nilai Perkembangan</h1>
+        <h1 className="text-2xl font-bold text-gray-800">Nilai Indikator</h1>
         <button onClick={openModal} className="bg-[#581c87] text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-[#45156b] transition">
           <Plus className="w-4 h-4" /> Tambah Penilaian
         </button>
@@ -356,7 +353,7 @@ export default function NilaiPerkembanganPage() {
       {/* Tabel Data */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-gray-600 min-w-[1000px]">
+          <table className="w-full text-left text-sm text-gray-600 min-w-[1100px]">
             <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
               <tr>
                 <th className="p-4 w-12">No</th>
@@ -365,16 +362,17 @@ export default function NilaiPerkembanganPage() {
                 <th className="p-4">Kelas</th>
                 <th className="p-4">Nama Siswa</th>
                 <th className="p-4">Semester</th>
-                <th className="p-4">Tahap Perkembangan</th>
+                <th className="p-4">Indikator</th>
+                <th className="p-4">Sub Indikator</th>
                 <th className="p-4 text-center">Nilai</th>
                 <th className="p-4 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={9} className="p-8 text-center">Memuat data...</td></tr>
+                <tr><td colSpan={10} className="p-8 text-center">Memuat data...</td></tr>
               ) : dataList.length === 0 ? (
-                <tr><td colSpan={9} className="p-8 text-center">Belum ada data penilaian.</td></tr>
+                <tr><td colSpan={10} className="p-8 text-center">Belum ada data penilaian.</td></tr>
               ) : (
                 dataList.map((item, index) => (
                   <tr key={item.id} className="hover:bg-gray-50">
@@ -384,7 +382,8 @@ export default function NilaiPerkembanganPage() {
                     <td className="p-4">{item.namaKelas}</td>
                     <td className="p-4 font-medium text-gray-900">{item.namaSiswa}</td>
                     <td className="p-4">{item.namaSemester}</td>
-                    <td className="p-4 max-w-xs truncate" title={item.namaTahap}>{item.namaTahap}</td>
+                    <td className="p-4 max-w-xs truncate" title={item.namaIndikator}>{item.namaIndikator}</td>
+                    <td className="p-4 max-w-xs truncate" title={item.namaSubIndikator}>{item.namaSubIndikator}</td>
                     <td className="p-4 text-center">
                       <span className={`inline-block w-8 h-8 leading-8 rounded-full font-bold text-white ${
                         item.nilai === 3 ? "bg-green-500" : item.nilai === 2 ? "bg-yellow-500" : "bg-red-500"
@@ -493,26 +492,41 @@ export default function NilaiPerkembanganPage() {
                   </select>
                 </div>
 
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tahap Perkembangan</label>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Indikator</label>
                   <select 
                     required 
                     className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
-                    value={form.tahapId}
-                    onChange={handleTahapChange}
-                    disabled={!form.siswaId}
+                    value={form.indikatorId}
+                    onChange={handleIndikatorChange}
                   >
-                    <option value="">Pilih Tahap Perkembangan</option>
-                    {filteredTahapList.length === 0 && form.siswaId && (
-                      <option disabled>Tidak ada data tahap untuk kelompok usia siswa ini</option>
-                    )}
-                    {filteredTahapList.map(t => (
-                      <option key={t.id} value={t.id}>{t.deskripsi}</option>
+                    <option value="">Pilih Indikator</option>
+                    {indikatorList.map(i => (
+                      <option key={i.id} value={i.id}>{i.nama}</option>
                     ))}
                   </select>
                 </div>
 
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub Indikator</label>
+                  <select 
+                    required 
+                    className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                    value={form.subIndikatorId}
+                    onChange={handleSubIndikatorChange}
+                    disabled={!form.indikatorId}
+                  >
+                    <option value="">Pilih Sub Indikator</option>
+                    {subIndikatorList.length === 0 && form.indikatorId && (
+                      <option disabled>Tidak ada sub indikator</option>
+                    )}
+                    {subIndikatorList.map(s => (
+                      <option key={s.id} value={s.id}>{s.deskripsi}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nilai</label>
                   <select 
                     required 
