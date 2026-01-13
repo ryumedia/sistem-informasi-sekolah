@@ -25,12 +25,14 @@ interface Siswa {
   email: string;
   status: string;
   foto?: string;
+  jenjangUsia?: string;
 }
 
 export default function DataSiswaPage() {
   const [siswaList, setSiswaList] = useState<Siswa[]>([]);
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [kelasList, setKelasList] = useState<any[]>([]);
+  const [usiaList, setUsiaList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -60,6 +62,7 @@ export default function DataSiswaPage() {
     password: "",
     status: "Aktif",
     foto: "",
+    jenjangUsia: "",
   });
 
   // Fetch Data Siswa
@@ -103,8 +106,19 @@ export default function DataSiswaPage() {
         console.error("Error fetching kelas:", error);
       }
     };
+    const fetchUsia = async () => {
+      try {
+        const q = query(collection(db, "kelompok_usia"), orderBy("usia", "asc"));
+        const querySnapshot = await getDocs(q);
+        const data = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setUsiaList(data);
+      } catch (error) {
+        console.error("Error fetching usia:", error);
+      }
+    };
     fetchCabang();
     fetchKelas();
+    fetchUsia();
   }, []);
 
   // Handle File Change (Base64)
@@ -142,6 +156,7 @@ export default function DataSiswaPage() {
           email: formData.email,
           status: formData.status,
           foto: formData.foto,
+          jenjangUsia: formData.jenjangUsia,
         });
         alert("Data siswa berhasil diperbarui!");
       } else {
@@ -171,6 +186,7 @@ export default function DataSiswaPage() {
           role: "Siswa",
           uid: userCredential.user.uid,
           createdAt: new Date(),
+          jenjangUsia: formData.jenjangUsia,
         });
         alert("Siswa baru berhasil ditambahkan sebagai User!");
       }
@@ -217,6 +233,7 @@ export default function DataSiswaPage() {
       status: siswa.status,
       password: "",
       foto: siswa.foto || "",
+      jenjangUsia: siswa.jenjangUsia || "",
     });
     setIsModalOpen(true);
   };
@@ -240,7 +257,8 @@ export default function DataSiswaPage() {
       email: "",
       password: "",
       status: "Aktif",
-      foto: ""
+      foto: "",
+      jenjangUsia: ""
     });
   };
 
@@ -380,6 +398,14 @@ export default function DataSiswaPage() {
                     value={formData.jenisKelamin} onChange={(e) => setFormData({...formData, jenisKelamin: e.target.value})}>
                     <option value="Laki-laki">Laki-laki</option>
                     <option value="Perempuan">Perempuan</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Jenjang Usia</label>
+                  <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                    value={formData.jenjangUsia} onChange={(e) => setFormData({...formData, jenjangUsia: e.target.value})}>
+                    <option value="">Pilih Jenjang Usia</option>
+                    {usiaList.map((u) => <option key={u.id} value={u.usia}>{u.usia}</option>)}
                   </select>
                 </div>
                 <div>
@@ -524,6 +550,7 @@ export default function DataSiswaPage() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div><p className="text-gray-500">Jenis Kelamin</p><p className="font-medium">{viewDetail.jenisKelamin}</p></div>
                     <div><p className="text-gray-500">Agama</p><p className="font-medium">{viewDetail.agama || "-"}</p></div>
+                    <div><p className="text-gray-500">Jenjang Usia</p><p className="font-medium">{viewDetail.jenjangUsia || "-"}</p></div>
                     <div><p className="text-gray-500">Tempat, Tgl Lahir</p><p className="font-medium">{viewDetail.tempatLahir}, {viewDetail.tanggalLahir}</p></div>
                     <div><p className="text-gray-500">Anak Ke</p><p className="font-medium">{viewDetail.anakKe || "-"}</p></div>
                     <div><p className="text-gray-500">Kelas</p><p className="font-medium">{viewDetail.kelas}</p></div>

@@ -85,9 +85,9 @@ export default function AdminLayout({
       roles: ["Admin", "Kepala Sekolah"],
       submenu: [
         { name: "RPPH", href: "/admin/akademik/rpph", roles: ["Admin", "Kepala Sekolah"] },
-        { name: "Tahap Perkembangan", href: "/admin/akademik/tahap-perkembangan", roles: ["Admin", "Kepala Sekolah"] },
+        { name: "Tahap Perkembangan", href: "/admin/akademik/perkembangan", roles: ["Admin", "Kepala Sekolah"] },
         { name: "Indikator", href: "/admin/akademik/indikator", roles: ["Admin", "Kepala Sekolah"] },
-        { name: "Trilogi Mainriang", href: "/admin/akademik/trilogi-mainriang", roles: ["Admin", "Kepala Sekolah"] },
+        { name: "Trilogi Mainriang", href: "/admin/akademik/trilogi", roles: ["Admin", "Kepala Sekolah"] },
       ]
     },
     { 
