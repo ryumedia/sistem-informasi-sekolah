@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { Printer, Loader2 } from 'lucide-react';
 import TemplateRapor from '@/components/TemplateRapor';
 
@@ -40,19 +40,44 @@ interface Siswa {
   kelas: string;
   nis: string;
   nisn: string;
-  fotoUrl?: string; // fotoUrl can be optional
+  foto?: string; // Sesuaikan dengan field di database
+  cabang?: string;
+}
+
+interface Cabang {
+  id: string;
+  nama: string;
+}
+
+interface Semester {
+  id: string;
+  namaPeriode: string;
+  isDefault?: boolean;
+}
+
+interface Kelas {
+  id: string;
+  namaKelas: string;
+  cabang: string;
 }
 
 const RaporPage = () => {
   const [siswaList, setSiswaList] = useState<Siswa[]>([]);
   const [selectedSiswaId, setSelectedSiswaId] = useState<string | null>(null);
-  const [selectedKelas, setSelectedKelas] = useState<string>('Semua');
+  const [selectedKelas, setSelectedKelas] = useState<string>('');
   const [narasi, setNarasi] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [fetchingSiswa, setFetchingSiswa] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Master Data State
+  const [cabangList, setCabangList] = useState<Cabang[]>([]);
+  const [semesterList, setSemesterList] = useState<Semester[]>([]);
+  const [kelasListData, setKelasListData] = useState<Kelas[]>([]);
+  const [selectedCabangId, setSelectedCabangId] = useState<string>('');
+  const [selectedSemesterId, setSelectedSemesterId] = useState<string>('');
 
   const componentRef = useRef<HTMLDivElement>(null);
 
@@ -61,9 +86,26 @@ const RaporPage = () => {
       setFetchingSiswa(true);
       setFetchError(null);
       try {
-        const querySnapshot = await getDocs(collection(db, "siswa"));
-        const siswaData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Siswa[];
-        setSiswaList(siswaData);
+        // 1. Fetch Cabang
+        const snapCabang = await getDocs(query(collection(db, "cabang"), orderBy("nama", "asc")));
+        setCabangList(snapCabang.docs.map(d => ({ id: d.id, ...d.data() } as Cabang)));
+
+        // 2. Fetch Semester
+        const snapSemester = await getDocs(query(collection(db, "kpi_periode"), orderBy("namaPeriode", "asc")));
+        const semesters = snapSemester.docs.map(d => ({ id: d.id, ...d.data() } as Semester));
+        setSemesterList(semesters);
+        
+        // Set Default Semester
+        const defaultSem = semesters.find(s => s.isDefault);
+        if (defaultSem) setSelectedSemesterId(defaultSem.id);
+
+        // 3. Fetch Kelas
+        const snapKelas = await getDocs(query(collection(db, "kelas"), orderBy("namaKelas", "asc")));
+        setKelasListData(snapKelas.docs.map(d => ({ id: d.id, ...d.data() } as Kelas)));
+
+        // 4. Fetch Siswa
+        const snapSiswa = await getDocs(query(collection(db, "siswa"), orderBy("nama", "asc")));
+        setSiswaList(snapSiswa.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Siswa[]);
       } catch (error) {
         console.error("Error fetching siswa: ", error);
         setFetchError("Gagal memuat data siswa. Silakan coba lagi nanti.");
@@ -74,17 +116,32 @@ const RaporPage = () => {
     fetchSiswa();
   }, []);
 
-  const kelasList = useMemo(() => {
-    const kelasSet = new Set(siswaList.map(s => s.kelas));
-    return ['Semua', ...Array.from(kelasSet)];
-  }, [siswaList]);
+  // Filter Kelas based on Selected Cabang
+  const filteredKelasOptions = useMemo(() => {
+    if (!selectedCabangId) return [];
+    const selectedCabang = cabangList.find(c => c.id === selectedCabangId);
+    if (!selectedCabang) return [];
+    return kelasListData.filter(k => k.cabang === selectedCabang.nama);
+  }, [selectedCabangId, cabangList, kelasListData]);
 
   const filteredSiswa = useMemo(() => {
-    if (selectedKelas === 'Semua') {
-      return siswaList;
+    let students = siswaList;
+
+    // Filter by Cabang
+    if (selectedCabangId) {
+      const selectedCabang = cabangList.find(c => c.id === selectedCabangId);
+      if (selectedCabang) {
+        students = students.filter(s => s.cabang === selectedCabang.nama);
+      }
     }
-    return siswaList.filter(s => s.kelas === selectedKelas);
-  }, [siswaList, selectedKelas]);
+
+    // Filter by Selected Kelas
+    if (selectedKelas) {
+      students = students.filter(s => s.kelas === selectedKelas);
+    }
+    
+    return students;
+  }, [siswaList, selectedCabangId, cabangList, selectedKelas]);
 
   const selectedSiswa = useMemo(() => {
     if (!selectedSiswaId) return null;
@@ -103,6 +160,13 @@ const RaporPage = () => {
       setNarasi('');
     }
   }, [selectedSiswa]);
+
+  const handleCabangChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedCabangId(e.target.value);
+    setSelectedKelas(''); // Reset kelas
+    setSelectedSiswaId(null);
+    setShowPreview(false);
+  };
 
   const handleKelasChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedKelas(e.target.value);
@@ -185,19 +249,57 @@ const RaporPage = () => {
         <p className="text-center text-red-500">{fetchError}</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 p-6 bg-white rounded-xl shadow-md">
+          {/* Pilih Cabang */}
+          <div>
+            <label htmlFor="cabang-select" className="block text-lg font-medium text-gray-700 mb-2">
+              Pilih Cabang
+            </label>
+            <select
+              id="cabang-select"
+              value={selectedCabangId}
+              onChange={handleCabangChange}
+              className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 transition"
+            >
+              <option value="">-- Pilih Cabang --</option>
+              {cabangList.map(c => (
+                <option key={c.id} value={c.id}>{c.nama}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Pilih Semester */}
+          <div>
+            <label htmlFor="semester-select" className="block text-lg font-medium text-gray-700 mb-2">
+              Pilih Semester
+            </label>
+            <select
+              id="semester-select"
+              value={selectedSemesterId}
+              onChange={(e) => setSelectedSemesterId(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 transition"
+            >
+              <option value="">-- Pilih Semester --</option>
+              {semesterList.map(s => (
+                <option key={s.id} value={s.id}>{s.namaPeriode} {s.isDefault ? "(Default)" : ""}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Filter Kelas */}
           <div>
             <label htmlFor="kelas-select" className="block text-lg font-medium text-gray-700 mb-2">
-              Filter Kelas
+              Pilih Kelas
             </label>
             <select
               id="kelas-select"
               value={selectedKelas}
               onChange={handleKelasChange}
+              disabled={!selectedCabangId}
               className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 transition"
             >
-              {kelasList.map(kelas => (
-                <option key={kelas} value={kelas}>{kelas}</option>
+              <option value="">-- Semua Kelas --</option>
+              {filteredKelasOptions.map(k => (
+                <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>
               ))}
             </select>
           </div>
@@ -274,6 +376,7 @@ const RaporPage = () => {
             <TemplateRapor 
               siswa={selectedSiswa} 
               narasi={narasi} 
+              semesterId={selectedSemesterId}
             />
           </div>
         </div>

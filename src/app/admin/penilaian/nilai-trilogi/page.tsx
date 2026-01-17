@@ -69,6 +69,13 @@ interface SubTrilogi {
   groupId: string;
 }
 
+interface KriteriaNilai {
+  id: string;
+  kategoriId: string;
+  nama: string;
+  nilai: number;
+}
+
 export default function NilaiTrilogiPage() {
   // --- State Data Utama ---
   const [dataList, setDataList] = useState<NilaiTrilogi[]>([]);
@@ -81,6 +88,7 @@ export default function NilaiTrilogiPage() {
   const [semesterList, setSemesterList] = useState<Semester[]>([]);
   const [trilogiList, setTrilogiList] = useState<Trilogi[]>([]);
   const [subTrilogiList, setSubTrilogiList] = useState<SubTrilogi[]>([]); // Filtered by Trilogi
+  const [kriteriaOptions, setKriteriaOptions] = useState<KriteriaNilai[]>([]);
 
   // --- State Form ---
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -102,7 +110,7 @@ export default function NilaiTrilogiPage() {
     namaTrilogi: "",
     subTrilogiId: "",
     namaSubTrilogi: "",
-    nilai: 1,
+    nilai: 0,
   });
 
   // --- Fetch Initial Data ---
@@ -127,6 +135,17 @@ export default function NilaiTrilogiPage() {
         // 4. Fetch Master Trilogi
         const snapTrilogi = await getDocs(collection(db, "trilogi_groups"));
         setTrilogiList(snapTrilogi.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Trilogi[]);
+
+        // 5. Fetch Kriteria Nilai (Kategori: Nilai Trilogi)
+        const qKat = query(collection(db, "kategori_penilaian"), where("nama", "==", "Nilai Trilogi"));
+        const snapKat = await getDocs(qKat);
+        if (!snapKat.empty) {
+          const katId = snapKat.docs[0].id;
+          const qKriteria = query(collection(db, "kriteria_nilai"), where("kategoriId", "==", katId));
+          const snapKriteria = await getDocs(qKriteria);
+          const items = snapKriteria.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as KriteriaNilai[];
+          setKriteriaOptions(items.sort((a, b) => a.nilai - b.nilai));
+        }
 
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -294,7 +313,7 @@ export default function NilaiTrilogiPage() {
       semesterId: defaultSem?.id || "", namaSemester: defaultSem?.namaPeriode || "",
       trilogiId: "", namaTrilogi: "",
       subTrilogiId: "", namaSubTrilogi: "",
-      nilai: 1,
+      nilai: 0,
     });
     setSubTrilogiList([]);
     setIsEditing(false);
@@ -534,9 +553,10 @@ export default function NilaiTrilogiPage() {
                     value={form.nilai}
                     onChange={(e) => setForm({...form, nilai: Number(e.target.value)})}
                   >
-                    <option value="1">1 (Belum Muncul)</option>
-                    <option value="2">2 (Muncul Sebagian)</option>
-                    <option value="3">3 (Sudah Muncul)</option>
+                    <option value="">Pilih Nilai</option>
+                    {kriteriaOptions.map((k) => (
+                      <option key={k.id} value={k.nilai}>{k.nilai} ({k.nama})</option>
+                    ))}
                   </select>
                 </div>
               </div>

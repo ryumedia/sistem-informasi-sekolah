@@ -68,6 +68,13 @@ interface KelompokUsia {
   usia: string;
 }
 
+interface KriteriaNilai {
+  id: string;
+  kategoriId: string;
+  nama: string;
+  nilai: number;
+}
+
 export default function NilaiPerkembanganPage() {
   // --- State Data Utama ---
   const [dataList, setDataList] = useState<NilaiPerkembangan[]>([]);
@@ -81,6 +88,7 @@ export default function NilaiPerkembanganPage() {
   const [tahapList, setTahapList] = useState<TahapPerkembangan[]>([]); // All Tahap
   const [filteredTahapList, setFilteredTahapList] = useState<TahapPerkembangan[]>([]); // Filtered by Siswa Usia
   const [usiaList, setUsiaList] = useState<KelompokUsia[]>([]); // Master Kelompok Usia
+  const [kriteriaOptions, setKriteriaOptions] = useState<KriteriaNilai[]>([]);
 
   // --- State Form ---
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -129,6 +137,18 @@ export default function NilaiPerkembanganPage() {
         // 5. Fetch Master Kelompok Usia (Untuk mapping jenjangUsia -> kelompokUsiaId)
         const snapUsia = await getDocs(query(collection(db, "kelompok_usia"), orderBy("usia", "asc")));
         setUsiaList(snapUsia.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as KelompokUsia[]);
+
+        // 6. Fetch Kriteria Nilai (Kategori: Nilai Perkembangan)
+        const qKat = query(collection(db, "kategori_penilaian"), where("nama", "==", "Nilai Perkembangan"));
+        const snapKat = await getDocs(qKat);
+        if (!snapKat.empty) {
+          const katId = snapKat.docs[0].id;
+          // Hapus orderBy di query untuk menghindari error missing index, lakukan sort di client
+          const qKriteria = query(collection(db, "kriteria_nilai"), where("kategoriId", "==", katId));
+          const snapKriteria = await getDocs(qKriteria);
+          const items = snapKriteria.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as KriteriaNilai[];
+          setKriteriaOptions(items.sort((a, b) => a.nilai - b.nilai));
+        }
 
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -292,7 +312,7 @@ export default function NilaiPerkembanganPage() {
       siswaId: "", namaSiswa: "",
       semesterId: defaultSem?.id || "", namaSemester: defaultSem?.namaPeriode || "",
       tahapId: "", namaTahap: "",
-      nilai: 1,
+      nilai: 0,
     });
     setIsEditing(false);
     setIsModalOpen(true);
@@ -520,9 +540,10 @@ export default function NilaiPerkembanganPage() {
                     value={form.nilai}
                     onChange={(e) => setForm({...form, nilai: Number(e.target.value)})}
                   >
-                    <option value="1">1 (Belum Muncul)</option>
-                    <option value="2">2 (Muncul Sebagian)</option>
-                    <option value="3">3 (Sudah Muncul)</option>
+                    <option value="">Pilih Nilai</option>
+                    {kriteriaOptions.map((k) => (
+                      <option key={k.id} value={k.nilai}>{k.nilai} ({k.nama})</option>
+                    ))}
                   </select>
                 </div>
               </div>

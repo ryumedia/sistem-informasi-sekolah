@@ -95,6 +95,7 @@ export default function AdminLayout({
       href: "#", 
       roles: ["Admin", "Kepala Sekolah", "Guru"],
       submenu: [
+        { name: "Kategori Penilaian", href: "/admin/penilaian/kategori-penilaian", roles: ["Admin", "Kepala Sekolah", "Guru"] },
         { name: "Kriteria Nilai", href: "/admin/penilaian/kriteria-nilai", roles: ["Admin", "Kepala Sekolah", "Guru"] },
         { name: "Nilai Perkembangan", href: "/admin/penilaian/nilai-perkembangan", roles: ["Admin", "Kepala Sekolah", "Guru"] },
         { name: "Nilai Indikator", href: "/admin/penilaian/nilai-indikator", roles: ["Admin", "Kepala Sekolah", "Guru"] },
