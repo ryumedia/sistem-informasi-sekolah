@@ -13,8 +13,8 @@ import {
   EmailAuthProvider,
   updatePassword,
 } from "firebase/auth";
-import { collection, query, where, getDocs, addDoc, orderBy } from "firebase/firestore";
-import { BookOpen, Calendar, Bell, User, LogOut, Shield, Home, KeyRound, X, Activity, FileText, FilePlus } from "lucide-react";
+import { collection, query, where, getDocs, addDoc, orderBy, limit } from "firebase/firestore";
+import { BookOpen, Calendar, Bell, User, LogOut, Shield, Home, KeyRound, X, Activity, FileText, FilePlus, ArrowLeft, Clock, MapPin, Info } from "lucide-react";
 
 export default function UserHome() {
   const router = useRouter();
@@ -24,6 +24,8 @@ export default function UserHome() {
   const [activeTab, setActiveTab] = useState("home"); // 'home' | 'akademik' | 'akun'
   const [isPasswordModalOpen, setPasswordModalOpen] = useState(false);
   const [isPengajuanModalOpen, setPengajuanModalOpen] = useState(false);
+  const [latestPengumuman, setLatestPengumuman] = useState<any[]>([]);
+  const [selectedPengumuman, setSelectedPengumuman] = useState<any>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -62,6 +64,44 @@ export default function UserHome() {
 
     return () => unsubscribe();
   }, [router]);
+
+  // Fetch Latest Pengumuman for Dashboard
+  useEffect(() => {
+    const fetchLatestPengumuman = async () => {
+      if (!userData) return;
+      try {
+        let q;
+        const role = userData?.role;
+        const cabang = userData?.cabang;
+
+        if (["Admin", "Direktur", "Yayasan"].includes(role)) {
+           q = query(collection(db, "pengumuman"), orderBy("createdAt", "desc"), limit(3));
+        } else {
+           if (cabang) {
+             // Mengambil data berdasarkan cabang, sorting dilakukan di client-side untuk menghindari error index
+             q = query(collection(db, "pengumuman"), where("cabang", "==", cabang));
+           } else {
+             q = query(collection(db, "pengumuman"), where("cabang", "==", "Unknown"));
+           }
+        }
+
+        const snap = await getDocs(q);
+        const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        // Sort client side (terutama untuk query 'where' yang tidak pakai orderBy di server)
+        items.sort((a: any, b: any) => {
+            const dateA = a.createdAt?.seconds || 0;
+            const dateB = b.createdAt?.seconds || 0;
+            return dateB - dateA;
+        });
+
+        setLatestPengumuman(items.slice(0, 3));
+      } catch (err) {
+        console.error("Error fetching latest pengumuman:", err);
+      }
+    };
+    fetchLatestPengumuman();
+  }, [userData]);
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -104,12 +144,12 @@ export default function UserHome() {
                 <h2 className="font-semibold text-gray-800 mb-3">Menu Utama</h2>
                 <div className="grid grid-cols-4 gap-4">
                   {[
-                    { name: "Jadwal", icon: <Calendar className="w-6 h-6 text-[#581c87]"/>, color: "bg-[#581c87]/10" },
-                    { name: "Kegiatan", icon: <Activity className="w-6 h-6 text-green-600"/>, color: "bg-green-50" },
-                    { name: "Info", icon: <Bell className="w-6 h-6 text-[#ff984e]"/>, color: "bg-[#ff984e]/10" },
+                    { name: "Jadwal", icon: <Calendar className="w-6 h-6 text-[#581c87]"/>, color: "bg-[#581c87]/10", action: () => setActiveTab("jadwal") },
+                    { name: "Kegiatan", icon: <Activity className="w-6 h-6 text-green-600"/>, color: "bg-green-50", action: () => setActiveTab("kegiatan") },
+                    { name: "Pengumuman", icon: <Bell className="w-6 h-6 text-[#ff984e]"/>, color: "bg-[#ff984e]/10", action: () => setActiveTab("pengumuman") },
                     { name: "Dokumen", icon: <FileText className="w-6 h-6 text-[#581c87]"/>, color: "bg-[#581c87]/10" },
                   ].map((item, idx) => (
-                    <div key={idx} className="flex flex-col items-center gap-2 cursor-pointer">
+                    <div key={idx} onClick={item.action} className="flex flex-col items-center gap-2 cursor-pointer">
                       <div className={`p-4 rounded-2xl ${item.color} shadow-sm`}>
                         {item.icon}
                       </div>
@@ -123,21 +163,42 @@ export default function UserHome() {
               <section>
                 <div className="flex justify-between items-center mb-3">
                   <h2 className="font-semibold text-gray-800">Pengumuman Terbaru</h2>
-                  <span className="text-xs text-[#581c87] font-medium">Lihat Semua</span>
                 </div>
                 <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm space-y-3">
-                  <div className="border-b pb-2">
-                    <h3 className="font-medium text-sm text-gray-800">Libur Semester Ganjil</h3>
-                    <p className="text-xs text-gray-500 mt-1">Dimulai tanggal 20 Desember...</p>
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-sm text-gray-800">Ujian Tengah Semester</h3>
-                    <p className="text-xs text-gray-500 mt-1">Jadwal telah dirilis, cek sekarang.</p>
-                  </div>
+                  {latestPengumuman.length === 0 ? (
+                    <p className="text-xs text-gray-500 italic text-center py-2">Belum ada pengumuman terbaru.</p>
+                  ) : (
+                    latestPengumuman.map((item, idx) => (
+                      <div 
+                        key={item.id} 
+                        onClick={() => setSelectedPengumuman(item)}
+                        className={`cursor-pointer hover:bg-gray-50 transition p-2 rounded-lg -mx-2 ${idx !== latestPengumuman.length - 1 ? 'border-b border-gray-100 pb-2 mb-1' : ''}`}
+                      >
+                        <h3 className="font-medium text-sm text-gray-800 line-clamp-1">{item.judul}</h3>
+                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.deskripsi}</p>
+                        <p className="text-[10px] text-gray-400 mt-1 text-right">{formatDate(item.createdAt)}</p>
+                      </div>
+                    ))
+                  )}
                 </div>
               </section>
             </div>
           </>
+        )}
+
+        {/* KONTEN: JADWAL */}
+        {activeTab === "jadwal" && (
+          <JadwalView user={user} userData={userData} onBack={() => setActiveTab("home")} />
+        )}
+
+        {/* KONTEN: KEGIATAN */}
+        {activeTab === "kegiatan" && (
+          <KegiatanView user={user} userData={userData} onBack={() => setActiveTab("home")} />
+        )}
+
+        {/* KONTEN: PENGUMUMAN */}
+        {activeTab === "pengumuman" && (
+          <PengumumanView user={user} userData={userData} onBack={() => setActiveTab("home")} onSelect={setSelectedPengumuman} />
         )}
 
         {/* KONTEN: AKUN */}
@@ -224,6 +285,10 @@ export default function UserHome() {
           <PengajuanModal user={user} userData={userData} onClose={() => setPengajuanModalOpen(false)} />
         )}
 
+        {selectedPengumuman && (
+          <PengumumanDetailModal data={selectedPengumuman} onClose={() => setSelectedPengumuman(null)} />
+        )}
+
         {/* Bottom Navigation */}
         <nav className="border-t p-4 flex justify-around text-gray-400 bg-white sticky bottom-0">
            <button 
@@ -251,6 +316,13 @@ export default function UserHome() {
     </main>
   );
 }
+
+// Helper Date Formatter
+const formatDate = (timestamp: any) => {
+  if (!timestamp) return "";
+  const date = new Date(timestamp.seconds * 1000);
+  return date.toLocaleDateString("id-ID", { day: 'numeric', month: 'long', year: 'numeric' });
+};
 
 // Komponen Modal Ubah Password
 function ChangePasswordModal({ user, onClose }: { user: any; onClose: () => void }) {
@@ -328,6 +400,297 @@ function ChangePasswordModal({ user, onClose }: { user: any; onClose: () => void
           </button>
         </form>
       </div>
+    </div>
+  );
+}
+
+// Komponen View Jadwal
+function JadwalView({ user, userData, onBack }: { user: any, userData: any, onBack: () => void }) {
+  const [jadwalList, setJadwalList] = useState<any[]>([]);
+  const [selectedJadwalId, setSelectedJadwalId] = useState<string>("");
+  const [jadwalDetails, setJadwalDetails] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
+  useEffect(() => {
+    const fetchJadwal = async () => {
+      try {
+        let q;
+        const role = userData?.role;
+        const cabang = userData?.cabang;
+        const kelas = userData?.kelas;
+
+        if (["Admin", "Direktur", "Yayasan"].includes(role)) {
+           q = query(collection(db, "jadwal"));
+        } else if (role === "Kepala Sekolah") {
+           q = query(collection(db, "jadwal"), where("cabang", "==", cabang));
+        } else if (role === "Guru") {
+           // Guru melihat jadwal sesuai cabang dan kelas (jika ada data kelas di profil)
+           if (kelas) {
+             q = query(collection(db, "jadwal"), where("cabang", "==", cabang), where("kelas", "==", kelas));
+           } else {
+             // Fallback jika Guru tidak memiliki data kelas spesifik, tampilkan semua di cabang tersebut
+             q = query(collection(db, "jadwal"), where("cabang", "==", cabang));
+           }
+        } else {
+           // Siswa melihat jadwal sesuai cabang dan kelasnya
+           q = query(collection(db, "jadwal"), where("cabang", "==", cabang), where("kelas", "==", kelas));
+        }
+
+        const snap = await getDocs(q);
+        const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Sort client side berdasarkan kelas
+        items.sort((a: any, b: any) => (a.kelas || "").localeCompare(b.kelas || ""));
+        
+        setJadwalList(items);
+        
+        // Auto select jika hanya ada satu jadwal
+        if (items.length === 1) {
+          setSelectedJadwalId(items[0].id);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchJadwal();
+  }, [userData]);
+
+  useEffect(() => {
+    if (!selectedJadwalId) {
+        setJadwalDetails([]);
+        return;
+    }
+    const fetchDetails = async () => {
+      setLoadingDetails(true);
+      try {
+        const q = query(collection(db, "jadwal_detil"), where("jadwalId", "==", selectedJadwalId));
+        const snap = await getDocs(q);
+        const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        // Sort Hari dan Waktu
+        const dayOrder: any = { "Senin": 1, "Selasa": 2, "Rabu": 3, "Kamis": 4, "Jumat": 5, "Sabtu": 6, "Minggu": 7 };
+        items.sort((a: any, b: any) => {
+            const da = dayOrder[a.hari] || 99;
+            const db = dayOrder[b.hari] || 99;
+            if (da !== db) return da - db;
+            return (a.waktu || "").localeCompare(b.waktu || "");
+        });
+        setJadwalDetails(items);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingDetails(false);
+      }
+    };
+    fetchDetails();
+  }, [selectedJadwalId]);
+
+  // Group details by Day
+  const groupedDetails = jadwalDetails.reduce((acc: any, curr: any) => {
+    if (!acc[curr.hari]) acc[curr.hari] = [];
+    acc[curr.hari].push(curr);
+    return acc;
+  }, {});
+
+  const dayOrder = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
+  const sortedDays = Object.keys(groupedDetails).sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+
+  return (
+    <div className="flex-1 bg-gray-50 min-h-screen flex flex-col">
+       <header className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-3">
+          <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
+          <h1 className="text-lg font-bold text-gray-800">Jadwal Pelajaran</h1>
+       </header>
+
+       <div className="p-4 space-y-4">
+          {loading ? (
+             <div className="text-center py-10 text-gray-500">Memuat jadwal...</div>
+          ) : jadwalList.length === 0 ? (
+             <div className="text-center py-10 text-gray-500">Tidak ada jadwal ditemukan.</div>
+          ) : (
+             <>
+                {jadwalList.length > 1 && (
+                  <div className="bg-white p-4 rounded-xl shadow-sm">
+                    <label className="block text-xs font-medium text-gray-500 mb-2">Pilih Kelas</label>
+                    <select className="w-full border rounded-lg p-2 text-sm" value={selectedJadwalId} onChange={(e) => setSelectedJadwalId(e.target.value)}>
+                      <option value="">-- Pilih Kelas --</option>
+                      {jadwalList.map((j: any) => (
+                        <option key={j.id} value={j.id}>{j.cabang} - {j.kelas}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {selectedJadwalId ? (
+                   loadingDetails ? <div className="text-center py-10 text-gray-500">Memuat detail...</div> : jadwalDetails.length === 0 ? <div className="text-center py-10 text-gray-500">Belum ada kegiatan diatur.</div> : (
+                      <div className="space-y-4">{sortedDays.map(day => (<div key={day} className="bg-white rounded-xl shadow-sm overflow-hidden"><div className="bg-[#581c87]/10 px-4 py-2 border-b border-[#581c87]/10"><h3 className="font-bold text-[#581c87]">{day}</h3></div><div className="divide-y divide-gray-100">{groupedDetails[day].map((item: any) => (<div key={item.id} className="p-4 flex gap-4 items-start"><div className="flex items-center gap-2 text-gray-500 min-w-[80px]"><Clock className="w-4 h-4" /><span className="text-xs font-mono">{item.waktu}</span></div><div className="flex-1"><p className="text-sm font-medium text-gray-800">{item.aktivitas}</p></div></div>))}</div></div>))}</div>
+                   )
+                ) : (jadwalList.length > 1 && <div className="text-center py-10 text-gray-400">Silakan pilih kelas terlebih dahulu.</div>)}
+             </>
+          )}
+       </div>
+    </div>
+  );
+}
+
+// Komponen View Kegiatan
+function KegiatanView({ user, userData, onBack }: { user: any, userData: any, onBack: () => void }) {
+  const [kegiatanList, setKegiatanList] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchKegiatan = async () => {
+      try {
+        let q;
+        const role = userData?.role;
+        const cabang = userData?.cabang;
+
+        if (["Admin", "Direktur", "Yayasan"].includes(role)) {
+           q = query(collection(db, "kegiatan"));
+        } else {
+           // Kepala Sekolah, Guru, Siswa melihat kegiatan sesuai cabang
+           if (cabang) {
+             q = query(collection(db, "kegiatan"), where("cabang", "==", cabang));
+           } else {
+             q = query(collection(db, "kegiatan"), where("cabang", "==", "Unknown"));
+           }
+        }
+
+        const snap = await getDocs(q);
+        const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        // Sort client side by tanggal desc
+        items.sort((a: any, b: any) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
+        
+        setKegiatanList(items);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchKegiatan();
+  }, [userData]);
+
+  return (
+    <div className="flex-1 bg-gray-50 min-h-screen flex flex-col">
+       <header className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-3">
+          <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
+          <h1 className="text-lg font-bold text-gray-800">Daftar Kegiatan</h1>
+       </header>
+
+       <div className="p-4 space-y-4">
+          {loading ? (
+             <div className="text-center py-10 text-gray-500">Memuat kegiatan...</div>
+          ) : kegiatanList.length === 0 ? (
+             <div className="text-center py-10 text-gray-500">Tidak ada kegiatan ditemukan.</div>
+          ) : (
+             <div className="space-y-3">
+               {kegiatanList.map((item) => (
+                 <div key={item.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                    <div className="flex justify-between items-start mb-2">
+                        <h3 className="font-bold text-gray-800">{item.nama}</h3>
+                        <span className="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-full">{item.cabang}</span>
+                    </div>
+                    <div className="flex items-center gap-4 mb-2">
+                        <div className="flex items-center gap-1 text-gray-500 text-xs">
+                            <Calendar className="w-3 h-3" />
+                            <span>{item.tanggal}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-gray-500 text-xs">
+                            <MapPin className="w-3 h-3" />
+                            <span>{item.lokasi}</span>
+                        </div>
+                    </div>
+                    <p className="text-sm text-gray-600 border-t pt-2 mt-2">{item.keterangan}</p>
+                 </div>
+               ))}
+             </div>
+          )}
+       </div>
+    </div>
+  );
+}
+
+// Komponen View Pengumuman
+function PengumumanView({ user, userData, onBack, onSelect }: { user: any, userData: any, onBack: () => void, onSelect: (item: any) => void }) {
+  const [pengumumanList, setPengumumanList] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchPengumuman = async () => {
+      try {
+        let q;
+        const role = userData?.role;
+        const cabang = userData?.cabang;
+
+        if (["Admin", "Direktur", "Yayasan"].includes(role)) {
+           q = query(collection(db, "pengumuman"));
+        } else {
+           if (cabang) {
+             q = query(collection(db, "pengumuman"), where("cabang", "==", cabang));
+           } else {
+             q = query(collection(db, "pengumuman"), where("cabang", "==", "Unknown"));
+           }
+        }
+
+        const snap = await getDocs(q);
+        const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        // Sort client side by createdAt desc
+        items.sort((a: any, b: any) => {
+            const dateA = a.createdAt?.seconds || 0;
+            const dateB = b.createdAt?.seconds || 0;
+            return dateB - dateA;
+        });
+        
+        setPengumumanList(items);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPengumuman();
+  }, [userData]);
+
+  return (
+    <div className="flex-1 bg-gray-50 min-h-screen flex flex-col">
+       <header className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-3">
+          <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
+          <h1 className="text-lg font-bold text-gray-800">Pengumuman</h1>
+       </header>
+
+       <div className="p-4 space-y-4">
+          {loading ? (
+             <div className="text-center py-10 text-gray-500">Memuat pengumuman...</div>
+          ) : pengumumanList.length === 0 ? (
+             <div className="text-center py-10 text-gray-500">Tidak ada pengumuman.</div>
+          ) : (
+             <div className="space-y-3">
+               {pengumumanList.map((item) => (
+                 <div key={item.id} onClick={() => onSelect(item)} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition">
+                    <div className="flex justify-between items-start mb-1">
+                        <h3 className="font-bold text-gray-800 line-clamp-2">{item.judul}</h3>
+                    </div>
+                    <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{item.cabang}</span>
+                        <span className="text-[10px] text-gray-400">{formatDate(item.createdAt)}</span>
+                    </div>
+                    <p className="text-sm text-gray-600 line-clamp-3">{item.deskripsi}</p>
+                 </div>
+               ))}
+             </div>
+          )}
+       </div>
     </div>
   );
 }
@@ -463,6 +826,28 @@ function PengajuanModal({ user, userData, onClose }: { user: any; userData: any;
             {submitting ? "Mengirim..." : "Kirim Pengajuan"}
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// Komponen Modal Detail Pengumuman
+function PengumumanDetailModal({ data, onClose }: { data: any; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[80vh] overflow-y-auto flex flex-col">
+        <div className="p-4 border-b flex justify-between items-start bg-gray-50 sticky top-0">
+          <div>
+             <h3 className="font-bold text-gray-800 text-lg">{data.judul}</h3>
+             <p className="text-xs text-gray-500 mt-1">{formatDate(data.createdAt)} • {data.cabang}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+        <div className="p-6 text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
+          {data.deskripsi}
+        </div>
       </div>
     </div>
   );

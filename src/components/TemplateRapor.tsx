@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, documentId } from 'firebase/firestore';
 
 interface Siswa {
   id: string;
@@ -21,6 +21,7 @@ interface TemplateRaporProps {
 
 interface Nilai {
     namaDomain: string;
+    lingkup?: string;
     namaAspek: string;
     nilai: number;
 }
@@ -99,20 +100,81 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
         // Fetch Nilai Perkembangan
         const perkembanganQuery = query(collection(db, "nilai_perkembangan"), where("siswaId", "==", siswa.id), where("semesterId", "==", semesterId));
         const perkembanganSnap = await getDocs(perkembanganQuery);
-        setNilaiPerkembangan(perkembanganSnap.docs.map(doc => {
+        
+        // --- Fetch Lingkup from tahap_perkembangan ---
+        const tahapIds = new Set<string>();
+        perkembanganSnap.docs.forEach(doc => {
+            const d = doc.data();
+            if (d.tahapId) tahapIds.add(d.tahapId);
+        });
+
+        const tahapMap = new Map<string, any>();
+        if (tahapIds.size > 0) {
+            const ids = Array.from(tahapIds);
+            // Chunking for 'in' query (max 10)
+            for (let i = 0; i < ids.length; i += 10) {
+                const chunk = ids.slice(i, i + 10);
+                const q = query(collection(db, "tahap_perkembangan"), where(documentId(), "in", chunk));
+                const snap = await getDocs(q);
+                snap.forEach(doc => {
+                    tahapMap.set(doc.id, doc.data());
+                });
+            }
+        }
+
+        const rawPerkembangan = perkembanganSnap.docs.map(doc => {
             const data = doc.data();
-            return { namaDomain: data.namaTahap, namaAspek: "", nilai: data.nilai } as Nilai;
-        }));
+            const tahap = tahapMap.get(data.tahapId);
+            return { 
+                namaDomain: data.namaTahap, 
+                lingkup: tahap ? tahap.lingkup : "",
+                namaAspek: "", 
+                nilai: data.nilai 
+            } as Nilai;
+        });
+
+        const uniquePerkembangan = new Map<string, Nilai>();
+        rawPerkembangan.forEach(item => {
+            const key = `${item.namaDomain}|${item.namaAspek}`;
+            if (!uniquePerkembangan.has(key) || item.nilai > uniquePerkembangan.get(key)!.nilai) {
+                uniquePerkembangan.set(key, item);
+            }
+        });
+        
+        // Sort by Lingkup then namaDomain
+        const sortedPerkembangan = Array.from(uniquePerkembangan.values()).sort((a, b) => {
+            if ((a.lingkup || "") < (b.lingkup || "")) return -1;
+            if ((a.lingkup || "") > (b.lingkup || "")) return 1;
+            return 0;
+        });
+
+        setNilaiPerkembangan(sortedPerkembangan);
 
         // Fetch Nilai Indikator
         const indikatorQuery = query(collection(db, "nilai_indikator"), where("siswaId", "==", siswa.id), where("semesterId", "==", semesterId));
         const indikatorSnap = await getDocs(indikatorQuery);
-        setNilaiIndikator(indikatorSnap.docs.map(doc => doc.data() as NilaiIndikator));
+        const rawIndikator = indikatorSnap.docs.map(doc => doc.data() as NilaiIndikator);
+        const uniqueIndikator = new Map<string, NilaiIndikator>();
+        rawIndikator.forEach(item => {
+            const key = `${item.namaIndikator}|${item.namaSubIndikator}`;
+            if (!uniqueIndikator.has(key) || item.nilai > uniqueIndikator.get(key)!.nilai) {
+                uniqueIndikator.set(key, item);
+            }
+        });
+        setNilaiIndikator(Array.from(uniqueIndikator.values()));
         
         // Fetch Nilai Trilogi
         const trilogiQuery = query(collection(db, "nilai_trilogi"), where("siswaId", "==", siswa.id), where("semesterId", "==", semesterId));
         const trilogiSnap = await getDocs(trilogiQuery);
-        setNilaiTrilogi(trilogiSnap.docs.map(doc => doc.data() as NilaiTrilogi));
+        const rawTrilogi = trilogiSnap.docs.map(doc => doc.data() as NilaiTrilogi);
+        const uniqueTrilogi = new Map<string, NilaiTrilogi>();
+        rawTrilogi.forEach(item => {
+            const key = `${item.namaTrilogi}|${item.namaSubTrilogi}`;
+            if (!uniqueTrilogi.has(key) || item.nilai > uniqueTrilogi.get(key)!.nilai) {
+                uniqueTrilogi.set(key, item);
+            }
+        });
+        setNilaiTrilogi(Array.from(uniqueTrilogi.values()));
 
         // Fetch Kepala Sekolah & Wali Kelas
         if (siswa.cabang) {
@@ -157,6 +219,28 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
     fetchNilai();
   }, [siswa, semesterId]);
 
+  const groupedIndikator = useMemo(() => {
+    const groups = new Map<string, NilaiIndikator[]>();
+    nilaiIndikator.forEach((item) => {
+      if (!groups.has(item.namaIndikator)) {
+        groups.set(item.namaIndikator, []);
+      }
+      groups.get(item.namaIndikator)!.push(item);
+    });
+    return groups;
+  }, [nilaiIndikator]);
+
+  const groupedTrilogi = useMemo(() => {
+    const groups = new Map<string, NilaiTrilogi[]>();
+    nilaiTrilogi.forEach((item) => {
+      if (!groups.has(item.namaTrilogi)) {
+        groups.set(item.namaTrilogi, []);
+      }
+      groups.get(item.namaTrilogi)!.push(item);
+    });
+    return groups;
+  }, [nilaiTrilogi]);
+
   if (!siswa) {
     return <div className="text-center p-10">Silakan pilih siswa untuk melihat rapor.</div>;
   }
@@ -166,9 +250,9 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
   }
 
   return (
-    <div className="bg-white font-sans p-8 text-gray-900">
+    <div className="bg-[#ffffff] font-sans p-8 text-[#111827]" style={{ backgroundColor: '#ffffff', color: '#111827' }}>
       {/* Header */}
-      <div className="flex justify-between items-center border-b-4 border-black pb-4 mb-6">
+      <div className="flex justify-between items-center border-b-4 border-[#000000] pb-4 mb-6">
         <div className="flex items-center">
           <Image src="/logo.png" alt="Logo Sekolah" width={100} height={100} />
           <div className="ml-4">
@@ -193,14 +277,14 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
           <div className="font-bold">NISN</div><div>: {siswa.nisn}</div>
           <div className="font-bold">Tahun Ajaran</div><div>: 2023/2024</div>
         </div>
-        <div className="w-32 h-40 relative border-2 border-gray-300 rounded-lg overflow-hidden">
+        <div className="w-32 h-40 relative border-2 border-[#d1d5db] rounded-lg overflow-hidden">
             <Image src={siswa.foto && siswa.foto !== "" ? siswa.foto : '/images/default-profile.png'} alt="Foto Siswa" layout="fill" objectFit="cover" crossOrigin="anonymous" />
         </div>
       </div>
 
       {/* A. Narasi Perkembangan */}
       <div className="mb-8 break-inside-avoid">
-        <h3 className="text-xl font-bold text-[#581c87] mb-3 border-b-2 border-gray-100 pb-2">A. Narasi Perkembangan</h3>
+        <h3 className="text-xl font-bold text-[#581c87] mb-3 border-b-2 border-[#f3f4f6] pb-2">A. Narasi Perkembangan</h3>
         <p className="text-justify indent-8">
           {narasi}
         </p>
@@ -208,9 +292,9 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
 
       {/* B. Tahap Perkembangan */}
       <div className="mb-8 break-inside-avoid">
-        <h3 className="text-xl font-bold text-[#581c87] mb-3 border-b-2 border-gray-100 pb-2">B. Tahap Perkembangan</h3>
-        <table className="w-full text-sm border-collapse border border-gray-300 rounded-lg overflow-hidden">
-          <thead className="bg-[#581c87] text-white">
+        <h3 className="text-xl font-bold text-[#581c87] mb-3 border-b-2 border-[#f3f4f6] pb-2">B. Tahap Perkembangan</h3>
+        <table className="w-full text-sm border-collapse border border-[#d1d5db] rounded-lg overflow-hidden">
+          <thead className="bg-[#581c87] text-[#ffffff]">
             <tr>
               <th className="p-3 text-left">Domain / Aspek Perkembangan</th>
               <th className="p-3 w-32 text-center">Nilai</th>
@@ -218,15 +302,18 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
           </thead>
           <tbody>
             {nilaiPerkembangan.length === 0 ? (
-              <tr><td colSpan={2} className="p-4 text-center italic text-gray-500 border border-gray-300">Tidak ada data penilaian.</td></tr>
+              <tr><td colSpan={2} className="p-4 text-center italic text-[#6b7280] border border-[#d1d5db]">Tidak ada data penilaian.</td></tr>
             ) : (
                 nilaiPerkembangan.map((item, idx) => (
-                <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                  <td className="border border-gray-300 p-3">
-                    <div className="font-semibold text-gray-800">{item.namaDomain}</div>
-                    {item.namaAspek && <div className="text-gray-600 pl-4 mt-1 text-xs">• {item.namaAspek}</div>}
+                <tr key={idx} className={idx % 2 === 0 ? "bg-[#ffffff]" : "bg-[#f9fafb]"}>
+                  <td className="border border-[#d1d5db] p-3">
+                    <div className="font-semibold text-[#1f2937]">{item.namaDomain}</div>
+                    {item.lingkup && (
+                        <div className="text-[#581c87] text-xs mt-1 font-medium">Lingkup: {item.lingkup}</div>
+                    )}
+                    {item.namaAspek && <div className="text-[#4b5563] pl-4 mt-1 text-xs">• {item.namaAspek}</div>}
                   </td>
-                  <td className="border border-gray-300 p-3 text-center font-bold align-middle text-sm">
+                  <td className="border border-[#d1d5db] p-3 text-center font-bold align-middle text-sm">
                     {kriteriaPerkembangan[item.nilai] || item.nilai}
                   </td>
                 </tr>
@@ -238,9 +325,9 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
 
       {/* C. Indikator Belajar */}
       <div className="mb-8 break-inside-avoid">
-        <h3 className="text-xl font-bold text-[#581c87] mb-3 border-b-2 border-gray-100 pb-2">C. Indikator Belajar</h3>
-        <table className="w-full text-sm border-collapse border border-gray-300 rounded-lg overflow-hidden">
-          <thead className="bg-[#581c87] text-white">
+        <h3 className="text-xl font-bold text-[#581c87] mb-3 border-b-2 border-[#f3f4f6] pb-2">C. Indikator Belajar</h3>
+        <table className="w-full text-sm border-collapse border border-[#d1d5db] rounded-lg overflow-hidden">
+          <thead className="bg-[#581c87] text-[#ffffff]">
             <tr>
               <th className="p-3 text-left">Indikator / Sub Indikator</th>
               <th className="p-3 w-32 text-center">Nilai</th>
@@ -248,18 +335,24 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
           </thead>
           <tbody>
             {nilaiIndikator.length === 0 ? (
-              <tr><td colSpan={2} className="p-4 text-center italic text-gray-500 border border-gray-300">Tidak ada data penilaian.</td></tr>
+              <tr><td colSpan={2} className="p-4 text-center italic text-[#6b7280] border border-[#d1d5db]">Tidak ada data penilaian.</td></tr>
             ) : (
-                nilaiIndikator.map((item, idx) => (
-                <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                  <td className="border border-gray-300 p-3">
-                    <div className="font-semibold text-gray-800">{item.namaIndikator}</div>
-                    <div className="text-gray-600 pl-4 mt-1 text-xs">• {item.namaSubIndikator}</div>
-                  </td>
-                  <td className="border border-gray-300 p-3 text-center font-bold align-middle text-sm">
-                     {kriteriaIndikator[item.nilai] || item.nilai}
-                  </td>
-                </tr>
+              Array.from(groupedIndikator.entries()).map(([indikator, items], groupIdx) => (
+                <React.Fragment key={groupIdx}>
+                  <tr className="bg-[#f3f4f6]">
+                    <td colSpan={2} className="border border-[#d1d5db] p-3 font-bold text-[#1f2937]">{indikator}</td>
+                  </tr>
+                  {items.map((item, idx) => (
+                    <tr key={`${groupIdx}-${idx}`} className="bg-[#ffffff]">
+                      <td className="border border-[#d1d5db] p-3 pl-8">
+                        <div className="text-[#4b5563] text-sm">• {item.namaSubIndikator}</div>
+                      </td>
+                      <td className="border border-[#d1d5db] p-3 text-center font-bold align-middle text-sm">
+                        {kriteriaIndikator[item.nilai] || item.nilai}
+                      </td>
+                    </tr>
+                  ))}
+                </React.Fragment>
               ))
             )}
           </tbody>
@@ -268,9 +361,9 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
 
       {/* D. Trilogi Mainriang */}
       <div className="mb-8 break-inside-avoid">
-        <h3 className="text-xl font-bold text-[#581c87] mb-3 border-b-2 border-gray-100 pb-2">D. Trilogi Mainriang</h3>
-        <table className="w-full text-sm border-collapse border border-gray-300 rounded-lg overflow-hidden">
-          <thead className="bg-[#581c87] text-white">
+        <h3 className="text-xl font-bold text-[#581c87] mb-3 border-b-2 border-[#f3f4f6] pb-2">D. Trilogi Mainriang</h3>
+        <table className="w-full text-sm border-collapse border border-[#d1d5db] rounded-lg overflow-hidden">
+          <thead className="bg-[#581c87] text-[#ffffff]">
             <tr>
               <th className="p-3 text-left">Trilogi / Sub Trilogi</th>
               <th className="p-3 w-32 text-center">Nilai</th>
@@ -278,18 +371,24 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
           </thead>
           <tbody>
              {nilaiTrilogi.length === 0 ? (
-              <tr><td colSpan={2} className="p-4 text-center italic text-gray-500 border border-gray-300">Tidak ada data penilaian.</td></tr>
+              <tr><td colSpan={2} className="p-4 text-center italic text-[#6b7280] border border-[#d1d5db]">Tidak ada data penilaian.</td></tr>
             ) : (
-              nilaiTrilogi.map((item, idx) => (
-                <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                  <td className="border border-gray-300 p-3">
-                    <div className="font-semibold text-gray-800">{item.namaTrilogi}</div>
-                    <div className="text-gray-600 pl-4 mt-1 text-xs">• {item.namaSubTrilogi}</div>
-                  </td>
-                  <td className="border border-gray-300 p-3 text-center font-bold align-middle text-sm">
-                     {kriteriaTrilogi[item.nilai] || item.nilai}
-                  </td>
-                </tr>
+              Array.from(groupedTrilogi.entries()).map(([trilogi, items], groupIdx) => (
+                <React.Fragment key={groupIdx}>
+                  <tr className="bg-[#f3f4f6]">
+                    <td colSpan={2} className="border border-[#d1d5db] p-3 font-bold text-[#1f2937]">{trilogi}</td>
+                  </tr>
+                  {items.map((item, idx) => (
+                    <tr key={`${groupIdx}-${idx}`} className="bg-[#ffffff]">
+                      <td className="border border-[#d1d5db] p-3 pl-8">
+                        <div className="text-[#4b5563] text-sm">• {item.namaSubTrilogi}</div>
+                      </td>
+                      <td className="border border-[#d1d5db] p-3 text-center font-bold align-middle text-sm">
+                        {kriteriaTrilogi[item.nilai] || item.nilai}
+                      </td>
+                    </tr>
+                  ))}
+                </React.Fragment>
               ))
             )}
           </tbody>

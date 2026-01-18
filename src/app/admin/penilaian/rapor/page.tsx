@@ -212,6 +212,8 @@ const RaporPage = () => {
   const handlePrint = async () => {
     if (typeof window !== "undefined" && componentRef.current) {
       setIsPrinting(true);
+      // Give UI a moment to update
+      await new Promise(resolve => setTimeout(resolve, 100));
       try {
       // Dynamic import html2pdf agar tidak error di server side
         const module = await import("html2pdf.js");
@@ -222,7 +224,12 @@ const RaporPage = () => {
           margin: 10,
           filename: `Rapor_${selectedSiswa?.nama || 'Siswa'}_${new Date().getTime()}.pdf`,
           image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
+          html2canvas: { 
+            scale: 2, 
+            useCORS: true, 
+            scrollY: 0,
+            backgroundColor: '#ffffff' // Memaksa background putih hex
+          },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
           pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
         };
@@ -372,7 +379,7 @@ const RaporPage = () => {
       {showPreview && selectedSiswa && (
         <div className="p-6 bg-white rounded-xl shadow-lg">
           <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">Preview Rapor</h2>
-          <div ref={componentRef} className="p-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+          <div ref={componentRef} className="p-4 border-2 border-dashed border-[#d1d5db] rounded-lg bg-[#f9fafb]">
             <TemplateRapor 
               siswa={selectedSiswa} 
               narasi={narasi} 
