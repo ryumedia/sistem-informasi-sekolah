@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp } from "firebase/firestore";
 import { Plus, Pencil, Trash2, X, Save, Loader2, FileText } from "lucide-react";
@@ -26,7 +26,7 @@ export default function InfoTambahanPage() {
   });
 
   // Fetch Data
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const q = query(collection(db, "info_tambahan_rapor"), orderBy("createdAt", "desc"));
@@ -41,7 +41,7 @@ export default function InfoTambahanPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -74,7 +74,7 @@ export default function InfoTambahanPage() {
       }
     };
     fetchMaster();
-  }, []);
+  }, [fetchData]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,12 +1,12 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, collection, query, where, getDocs, writeBatch, serverTimestamp } from "firebase/firestore";
 import { ArrowLeft, Loader2, Save } from "lucide-react";
 
-export default function DetailInfoPage() {
+function DetailInfoContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
   const router = useRouter();
@@ -249,5 +249,13 @@ export default function DetailInfoPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function DetailInfoPage() {
+  return (
+    <Suspense fallback={<div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-[#581c87]" /></div>}>
+      <DetailInfoContent />
+    </Suspense>
   );
 }
