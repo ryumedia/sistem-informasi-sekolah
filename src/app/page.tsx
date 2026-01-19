@@ -42,14 +42,14 @@ export default function UserHome() {
         
         if (!snapshotGuru.empty) {
           // Jika ditemukan di data Guru
-          setUserData(snapshotGuru.docs[0].data());
+          setUserData({ id: snapshotGuru.docs[0].id, ...snapshotGuru.docs[0].data() });
         } else {
           // Jika tidak ada di 'guru', cek di koleksi 'siswa'
           const qSiswa = query(collection(db, "siswa"), where("email", "==", currentUser.email));
           const snapshotSiswa = await getDocs(qSiswa);
 
           if (!snapshotSiswa.empty) {
-            setUserData(snapshotSiswa.docs[0].data());
+            setUserData({ id: snapshotSiswa.docs[0].id, ...snapshotSiswa.docs[0].data() });
           } else {
             // Jika tidak ditemukan di keduanya
             setUserData({ nama: currentUser.email, role: "User" });
@@ -416,6 +416,7 @@ function ChangePasswordModal({ user, onClose }: { user: any; onClose: () => void
 function AkademikView({ user, userData, onBack }: { user: any, userData: any, onBack: () => void }) {
   const [waliKelas, setWaliKelas] = useState("-");
   const [loading, setLoading] = useState(false);
+  const [catatanList, setCatatanList] = useState<any[]>([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -446,6 +447,25 @@ function AkademikView({ user, userData, onBack }: { user: any, userData: any, on
     }
   }, [userData]);
 
+  // Fetch Catatan Guru untuk Siswa
+  useEffect(() => {
+    if (userData?.role === "Siswa" && userData?.id) {
+      const fetchCatatan = async () => {
+        try {
+          const q = query(collection(db, "catatan_guru"), where("siswaId", "==", userData.id));
+          const snap = await getDocs(q);
+          const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          // Sort by createdAt desc
+          items.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+          setCatatanList(items);
+        } catch (e) {
+          console.error("Error fetching catatan:", e);
+        }
+      };
+      fetchCatatan();
+    }
+  }, [userData]);
+
   if (!["Siswa", "Guru"].includes(userData?.role)) {
     return (
       <div className="flex-1 bg-gray-50 min-h-screen flex flex-col items-center justify-center p-6 text-center">
@@ -470,25 +490,29 @@ function AkademikView({ user, userData, onBack }: { user: any, userData: any, on
           {userData?.role === "Siswa" ? (
             <>
               {/* Profil Siswa */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm flex flex-col items-center text-center">
-                 <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center text-[#581c87] mb-4 overflow-hidden">
+              <div className="bg-white p-5 rounded-2xl shadow-sm flex items-center gap-5">
+                 {/* Kiri: Foto, Nama, NISN */}
+                 <div className="flex flex-col items-center text-center w-1/3 shrink-0">
+                     <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center text-[#581c87] mb-2 overflow-hidden shadow-sm">
                     {userData.foto ? (
                       <img src={userData.foto} alt={userData.nama} className="w-full h-full object-cover" />
                     ) : (
-                      <User className="w-10 h-10" />
+                      <User className="w-8 h-8" />
                     )}
                  </div>
-                 <h2 className="text-xl font-bold text-gray-800">{userData.nama}</h2>
-                 <p className="text-gray-500">{userData.nisn || "-"}</p>
-                 
-                 <div className="grid grid-cols-2 gap-4 w-full mt-6 text-left bg-gray-50 p-4 rounded-xl">
+                     <h2 className="text-sm font-bold text-gray-800 leading-tight">{userData.nama}</h2>
+                     <p className="text-xs text-gray-500 mt-0.5">{userData.nisn || "-"}</p>
+                 </div>
+
+                 {/* Kanan: Kelas & Wali Kelas */}
+                 <div className="flex-1 border-l border-gray-100 pl-5 space-y-3">
                     <div>
-                      <p className="text-xs text-gray-400">Kelas</p>
-                      <p className="font-semibold text-gray-700">{userData.kelas || "-"}</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Kelas</p>
+                      <p className="font-bold text-gray-700 text-base">{userData.kelas || "-"}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-400">Wali Kelas</p>
-                      <p className="font-semibold text-gray-700">{loading ? "..." : waliKelas}</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold">Wali Kelas</p>
+                      <p className="font-medium text-gray-700 text-sm">{loading ? "..." : waliKelas}</p>
                     </div>
                  </div>
               </div>
@@ -500,6 +524,28 @@ function AkademikView({ user, userData, onBack }: { user: any, userData: any, on
                    <MenuButton icon={<BarChart className="w-6 h-6 text-blue-600"/>} label="Perkembangan" color="bg-blue-50" onClick={() => router.push('/siswa/perkembangan')} />
                    <MenuButton icon={<Target className="w-6 h-6 text-orange-600"/>} label="Indikator" color="bg-orange-50" onClick={() => router.push('/siswa/indikator')} />
                    <MenuButton icon={<Triangle className="w-6 h-6 text-purple-600"/>} label="Trilogi" color="bg-purple-50" onClick={() => router.push('/siswa/trilogi')} />
+                </div>
+              </div>
+
+              {/* Daftar Catatan Guru */}
+              <div className="mt-6">
+                <h3 className="font-semibold text-gray-800 mb-3">Catatan Guru</h3>
+                <div className="space-y-3">
+                  {catatanList.length === 0 ? (
+                    <div className="text-center py-6 bg-white rounded-xl border border-dashed border-gray-200">
+                      <p className="text-xs text-gray-400">Belum ada catatan dari guru.</p>
+                    </div>
+                  ) : (
+                    catatanList.map((note) => (
+                      <div key={note.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <div className="flex items-center gap-2 mb-2">
+                           <Calendar className="w-3 h-3 text-gray-400" />
+                           <span className="text-xs text-gray-500 font-medium">{formatDate(note.createdAt)}</span>
+                        </div>
+                        <p className="text-sm text-gray-700 leading-relaxed">{note.catatan}</p>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </>
