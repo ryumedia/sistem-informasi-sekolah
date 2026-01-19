@@ -234,7 +234,22 @@ const RaporPage = () => {
           pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
         };
 
-        await html2pdf().from(element).set(opt).save();
+        // Pisahkan worker agar bisa memanggil .save() setelah manipulasi selesai
+        const worker = html2pdf().from(element).set(opt).toPdf();
+
+        await worker.get('pdf').then((pdf: any) => {
+          const totalPages = pdf.internal.getNumberOfPages();
+          const siswaName = selectedSiswa?.nama || "";
+          
+          for (let i = 1; i <= totalPages; i++) {
+            pdf.setPage(i);
+            pdf.setFontSize(9);
+            pdf.setTextColor(150);
+            pdf.text(`${i} - ${siswaName}`, 10, 292);
+          }
+        });
+
+        await worker.save();
       } catch (err) {
         console.error("Print error:", err);
         alert("Gagal mencetak PDF.");
@@ -379,7 +394,7 @@ const RaporPage = () => {
       {showPreview && selectedSiswa && (
         <div className="p-6 bg-white rounded-xl shadow-lg">
           <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">Preview Rapor</h2>
-          <div ref={componentRef} className="p-4 border-2 border-dashed border-[#d1d5db] rounded-lg bg-[#f9fafb]">
+          <div ref={componentRef} className="flex justify-center">
             <TemplateRapor 
               siswa={selectedSiswa} 
               narasi={narasi} 

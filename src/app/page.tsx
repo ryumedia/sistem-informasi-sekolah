@@ -14,7 +14,7 @@ import {
   updatePassword,
 } from "firebase/auth";
 import { collection, query, where, getDocs, addDoc, orderBy, limit } from "firebase/firestore";
-import { BookOpen, Calendar, Bell, User, LogOut, Shield, Home, KeyRound, X, Activity, FileText, FilePlus, ArrowLeft, Clock, MapPin, Info } from "lucide-react";
+import { BookOpen, Calendar, Bell, User, LogOut, Shield, Home, KeyRound, X, Activity, FileText, FilePlus, ArrowLeft, Clock, MapPin, Info, Users, BarChart, Target, Triangle, StickyNote, BookCopy } from "lucide-react";
 
 export default function UserHome() {
   const router = useRouter();
@@ -191,6 +191,11 @@ export default function UserHome() {
           <JadwalView user={user} userData={userData} onBack={() => setActiveTab("home")} />
         )}
 
+        {/* KONTEN: AKADEMIK */}
+        {activeTab === "akademik" && (
+          <AkademikView user={user} userData={userData} onBack={() => setActiveTab("home")} />
+        )}
+
         {/* KONTEN: KEGIATAN */}
         {activeTab === "kegiatan" && (
           <KegiatanView user={user} userData={userData} onBack={() => setActiveTab("home")} />
@@ -299,7 +304,10 @@ export default function UserHome() {
              <span className="text-[10px]">Home</span>
            </button>
            
-           <button className="flex flex-col items-center text-gray-400">
+           <button 
+             onClick={() => setActiveTab("akademik")}
+             className={`flex flex-col items-center ${activeTab === "akademik" ? "text-[#581c87]" : "text-gray-400"}`}
+           >
              <BookOpen className="w-6 h-6 mb-1" />
              <span className="text-[10px]">Akademik</span>
            </button>
@@ -402,6 +410,141 @@ function ChangePasswordModal({ user, onClose }: { user: any; onClose: () => void
       </div>
     </div>
   );
+}
+
+// Komponen View Akademik
+function AkademikView({ user, userData, onBack }: { user: any, userData: any, onBack: () => void }) {
+  const [waliKelas, setWaliKelas] = useState("-");
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (userData?.role === "Siswa" && userData?.kelas && userData?.cabang) {
+      const fetchWali = async () => {
+        setLoading(true);
+        try {
+           const q = query(collection(db, "kelas"), where("namaKelas", "==", userData.kelas), where("cabang", "==", userData.cabang));
+           const snap = await getDocs(q);
+           if (!snap.empty) {
+             const data = snap.docs[0].data();
+             const guru = data.guruKelas || data.waliKelas;
+             if (Array.isArray(guru)) {
+                setWaliKelas(guru.map((g: any) => typeof g === 'string' ? g : g.nama).join(", "));
+             } else if (typeof guru === 'object' && guru !== null) {
+                setWaliKelas(guru.nama || "-");
+             } else {
+                setWaliKelas(guru || "-");
+             }
+           }
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchWali();
+    }
+  }, [userData]);
+
+  if (!["Siswa", "Guru"].includes(userData?.role)) {
+    return (
+      <div className="flex-1 bg-gray-50 min-h-screen flex flex-col items-center justify-center p-6 text-center">
+         <Shield className="w-16 h-16 text-gray-300 mb-4" />
+         <h2 className="text-xl font-bold text-gray-800">Akses Dibatasi</h2>
+         <p className="text-gray-500 mt-2">Halaman ini hanya dapat diakses oleh Siswa dan Guru.</p>
+         <button onClick={onBack} className="mt-6 text-[#581c87] font-medium hover:underline">Kembali ke Home</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 bg-gray-50 min-h-screen flex flex-col">
+       <header className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-3">
+          <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full">
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
+          </button>
+          <h1 className="text-lg font-bold text-gray-800">Akademik</h1>
+       </header>
+
+       <div className="p-6 space-y-6">
+          {userData?.role === "Siswa" ? (
+            <>
+              {/* Profil Siswa */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm flex flex-col items-center text-center">
+                 <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center text-[#581c87] mb-4 overflow-hidden">
+                    {userData.foto ? (
+                      <img src={userData.foto} alt={userData.nama} className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="w-10 h-10" />
+                    )}
+                 </div>
+                 <h2 className="text-xl font-bold text-gray-800">{userData.nama}</h2>
+                 <p className="text-gray-500">{userData.nisn || "-"}</p>
+                 
+                 <div className="grid grid-cols-2 gap-4 w-full mt-6 text-left bg-gray-50 p-4 rounded-xl">
+                    <div>
+                      <p className="text-xs text-gray-400">Kelas</p>
+                      <p className="font-semibold text-gray-700">{userData.kelas || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400">Wali Kelas</p>
+                      <p className="font-semibold text-gray-700">{loading ? "..." : waliKelas}</p>
+                    </div>
+                 </div>
+              </div>
+
+              {/* Menu Siswa */}
+              <div>
+                <h3 className="font-semibold text-gray-800 mb-3">Menu Akademik</h3>
+                <div className="grid grid-cols-3 gap-3">
+                   <MenuButton icon={<BarChart className="w-6 h-6 text-blue-600"/>} label="Perkembangan" color="bg-blue-50" onClick={() => router.push('/siswa/perkembangan')} />
+                   <MenuButton icon={<Target className="w-6 h-6 text-orange-600"/>} label="Indikator" color="bg-orange-50" onClick={() => router.push('/siswa/indikator')} />
+                   <MenuButton icon={<Triangle className="w-6 h-6 text-purple-600"/>} label="Trilogi" color="bg-purple-50" onClick={() => router.push('/siswa/trilogi')} />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Menu Guru */}
+              <div>
+                <div className="bg-[#581c87]/5 p-4 rounded-xl mb-6 border border-[#581c87]/10">
+                   <h2 className="font-bold text-[#581c87]">Halo, {userData.nama}</h2>
+                   <p className="text-sm text-gray-600">Silakan pilih menu akademik di bawah ini.</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                   <MenuButtonLarge icon={<Users className="w-8 h-8 text-blue-600"/>} label="Daftar Murid" desc="Data siswa di kelas" color="bg-blue-50" onClick={() => router.push('/admin/siswa')} />
+                   <MenuButtonLarge icon={<BarChart className="w-8 h-8 text-green-600"/>} label="Perkembangan" desc="Nilai perkembangan" color="bg-green-50" onClick={() => router.push('/admin/penilaian/nilai-perkembangan')} />
+                   <MenuButtonLarge icon={<Target className="w-8 h-8 text-orange-600"/>} label="Indikator" desc="Capaian indikator" color="bg-orange-50" onClick={() => router.push('/admin/penilaian/nilai-indikator')} />
+                   <MenuButtonLarge icon={<Triangle className="w-8 h-8 text-purple-600"/>} label="Trilogi" desc="Nilai trilogi" color="bg-purple-50" onClick={() => router.push('/admin/penilaian/nilai-trilogi')} />
+                   <MenuButtonLarge icon={<StickyNote className="w-8 h-8 text-yellow-600"/>} label="Catatan" desc="Catatan anekdot" color="bg-yellow-50" onClick={() => router.push('/admin/penilaian/catatan')} />
+                   <MenuButtonLarge icon={<BookCopy className="w-8 h-8 text-pink-600"/>} label="RPPH" desc="Rencana pembelajaran" color="bg-pink-50" onClick={() => router.push('/admin/Akademik/rpph')} />
+                </div>
+              </div>
+            </>
+          )}
+       </div>
+    </div>
+  );
+}
+
+function MenuButton({ icon, label, color, onClick }: any) {
+  return (
+    <button onClick={onClick} className={`flex flex-col items-center justify-center p-4 rounded-xl ${color} hover:opacity-80 transition h-28 w-full`}>
+      <div className="mb-2">{icon}</div>
+      <span className="text-xs font-medium text-gray-700 text-center">{label}</span>
+    </button>
+  )
+}
+
+function MenuButtonLarge({ icon, label, desc, color, onClick }: any) {
+  return (
+    <button onClick={onClick} className={`flex flex-col items-start p-4 rounded-xl ${color} hover:opacity-80 transition text-left h-32 w-full`}>
+      <div className="mb-3 bg-white/60 p-2 rounded-lg">{icon}</div>
+      <span className="font-bold text-gray-800">{label}</span>
+      <span className="text-xs text-gray-500">{desc}</span>
+    </button>
+  )
 }
 
 // Komponen View Jadwal

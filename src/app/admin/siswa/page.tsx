@@ -377,16 +377,16 @@ export default function DataSiswaPage() {
       {/* Modal Tambah/Edit */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl overflow-hidden">
-            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-7xl overflow-hidden flex flex-col max-h-[95vh]">
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50 shrink-0">
               <h3 className="font-bold text-gray-800">{editId ? "Edit Data Siswa" : "Tambah Siswa Baru"}</h3>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nama Siswa</label>
                   <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
@@ -488,26 +488,28 @@ export default function DataSiswaPage() {
                 )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Alamat</label>
-                <textarea rows={2} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                  value={formData.alamat} onChange={(e) => setFormData({...formData, alamat: e.target.value})} />
-              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Alamat</label>
+                  <textarea rows={2} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                    value={formData.alamat} onChange={(e) => setFormData({...formData, alamat: e.target.value})} />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Foto Siswa</label>
-                <input 
-                  type="file" 
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-[#581c87] hover:file:bg-purple-100"
-                />
-                {formData.foto && (
-                  <div className="mt-2 relative w-20 h-20">
-                    <img src={formData.foto} alt="Preview" className="w-full h-full object-cover rounded-lg border" />
-                    <button type="button" onClick={() => setFormData({...formData, foto: ""})} className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 hover:bg-red-200"><X className="w-3 h-3" /></button>
-                  </div>
-                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Foto Siswa</label>
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-[#581c87] hover:file:bg-purple-100"
+                  />
+                  {formData.foto && (
+                    <div className="mt-2 relative w-20 h-20">
+                      <img src={formData.foto} alt="Preview" className="w-full h-full object-cover rounded-lg border" />
+                      <button type="button" onClick={() => setFormData({...formData, foto: ""})} className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 hover:bg-red-200"><X className="w-3 h-3" /></button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <button disabled={submitting} type="submit" className="w-full bg-[#581c87] text-white py-2 rounded-lg hover:bg-[#45156b] transition font-medium mt-2">

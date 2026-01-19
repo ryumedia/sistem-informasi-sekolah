@@ -100,6 +100,7 @@ export default function AdminLayout({
         { name: "Nilai Perkembangan", href: "/admin/penilaian/nilai-perkembangan", roles: ["Admin", "Kepala Sekolah", "Guru"] },
         { name: "Nilai Indikator", href: "/admin/penilaian/nilai-indikator", roles: ["Admin", "Kepala Sekolah", "Guru"] },
         { name: "Nilai Trilogi", href: "/admin/penilaian/nilai-trilogi", roles: ["Admin", "Kepala Sekolah", "Guru"] },
+        { name: "Info Tambahan", href: "/admin/penilaian/info-tambahan", roles: ["Admin", "Kepala Sekolah", "Guru"] },
         { name: "Rapor", href: "/admin/penilaian/rapor", roles: ["Admin", "Kepala Sekolah", "Guru"] },
       ]
     },
