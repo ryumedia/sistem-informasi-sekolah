@@ -513,12 +513,12 @@ function AkademikView({ user, userData, onBack }: { user: any, userData: any, on
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                   <MenuButtonLarge icon={<Users className="w-8 h-8 text-blue-600"/>} label="Daftar Murid" desc="Data siswa di kelas" color="bg-blue-50" onClick={() => router.push('/admin/siswa')} />
-                   <MenuButtonLarge icon={<BarChart className="w-8 h-8 text-green-600"/>} label="Perkembangan" desc="Nilai perkembangan" color="bg-green-50" onClick={() => router.push('/admin/penilaian/nilai-perkembangan')} />
-                   <MenuButtonLarge icon={<Target className="w-8 h-8 text-orange-600"/>} label="Indikator" desc="Capaian indikator" color="bg-orange-50" onClick={() => router.push('/admin/penilaian/nilai-indikator')} />
-                   <MenuButtonLarge icon={<Triangle className="w-8 h-8 text-purple-600"/>} label="Trilogi" desc="Nilai trilogi" color="bg-purple-50" onClick={() => router.push('/admin/penilaian/nilai-trilogi')} />
-                   <MenuButtonLarge icon={<StickyNote className="w-8 h-8 text-yellow-600"/>} label="Catatan" desc="Catatan anekdot" color="bg-yellow-50" onClick={() => router.push('/admin/penilaian/catatan')} />
-                   <MenuButtonLarge icon={<BookCopy className="w-8 h-8 text-pink-600"/>} label="RPPH" desc="Rencana pembelajaran" color="bg-pink-50" onClick={() => router.push('/admin/Akademik/rpph')} />
+                   <MenuButtonLarge icon={<Users className="w-8 h-8 text-blue-600"/>} label="Daftar Siswa" desc="Data siswa di kelas" color="bg-blue-50" onClick={() => router.push('/guru/daftar-siswa')} />
+                   <MenuButtonLarge icon={<BarChart className="w-8 h-8 text-green-600"/>} label="Perkembangan" desc="Nilai perkembangan" color="bg-green-50" onClick={() => router.push('/guru/perkembangan')} />
+                   <MenuButtonLarge icon={<Target className="w-8 h-8 text-orange-600"/>} label="Indikator" desc="Capaian indikator" color="bg-orange-50" onClick={() => router.push('/guru/indikator')} />
+                   <MenuButtonLarge icon={<Triangle className="w-8 h-8 text-purple-600"/>} label="Trilogi" desc="Nilai trilogi" color="bg-purple-50" onClick={() => router.push('/guru/trilogi')} />
+                   <MenuButtonLarge icon={<StickyNote className="w-8 h-8 text-yellow-600"/>} label="Catatan" desc="Catatan anekdot" color="bg-yellow-50" onClick={() => router.push('/guru/catatan')} />
+                   <MenuButtonLarge icon={<BookCopy className="w-8 h-8 text-pink-600"/>} label="RPPH" desc="Rencana pembelajaran" color="bg-pink-50" onClick={() => router.push('/guru/rpph')} />
                 </div>
               </div>
             </>
