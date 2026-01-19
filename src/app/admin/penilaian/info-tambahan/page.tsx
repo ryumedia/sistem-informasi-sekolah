@@ -180,7 +180,7 @@ export default function InfoTambahanPage() {
                     <td className="p-4 flex justify-center gap-2">
                       {/* Tombol Tambah Info (Detail) - Placeholder Link */}
                       <Link 
-                          href={`/admin/penilaian/info-tambahan/detail-info?id=${item.id}`}
+                          href={`/admin/penilaian/detail-info?id=${item.id}`}
                           className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition"
                           title="Isi Detail Informasi"
                       >
