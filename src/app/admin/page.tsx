@@ -148,7 +148,7 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-800">Dashboard Admin</h1>
+        <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
         <div>
           <label className="text-xs font-medium text-gray-500 mr-2">Filter Cabang:</label>
           <select 
