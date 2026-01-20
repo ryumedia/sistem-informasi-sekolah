@@ -147,7 +147,7 @@ export default function UserHome() {
                     { name: "Jadwal", icon: <Calendar className="w-6 h-6 text-[#581c87]"/>, color: "bg-[#581c87]/10", action: () => setActiveTab("jadwal") },
                     { name: "Kegiatan", icon: <Activity className="w-6 h-6 text-green-600"/>, color: "bg-green-50", action: () => setActiveTab("kegiatan") },
                     { name: "Pengumuman", icon: <Bell className="w-6 h-6 text-[#ff984e]"/>, color: "bg-[#ff984e]/10", action: () => setActiveTab("pengumuman") },
-                    { name: "Dokumen", icon: <FileText className="w-6 h-6 text-[#581c87]"/>, color: "bg-[#581c87]/10" },
+                    { name: "Dokumen", icon: <FileText className="w-6 h-6 text-[#581c87]"/>, color: "bg-[#581c87]/10", action: () => router.push("/guru/dokumen") },
                   ].map((item, idx) => (
                     <div key={idx} onClick={item.action} className="flex flex-col items-center gap-2 cursor-pointer">
                       <div className={`p-4 rounded-2xl ${item.color} shadow-sm`}>

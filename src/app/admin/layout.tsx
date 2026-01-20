@@ -112,7 +112,7 @@ export default function AdminLayout({
         { name: "Jadwal", href: "/admin/informasi/jadwal", roles: ["Admin", "Kepala Sekolah", "Guru", "Yayasan"] },
         { name: "Kegiatan", href: "/admin/informasi/kegiatan", roles: ["Admin", "Kepala Sekolah", "Guru", "Yayasan"] },
         { name: "Pengumuman", href: "/admin/informasi/pengumuman", roles: ["Admin", "Kepala Sekolah", "Guru", "Yayasan"] },
-        { name: "Dokumen", href: "/admin/informasi/dokumen", roles: ["Admin", "Kepala Sekolah", "Guru", "Yayasan"] },
+        { name: "Dokumen", href: "/admin/informasi/dokumen", roles: ["Admin", "Kepala Sekolah", "Yayasan"] },
       ]
     },
     { 

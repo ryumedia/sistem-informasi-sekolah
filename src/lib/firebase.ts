@@ -2,6 +2,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY as string,
@@ -19,5 +20,6 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 // Export service yang akan sering dipakai
 const db = getFirestore(app);
 const auth = getAuth(app);
+const storage = getStorage(app);
 
-export { app, db, auth, firebaseConfig };
+export { app, db, auth, storage, firebaseConfig };
