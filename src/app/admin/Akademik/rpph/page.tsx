@@ -29,6 +29,7 @@ import {
   Save,
   Eye,
   Code,
+  Filter,
 } from "lucide-react";
 
 // --- Interfaces ---
@@ -65,6 +66,18 @@ export default function RPPHPage() {
   const [tahapList, setTahapList] = useState<DataMaster[]>([]); // Filtered by Usia
   const [indikatorList, setIndikatorList] = useState<DataMaster[]>([]);
   const [trilogiList, setTrilogiList] = useState<DataMaster[]>([]);
+
+  // --- Filter State ---
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 5 }, (_, i) => (currentYear - i).toString());
+  const monthNames = [
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+  ];
+
+  const [filterTahun, setFilterTahun] = useState<string>(currentYear.toString());
+  const [filterBulan, setFilterBulan] = useState<string>("");
+  const [filterKelas, setFilterKelas] = useState<string>("");
 
   // --- State Modal & Form ---
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -351,6 +364,19 @@ export default function RPPHPage() {
     }
   };
 
+  // --- Filter Logic ---
+  const filteredRPPH = rpphList.filter((item) => {
+    const date = new Date(item.tanggal);
+    const year = date.getFullYear().toString();
+    const month = monthNames[date.getMonth()];
+
+    const matchTahun = filterTahun ? year === filterTahun : true;
+    const matchBulan = filterBulan ? month === filterBulan : true;
+    const matchKelas = filterKelas ? item.kelas === filterKelas : true;
+
+    return matchTahun && matchBulan && matchKelas;
+  });
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -368,6 +394,47 @@ export default function RPPHPage() {
         >
           <Sparkles className="w-4 h-4" /> Buat RPPH Baru
         </button>
+      </div>
+
+      {/* Filter Section */}
+      <div className="flex flex-wrap gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100 items-center">
+        <div className="flex items-center gap-2 text-gray-600">
+          <Filter className="w-4 h-4" />
+          <span className="text-sm font-medium">Filter:</span>
+        </div>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterTahun}
+          onChange={(e) => setFilterTahun(e.target.value)}
+        >
+          <option value="">Semua Tahun</option>
+          {years.map((y) => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterBulan}
+          onChange={(e) => setFilterBulan(e.target.value)}
+        >
+          <option value="">Semua Bulan</option>
+          {monthNames.map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterKelas}
+          onChange={(e) => setFilterKelas(e.target.value)}
+        >
+          <option value="">Semua Kelas</option>
+          {kelasList.map((k) => (
+            <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>
+          ))}
+        </select>
       </div>
 
       {/* Table List */}
@@ -396,8 +463,14 @@ export default function RPPHPage() {
                     Belum ada dokumen RPPH. Klik "Buat RPPH Baru" untuk memulai.
                   </td>
                 </tr>
+              ) : filteredRPPH.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-gray-500">
+                    Tidak ada data yang sesuai filter.
+                  </td>
+                </tr>
               ) : (
-                rpphList.map((item, index) => (
+                filteredRPPH.map((item, index) => (
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="p-4 text-center">{index + 1}</td>
                     <td className="p-4">{item.tanggal}</td>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp } from "firebase/firestore";
-import { Plus, Pencil, Trash2, X, Save, Loader2, FileText } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Save, Loader2, FileText, Filter } from "lucide-react";
 import Link from "next/link";
 
 export default function InfoTambahanPage() {
@@ -17,6 +17,11 @@ export default function InfoTambahanPage() {
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [kelasList, setKelasList] = useState<any[]>([]);
   const [semesterList, setSemesterList] = useState<any[]>([]);
+
+  // Filter State
+  const [filterCabang, setFilterCabang] = useState<string>("");
+  const [filterKelas, setFilterKelas] = useState<string>("");
+  const [filterSemester, setFilterSemester] = useState<string>("");
 
   // Form State
   const [formData, setFormData] = useState({
@@ -68,6 +73,7 @@ export default function InfoTambahanPage() {
         const defaultSem = sems.find((s: any) => s.isDefault);
         if (defaultSem) {
           setFormData(prev => ({ ...prev, semester: defaultSem.namaPeriode }));
+          setFilterSemester(defaultSem.namaPeriode);
         }
       } catch (err) {
         console.error(err);
@@ -133,6 +139,14 @@ export default function InfoTambahanPage() {
     setIsModalOpen(true);
   };
 
+  // Filter Logic
+  const filteredData = dataList.filter((item) => {
+    const matchCabang = filterCabang ? item.cabang === filterCabang : true;
+    const matchKelas = filterKelas ? item.kelas === filterKelas : true;
+    const matchSemester = filterSemester ? item.semester === filterSemester : true;
+    return matchCabang && matchKelas && matchSemester;
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -153,6 +167,51 @@ export default function InfoTambahanPage() {
         </button>
       </div>
 
+      {/* Filter Section */}
+      <div className="flex flex-wrap gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100 items-center">
+        <div className="flex items-center gap-2 text-gray-600">
+          <Filter className="w-4 h-4" />
+          <span className="text-sm font-medium">Filter:</span>
+        </div>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterCabang}
+          onChange={(e) => {
+            setFilterCabang(e.target.value);
+            setFilterKelas("");
+          }}
+        >
+          <option value="">Semua Cabang</option>
+          {cabangList.map((c) => (
+            <option key={c.id} value={c.nama}>{c.nama}</option>
+          ))}
+        </select>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterKelas}
+          onChange={(e) => setFilterKelas(e.target.value)}
+          disabled={!filterCabang}
+        >
+          <option value="">Semua Kelas</option>
+          {kelasList.filter(k => k.cabang === filterCabang).map((k) => (
+            <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>
+          ))}
+        </select>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterSemester}
+          onChange={(e) => setFilterSemester(e.target.value)}
+        >
+          <option value="">Semua Semester</option>
+          {semesterList.map((s) => (
+            <option key={s.id} value={s.namaPeriode}>{s.namaPeriode} {s.isDefault ? "(Default)" : ""}</option>
+          ))}
+        </select>
+      </div>
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left min-w-[800px]">
@@ -168,10 +227,10 @@ export default function InfoTambahanPage() {
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr><td colSpan={5} className="p-8 text-center">Memuat data...</td></tr>
-              ) : dataList.length === 0 ? (
+              ) : filteredData.length === 0 ? (
                 <tr><td colSpan={5} className="p-8 text-center text-gray-500">Belum ada data.</td></tr>
               ) : (
-                dataList.map((item, index) => (
+                filteredData.map((item, index) => (
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="p-4 text-center">{index + 1}</td>
                     <td className="p-4">{item.cabang}</td>

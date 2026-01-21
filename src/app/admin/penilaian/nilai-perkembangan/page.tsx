@@ -14,7 +14,7 @@ import {
   orderBy,
   serverTimestamp,
 } from "firebase/firestore";
-import { Plus, Pencil, Trash2, X, Save } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Save, Filter } from "lucide-react";
 
 // --- Interfaces ---
 interface NilaiPerkembangan {
@@ -90,6 +90,16 @@ export default function NilaiPerkembanganPage() {
   const [usiaList, setUsiaList] = useState<KelompokUsia[]>([]); // Master Kelompok Usia
   const [kriteriaOptions, setKriteriaOptions] = useState<KriteriaNilai[]>([]);
 
+  // --- Filter State ---
+  const [filterCabang, setFilterCabang] = useState<string>("");
+  const [filterKelas, setFilterKelas] = useState<string>("");
+  const [filterSiswa, setFilterSiswa] = useState<string>("");
+  const [filterSemester, setFilterSemester] = useState<string>("");
+
+  // --- Filter Options State ---
+  const [filterKelasList, setFilterKelasList] = useState<Kelas[]>([]);
+  const [filterSiswaList, setFilterSiswaList] = useState<Siswa[]>([]);
+
   // --- State Form ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -129,6 +139,10 @@ export default function NilaiPerkembanganPage() {
         const snapSemester = await getDocs(query(collection(db, "kpi_periode"), orderBy("namaPeriode", "asc")));
         const semesters = snapSemester.docs.map((d) => ({ id: d.id, ...d.data() })) as Semester[];
         setSemesterList(semesters);
+
+        // Set Default Filter Semester
+        const defaultSem = semesters.find(s => s.isDefault);
+        if (defaultSem) setFilterSemester(defaultSem.id);
 
         // 4. Fetch Master Tahap Perkembangan
         const snapTahap = await getDocs(collection(db, "tahap_perkembangan"));
@@ -202,7 +216,11 @@ export default function NilaiPerkembanganPage() {
     setFilteredTahapList([]);
 
     if (selectedKelasId && selectedKelas) {
-      const qSiswa = query(collection(db, "siswa"), where("kelas", "==", selectedKelas.namaKelas));
+      const qSiswa = query(
+        collection(db, "siswa"),
+        where("kelas", "==", selectedKelas.namaKelas),
+        where("cabang", "==", selectedKelas.cabang)
+      );
       const snapSiswa = await getDocs(qSiswa);
       setSiswaList(snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[]);
     } else {
@@ -257,6 +275,54 @@ export default function NilaiPerkembanganPage() {
       namaTahap: selectedTahap?.deskripsi || ""
     }));
   };
+
+  // --- Filter Handlers ---
+  const handleFilterCabangChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setFilterCabang(val);
+    setFilterKelas("");
+    setFilterSiswa("");
+    setFilterKelasList([]);
+    setFilterSiswaList([]);
+
+    if (val) {
+      const selectedCabang = cabangList.find((c) => c.id === val);
+      if (selectedCabang) {
+        const qKelas = query(collection(db, "kelas"), where("cabang", "==", selectedCabang.nama));
+        const snapKelas = await getDocs(qKelas);
+        setFilterKelasList(snapKelas.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Kelas[]);
+      }
+    }
+  };
+
+  const handleFilterKelasChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setFilterKelas(val);
+    setFilterSiswa("");
+    setFilterSiswaList([]);
+
+    if (val) {
+      const selectedKelas = filterKelasList.find((k) => k.id === val);
+      if (selectedKelas) {
+        const qSiswa = query(
+          collection(db, "siswa"),
+          where("kelas", "==", selectedKelas.namaKelas),
+          where("cabang", "==", selectedKelas.cabang)
+        );
+        const snapSiswa = await getDocs(qSiswa);
+        setFilterSiswaList(snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[]);
+      }
+    }
+  };
+
+  // --- Filter Logic ---
+  const filteredData = dataList.filter((item) => {
+    const matchCabang = filterCabang ? item.cabangId === filterCabang : true;
+    const matchKelas = filterKelas ? item.kelasId === filterKelas : true;
+    const matchSiswa = filterSiswa ? item.siswaId === filterSiswa : true;
+    const matchSemester = filterSemester ? item.semesterId === filterSemester : true;
+    return matchCabang && matchKelas && matchSiswa && matchSemester;
+  });
 
   // --- CRUD Operations ---
 
@@ -373,6 +439,60 @@ export default function NilaiPerkembanganPage() {
         </button>
       </div>
 
+      {/* Filter Section */}
+      <div className="flex flex-wrap gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100 items-center">
+        <div className="flex items-center gap-2 text-gray-600">
+          <Filter className="w-4 h-4" />
+          <span className="text-sm font-medium">Filter:</span>
+        </div>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterCabang}
+          onChange={handleFilterCabangChange}
+        >
+          <option value="">Semua Cabang</option>
+          {cabangList.map((c) => (
+            <option key={c.id} value={c.id}>{c.nama}</option>
+          ))}
+        </select>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterKelas}
+          onChange={handleFilterKelasChange}
+          disabled={!filterCabang}
+        >
+          <option value="">Semua Kelas</option>
+          {filterKelasList.map((k) => (
+            <option key={k.id} value={k.id}>{k.namaKelas}</option>
+          ))}
+        </select>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterSiswa}
+          onChange={(e) => setFilterSiswa(e.target.value)}
+          disabled={!filterKelas}
+        >
+          <option value="">Semua Siswa</option>
+          {filterSiswaList.map((s) => (
+            <option key={s.id} value={s.id}>{s.nama}</option>
+          ))}
+        </select>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterSemester}
+          onChange={(e) => setFilterSemester(e.target.value)}
+        >
+          <option value="">Semua Semester</option>
+          {semesterList.map((s) => (
+            <option key={s.id} value={s.id}>{s.namaPeriode} {s.isDefault ? "(Default)" : ""}</option>
+          ))}
+        </select>
+      </div>
+
       {/* Tabel Data */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
@@ -393,10 +513,10 @@ export default function NilaiPerkembanganPage() {
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr><td colSpan={9} className="p-8 text-center">Memuat data...</td></tr>
-              ) : dataList.length === 0 ? (
+              ) : filteredData.length === 0 ? (
                 <tr><td colSpan={9} className="p-8 text-center">Belum ada data penilaian.</td></tr>
               ) : (
-                dataList.map((item, index) => (
+                filteredData.map((item, index) => (
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="p-4 text-center">{index + 1}</td>
                     <td className="p-4">{item.tanggal}</td>

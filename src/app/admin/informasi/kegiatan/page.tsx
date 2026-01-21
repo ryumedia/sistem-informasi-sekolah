@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, deleteDoc, doc, query, orderBy, addDoc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { Edit, Trash2, Plus, Loader2, X, Save, MapPin, Calendar } from "lucide-react";
+import { Edit, Trash2, Plus, Loader2, X, Save, MapPin, Calendar, Filter } from "lucide-react";
 
 export default function KegiatanPage() {
   const [dataKegiatan, setDataKegiatan] = useState<any[]>([]);
@@ -12,6 +12,8 @@ export default function KegiatanPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cabangList, setCabangList] = useState<any[]>([]);
+
+  const [filterCabang, setFilterCabang] = useState("");
 
   const [formData, setFormData] = useState({
     cabang: "",
@@ -122,6 +124,11 @@ export default function KegiatanPage() {
     setIsModalOpen(true);
   };
 
+  // Filter Logic
+  const filteredData = dataKegiatan.filter((item) => {
+    return filterCabang ? item.cabang === filterCabang : true;
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -136,6 +143,25 @@ export default function KegiatanPage() {
           <Plus className="w-4 h-4" />
           <span>Tambah Kegiatan</span>
         </button>
+      </div>
+
+      {/* Filter Section */}
+      <div className="flex flex-wrap gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100 items-center">
+        <div className="flex items-center gap-2 text-gray-600">
+          <Filter className="w-4 h-4" />
+          <span className="text-sm font-medium">Filter:</span>
+        </div>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterCabang}
+          onChange={(e) => setFilterCabang(e.target.value)}
+        >
+          <option value="">Semua Cabang</option>
+          {cabangList.map((c) => (
+            <option key={c.id} value={c.nama}>{c.nama}</option>
+          ))}
+        </select>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -161,14 +187,14 @@ export default function KegiatanPage() {
                   </div>
                 </td>
               </tr>
-            ) : dataKegiatan.length === 0 ? (
+            ) : filteredData.length === 0 ? (
               <tr>
                 <td colSpan={7} className="p-8 text-center text-gray-500 italic">
-                  Belum ada data kegiatan.
+                  {filterCabang ? "Tidak ada kegiatan yang sesuai filter." : "Belum ada data kegiatan."}
                 </td>
               </tr>
             ) : (
-              dataKegiatan.map((item, index) => (
+              filteredData.map((item, index) => (
                 <tr key={item.id} className="hover:bg-gray-50 transition">
                   <td className="p-4 text-center text-gray-500">{index + 1}</td>
                   <td className="p-4 font-medium text-gray-800">{item.cabang}</td>

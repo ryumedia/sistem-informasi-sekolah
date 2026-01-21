@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, deleteDoc, doc, query, orderBy, addDoc, serverTimestamp, updateDoc, where } from "firebase/firestore";
-import { Edit, Trash2, CalendarClock, Plus, Loader2, X, Save } from "lucide-react";
+import { Edit, Trash2, CalendarClock, Plus, Loader2, X, Save, Filter } from "lucide-react";
 
 export default function JadwalPage() {
   const [dataJadwal, setDataJadwal] = useState<any[]>([]);
@@ -17,6 +17,10 @@ export default function JadwalPage() {
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [kelasList, setKelasList] = useState<any[]>([]);
   
+  // State Filter
+  const [filterCabang, setFilterCabang] = useState("");
+  const [filterKelas, setFilterKelas] = useState("");
+
   // State untuk Form Tambah/Edit Jadwal Utama
   const [formData, setFormData] = useState({
     cabang: "",
@@ -189,6 +193,13 @@ export default function JadwalPage() {
     }
   };
 
+  // Filter Logic
+  const filteredData = dataJadwal.filter((item) => {
+    const matchCabang = filterCabang ? item.cabang === filterCabang : true;
+    const matchKelas = filterKelas ? item.kelas === filterKelas : true;
+    return matchCabang && matchKelas;
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -207,6 +218,42 @@ export default function JadwalPage() {
           <Plus className="w-4 h-4" />
           <span>Tambah Jadwal</span>
         </button>
+      </div>
+
+      {/* Filter Section */}
+      <div className="flex flex-wrap gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100 items-center">
+        <div className="flex items-center gap-2 text-gray-600">
+          <Filter className="w-4 h-4" />
+          <span className="text-sm font-medium">Filter:</span>
+        </div>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterCabang}
+          onChange={(e) => {
+            setFilterCabang(e.target.value);
+            setFilterKelas("");
+          }}
+        >
+          <option value="">Semua Cabang</option>
+          {cabangList.map((c) => (
+            <option key={c.id} value={c.nama}>{c.nama}</option>
+          ))}
+        </select>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterKelas}
+          onChange={(e) => setFilterKelas(e.target.value)}
+          disabled={!filterCabang}
+        >
+          <option value="">Semua Kelas</option>
+          {kelasList
+            .filter((k) => k.cabang === filterCabang)
+            .map((k) => (
+              <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>
+            ))}
+        </select>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -229,14 +276,14 @@ export default function JadwalPage() {
                   </div>
                 </td>
               </tr>
-            ) : dataJadwal.length === 0 ? (
+            ) : filteredData.length === 0 ? (
               <tr>
                 <td colSpan={4} className="p-8 text-center text-gray-500 italic">
-                  Belum ada data jadwal. Silakan tambah jadwal baru.
+                  Tidak ada data jadwal yang sesuai.
                 </td>
               </tr>
             ) : (
-              dataJadwal.map((item, index) => (
+              filteredData.map((item, index) => (
                 <tr key={item.id} className="hover:bg-gray-50 transition">
                   <td className="p-4 text-center text-gray-500">{index + 1}</td>
                   <td className="p-4 font-medium text-gray-800">{item.cabang}</td>

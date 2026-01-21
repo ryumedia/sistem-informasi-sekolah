@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, deleteDoc, doc, query, orderBy, addDoc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { Edit, Trash2, Plus, Loader2, X, Save } from "lucide-react";
+import { Edit, Trash2, Plus, Loader2, X, Save, Filter } from "lucide-react";
 
 export default function PengumumanPage() {
   const [dataPengumuman, setDataPengumuman] = useState<any[]>([]);
@@ -12,6 +12,7 @@ export default function PengumumanPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cabangList, setCabangList] = useState<any[]>([]);
+  const [filterCabang, setFilterCabang] = useState("");
 
   const [formData, setFormData] = useState({
     cabang: "",
@@ -114,6 +115,11 @@ export default function PengumumanPage() {
     setIsModalOpen(true);
   };
 
+  // Filter Logic
+  const filteredData = dataPengumuman.filter((item) => {
+    return filterCabang ? item.cabang === filterCabang : true;
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -128,6 +134,25 @@ export default function PengumumanPage() {
           <Plus className="w-4 h-4" />
           <span>Tambah Pengumuman</span>
         </button>
+      </div>
+
+      {/* Filter Section */}
+      <div className="flex flex-wrap gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100 items-center">
+        <div className="flex items-center gap-2 text-gray-600">
+          <Filter className="w-4 h-4" />
+          <span className="text-sm font-medium">Filter:</span>
+        </div>
+
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterCabang}
+          onChange={(e) => setFilterCabang(e.target.value)}
+        >
+          <option value="">Semua Cabang</option>
+          {cabangList.map((c) => (
+            <option key={c.id} value={c.nama}>{c.nama}</option>
+          ))}
+        </select>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -151,14 +176,14 @@ export default function PengumumanPage() {
                   </div>
                 </td>
               </tr>
-            ) : dataPengumuman.length === 0 ? (
+            ) : filteredData.length === 0 ? (
               <tr>
                 <td colSpan={5} className="p-8 text-center text-gray-500 italic">
-                  Belum ada pengumuman.
+                  {filterCabang ? "Tidak ada pengumuman yang sesuai filter." : "Belum ada pengumuman."}
                 </td>
               </tr>
             ) : (
-              dataPengumuman.map((item, index) => (
+              filteredData.map((item, index) => (
                 <tr key={item.id} className="hover:bg-gray-50 transition">
                   <td className="p-4 text-center text-gray-500">{index + 1}</td>
                   <td className="p-4 font-medium text-gray-800">{item.cabang}</td>
