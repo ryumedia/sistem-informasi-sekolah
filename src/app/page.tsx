@@ -615,8 +615,25 @@ function JadwalView({ user, userData, onBack }: { user: any, userData: any, onBa
            q = query(collection(db, "jadwal"), where("cabang", "==", cabang));
         } else if (role === "Guru") {
            // Guru melihat jadwal sesuai cabang dan kelas (jika ada data kelas di profil)
-           if (kelas) {
-             q = query(collection(db, "jadwal"), where("cabang", "==", cabang), where("kelas", "==", kelas));
+           let targetKelas = kelas;
+           
+           // Jika data kelas tidak ada di profil guru, cari di koleksi kelas
+           if (!targetKelas) {
+              const qKelas = query(collection(db, "kelas"), where("cabang", "==", cabang));
+              const snapKelas = await getDocs(qKelas);
+              const foundClass = snapKelas.docs.find(doc => {
+                  const d = doc.data();
+                  const g = d.guruKelas; 
+                  if (Array.isArray(g)) {
+                      return g.some((item: any) => (typeof item === 'string' ? item === userData.nama : item.nama === userData.nama));
+                  }
+                  return false;
+              });
+              if (foundClass) targetKelas = foundClass.data().namaKelas;
+           }
+
+           if (targetKelas) {
+             q = query(collection(db, "jadwal"), where("cabang", "==", cabang), where("kelas", "==", targetKelas));
            } else {
              // Fallback jika Guru tidak memiliki data kelas spesifik, tampilkan semua di cabang tersebut
              q = query(collection(db, "jadwal"), where("cabang", "==", cabang));
@@ -676,6 +693,12 @@ function JadwalView({ user, userData, onBack }: { user: any, userData: any, onBa
     fetchDetails();
   }, [selectedJadwalId]);
 
+  // Dynamic Title
+  const selectedJadwal = jadwalList.find(j => j.id === selectedJadwalId);
+  const pageTitle = selectedJadwal 
+    ? `Jadwal Kelas ${selectedJadwal.kelas} ${selectedJadwal.cabang}` 
+    : "Jadwal Pelajaran";
+
   // Group details by Day
   const groupedDetails = jadwalDetails.reduce((acc: any, curr: any) => {
     if (!acc[curr.hari]) acc[curr.hari] = [];
@@ -692,7 +715,7 @@ function JadwalView({ user, userData, onBack }: { user: any, userData: any, onBa
           <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <h1 className="text-lg font-bold text-gray-800">Jadwal Pelajaran</h1>
+          <h1 className="text-lg font-bold text-gray-800 line-clamp-1">{pageTitle}</h1>
        </header>
 
        <div className="p-4 space-y-4">

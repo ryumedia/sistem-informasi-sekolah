@@ -2,8 +2,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, query, orderBy, where, doc, updateDoc, addDoc } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 import { FileText, Filter, X, Save, Eye } from "lucide-react";
 
 interface Pengajuan {
@@ -32,6 +33,7 @@ export default function RealisasiPage() {
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [dataList, setDataList] = useState<Pengajuan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState("");
 
   // State untuk Modal Laporan
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -53,6 +55,27 @@ export default function RealisasiPage() {
       }
     };
     fetchCabang();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        try {
+          const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const userData = querySnapshot.docs[0].data();
+            setUserRole(userData.role);
+            if (userData.role === "Kepala Sekolah") {
+              setFilterCabang(userData.cabang);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   const fetchData = async () => {
@@ -175,8 +198,13 @@ export default function RealisasiPage() {
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)}>
-            <option value="">Semua Cabang</option>
+          <select 
+            className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900 ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`} 
+            value={filterCabang} 
+            onChange={(e) => setFilterCabang(e.target.value)}
+            disabled={userRole === "Kepala Sekolah"}
+          >
+            {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
           <button className="bg-gray-100 p-2 rounded-lg text-gray-600 hover:bg-gray-200">

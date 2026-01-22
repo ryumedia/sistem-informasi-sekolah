@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
-import { collection, getDocs, deleteDoc, doc, query, orderBy, addDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { db, auth } from "@/lib/firebase";
+import { collection, getDocs, deleteDoc, doc, query, orderBy, addDoc, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 import { Edit, Trash2, Plus, Loader2, X, Save, Filter } from "lucide-react";
 
 export default function PengumumanPage() {
@@ -13,6 +14,8 @@ export default function PengumumanPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [filterCabang, setFilterCabang] = useState("");
+  const [userRole, setUserRole] = useState<string>("");
+  const [userCabang, setUserCabang] = useState<string>("");
 
   const [formData, setFormData] = useState({
     cabang: "",
@@ -56,6 +59,30 @@ export default function PengumumanPage() {
     }
     fetchCabang();
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser && cabangList.length > 0) {
+        try {
+          const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const userData = querySnapshot.docs[0].data();
+            setUserRole(userData.role);
+
+            if (userData.role === "Kepala Sekolah" || userData.role === "Guru") {
+              const userCabangName = userData.cabang;
+              setFilterCabang(userCabangName);
+              setUserCabang(userCabangName);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [cabangList]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Apakah Anda yakin ingin menghapus pengumuman ini?")) return;
@@ -101,7 +128,7 @@ export default function PengumumanPage() {
   };
 
   const resetForm = () => {
-      setFormData({ cabang: "", judul: "", deskripsi: "" });
+      setFormData({ cabang: userCabang || "", judul: "", deskripsi: "" });
       setEditingId(null);
   }
 
@@ -144,9 +171,10 @@ export default function PengumumanPage() {
         </div>
 
         <select
-          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] ${userRole === "Kepala Sekolah" || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
           value={filterCabang}
           onChange={(e) => setFilterCabang(e.target.value)}
+          disabled={userRole === "Kepala Sekolah" || userRole === "Guru"}
         >
           <option value="">Semua Cabang</option>
           {cabangList.map((c) => (
@@ -228,9 +256,10 @@ export default function PengumumanPage() {
                 <label className="block text-xs font-medium text-gray-700 mb-1">Cabang</label>
                 <select
                   required
-                  className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none"
+                  className={`w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none ${userRole === "Kepala Sekolah" || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
                   value={formData.cabang}
                   onChange={(e) => setFormData({ ...formData, cabang: e.target.value })}
+                  disabled={userRole === "Kepala Sekolah" || userRole === "Guru"}
                 >
                   <option value="">Pilih Cabang</option>
                   {cabangList.map((c) => (

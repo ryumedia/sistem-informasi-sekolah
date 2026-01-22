@@ -177,8 +177,8 @@ export default function AdminLayout({
           <div className="mb-3 bg-white p-2 rounded-full">
             <Image src="/logo.png" alt="Logo" width={40} height={40} className="object-contain" />
           </div>
-          <h2 className="text-2xl font-bold tracking-tight">SIS Admin</h2>
-          <p className="text-xs text-purple-200 mt-1">Sistem Informasi Sekolah</p>
+          <h2 className="text-xl font-bold tracking-tight">{userData?.role || "SIS Admin"}</h2>
+          <p className="text-xs text-purple-200 mt-1">{userData?.cabang || "Sistem Informasi Sekolah"}</p>
         </div>
         
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">

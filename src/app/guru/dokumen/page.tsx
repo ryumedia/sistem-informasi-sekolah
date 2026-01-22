@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { db, auth } from "@/lib/firebase";
 import { collection, query, orderBy, getDocs, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
-import { ArrowLeft, FileText, Eye, X, Loader2, Shield } from "lucide-react";
+import { ArrowLeft, FileText, Eye, X, Loader2, Shield, Search } from "lucide-react";
 
 interface Dokumen {
   id: string;
@@ -19,6 +19,7 @@ export default function GuruDokumenPage() {
   const [dokumenList, setDokumenList] = useState<Dokumen[]>([]);
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   
   // Modal View State
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -101,6 +102,10 @@ export default function GuruDokumenPage() {
     }).format(date);
   };
 
+  const filteredDokumen = dokumenList.filter((doc) =>
+    doc.nama.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -139,12 +144,26 @@ export default function GuruDokumenPage() {
           </div>
         </header>
 
+        {/* Search Bar */}
+        <div className="px-4 pb-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Cari dokumen..."
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#581c87] outline-none text-sm bg-gray-50"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+        </div>
+
         {/* Content List */}
         <div className="p-4 space-y-3 flex-1 overflow-y-auto">
-          {dokumenList.length === 0 ? (
-            <div className="text-center py-10 text-gray-500 italic">Belum ada dokumen yang tersedia.</div>
+          {filteredDokumen.length === 0 ? (
+            <div className="text-center py-10 text-gray-500 italic">{searchTerm ? "Dokumen tidak ditemukan." : "Belum ada dokumen yang tersedia."}</div>
           ) : (
-            dokumenList.map((doc) => (
+            filteredDokumen.map((doc) => (
               <div key={doc.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex items-center justify-between hover:shadow-md transition">
                 <div className="flex items-center gap-3 overflow-hidden">
                   <div className="bg-red-50 p-2.5 rounded-lg text-red-600 shrink-0">

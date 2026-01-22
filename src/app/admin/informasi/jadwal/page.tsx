@@ -102,7 +102,13 @@ export default function JadwalPage() {
 
               if (userData.role === "Guru") {
                  const guruName = userData.nama;
-                 const foundKelas = kelasList.find((k: any) => k.guruKelas && k.guruKelas.includes(guruName) && k.cabang === userCabangName);
+                 const foundKelas = kelasList.find((k: any) => {
+                    if (k.cabang !== userCabangName) return false;
+                    if (Array.isArray(k.guruKelas)) {
+                        return k.guruKelas.some((g: any) => (typeof g === 'string' ? g === guruName : g.nama === guruName));
+                    }
+                    return false;
+                 });
                  if (foundKelas) {
                    setFilterKelas(foundKelas.namaKelas);
                    setUserKelas(foundKelas.namaKelas);
@@ -431,8 +437,7 @@ export default function JadwalPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
             <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
               <div>
-                <h3 className="font-bold text-gray-800">Atur Jadwal Kegiatan</h3>
-                <p className="text-xs text-gray-500">{selectedJadwal.cabang} - {selectedJadwal.kelas}</p>
+                <h3 className="font-bold text-gray-800">Jadwal Kelas {selectedJadwal.kelas} {selectedJadwal.cabang}</h3>
               </div>
               <button onClick={() => setIsAturModalOpen(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />

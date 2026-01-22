@@ -2,8 +2,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
-import { collection, getDocs, query, orderBy, addDoc, deleteDoc, doc } from "firebase/firestore";
+import { db, auth } from "@/lib/firebase";
+import { collection, getDocs, query, orderBy, addDoc, deleteDoc, doc, where } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 import { Plus, ArrowUpCircle, ArrowDownCircle, Filter, X, Trash2, Wallet, Download } from "lucide-react";
 
 interface ArusKas {
@@ -29,6 +30,7 @@ export default function ArusKasPage() {
   const [nomenklaturList, setNomenklaturList] = useState<any[]>([]);
   const [dataList, setDataList] = useState<ArusKas[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState("");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<"Masuk" | "Keluar">("Masuk");
@@ -40,6 +42,29 @@ export default function ArusKasPage() {
     keterangan: "",
     nominal: 0,
   });
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        try {
+          const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const userData = querySnapshot.docs[0].data();
+            setUserRole(userData.role);
+            if (userData.role === "Kepala Sekolah") {
+              setFilterCabang(userData.cabang);
+            }
+          } else {
+             setUserRole("Admin"); 
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const fetchMasterData = async () => {
@@ -218,17 +243,26 @@ export default function ArusKasPage() {
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)}>
-            <option value="">Semua Cabang</option>
+          <select 
+            className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900 ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`} 
+            value={filterCabang} 
+            onChange={(e) => setFilterCabang(e.target.value)}
+            disabled={userRole === "Kepala Sekolah"}
+          >
+            {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
 
-          <button onClick={() => openModal("Masuk")} className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition text-sm">
-            <Plus className="w-4 h-4" /> Pemasukan
-          </button>
-          <button onClick={() => openModal("Keluar")} className="bg-red-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-red-700 transition text-sm">
-            <Plus className="w-4 h-4" /> Pengeluaran
-          </button>
+          {["Admin", "Direktur", "Yayasan"].includes(userRole) && (
+            <>
+              <button onClick={() => openModal("Masuk")} className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition text-sm">
+                <Plus className="w-4 h-4" /> Pemasukan
+              </button>
+              <button onClick={() => openModal("Keluar")} className="bg-red-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-red-700 transition text-sm">
+                <Plus className="w-4 h-4" /> Pengeluaran
+              </button>
+            </>
+          )}
           <button onClick={handleDownloadPDF} className="bg-[#581c87] text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-[#45156b] transition text-sm">
             <Download className="w-4 h-4" /> Download PDF
           </button>

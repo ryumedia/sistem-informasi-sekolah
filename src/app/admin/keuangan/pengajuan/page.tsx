@@ -57,7 +57,11 @@ export default function PengajuanPage() {
           const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
           const querySnapshot = await getDocs(q);
           if (!querySnapshot.empty) {
-            setUserRole(querySnapshot.docs[0].data().role);
+            const userData = querySnapshot.docs[0].data();
+            setUserRole(userData.role);
+            if (userData.role === "Kepala Sekolah") {
+              setFilterCabang(userData.cabang);
+            }
           } else {
              // Fallback jika user admin manual (bukan dari data guru)
              setUserRole("Admin"); 
@@ -223,8 +227,13 @@ export default function PengajuanPage() {
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)}>
-            <option value="">Semua Cabang</option>
+          <select 
+            className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900 ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`} 
+            value={filterCabang} 
+            onChange={(e) => setFilterCabang(e.target.value)}
+            disabled={userRole === "Kepala Sekolah"}
+          >
+            {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
           <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
