@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
   addDoc,
@@ -44,6 +45,7 @@ interface Kelas {
   id: string;
   namaKelas: string;
   cabang: string;
+  guruKelas?: string[];
 }
 
 interface Siswa {
@@ -105,6 +107,11 @@ export default function NilaiIndikatorPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // --- User Role State ---
+  const [userRole, setUserRole] = useState<string>("");
+  const [userCabangId, setUserCabangId] = useState<string>("");
+  const [userKelasId, setUserKelasId] = useState<string>("");
 
   const [form, setForm] = useState({
     tanggal: new Date().toISOString().split("T")[0],
@@ -171,6 +178,63 @@ export default function NilaiIndikatorPage() {
     fetchInitialData();
   }, []);
 
+  // --- Auth & Role Logic ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser && cabangList.length > 0) {
+        try {
+          const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const userData = querySnapshot.docs[0].data();
+            const role = userData.role;
+            setUserRole(role);
+
+            if (role === "Kepala Sekolah" || role === "Guru") {
+              // 1. Set Cabang
+              const userCabangName = userData.cabang;
+              const foundCabang = cabangList.find(c => c.nama === userCabangName);
+              
+              if (foundCabang) {
+                setFilterCabang(foundCabang.id);
+                setUserCabangId(foundCabang.id);
+
+                // Fetch Kelas for this Cabang (for Filter Dropdown)
+                const qKelas = query(collection(db, "kelas"), where("cabang", "==", userCabangName));
+                const snapKelas = await getDocs(qKelas);
+                const classes = snapKelas.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Kelas[];
+                setFilterKelasList(classes);
+
+                // 2. If Guru, Set Kelas
+                if (role === "Guru") {
+                  const guruName = userData.nama;
+                  const foundKelas = classes.find(k => k.guruKelas && k.guruKelas.includes(guruName));
+                  
+                  if (foundKelas) {
+                    setFilterKelas(foundKelas.id);
+                    setUserKelasId(foundKelas.id);
+
+                    // Fetch Siswa for this Kelas (for Filter Dropdown)
+                    const qSiswa = query(
+                      collection(db, "siswa"), 
+                      where("kelas", "==", foundKelas.namaKelas),
+                      where("cabang", "==", userCabangName)
+                    );
+                    const snapSiswa = await getDocs(qSiswa);
+                    setFilterSiswaList(snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[]);
+                  }
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [cabangList]);
+
   // --- Handlers for Cascading Dropdowns ---
 
   // 1. Handle Cabang Change -> Fetch Kelas
@@ -209,7 +273,11 @@ export default function NilaiIndikatorPage() {
     }));
 
     if (selectedKelasId && selectedKelas) {
-      const qSiswa = query(collection(db, "siswa"), where("kelas", "==", selectedKelas.namaKelas));
+      const qSiswa = query(
+        collection(db, "siswa"), 
+        where("kelas", "==", selectedKelas.namaKelas),
+        where("cabang", "==", selectedKelas.cabang)
+      );
       const snapSiswa = await getDocs(qSiswa);
       setSiswaList(snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[]);
     } else {
@@ -364,13 +432,45 @@ export default function NilaiIndikatorPage() {
     }
   };
 
-  const openModal = () => {
+  const openModal = async () => {
     // Set default semester
     const defaultSem = semesterList.find((s) => s.isDefault);
+    
+    // Prepare initial values based on Role
+    let initialCabangId = userCabangId || "";
+    let initialCabangName = cabangList.find(c => c.id === userCabangId)?.nama || "";
+    let initialKelasId = userKelasId || "";
+    let initialKelasName = "";
+
+    // If User is Guru/KS, we need to populate the dropdowns for the form immediately
+    if (initialCabangId) {
+       const qKelas = query(collection(db, "kelas"), where("cabang", "==", initialCabangName));
+       const snapKelas = await getDocs(qKelas);
+       const classes = snapKelas.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Kelas[];
+       setKelasList(classes);
+
+       if (initialKelasId) {
+         const foundKelas = classes.find(k => k.id === initialKelasId);
+         initialKelasName = foundKelas?.namaKelas || "";
+         
+         // Fetch Siswa
+         const qSiswa = query(
+           collection(db, "siswa"), 
+           where("kelas", "==", initialKelasName),
+           where("cabang", "==", initialCabangName)
+         );
+         const snapSiswa = await getDocs(qSiswa);
+         setSiswaList(snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[]);
+       }
+    } else {
+       setKelasList([]);
+       setSiswaList([]);
+    }
+
     setForm({
       tanggal: new Date().toISOString().split("T")[0],
-      cabangId: "", namaCabang: "",
-      kelasId: "", namaKelas: "",
+      cabangId: initialCabangId, namaCabang: initialCabangName,
+      kelasId: initialKelasId, namaKelas: initialKelasName,
       siswaId: "", namaSiswa: "",
       semesterId: defaultSem?.id || "", namaSemester: defaultSem?.namaPeriode || "",
       indikatorId: "", namaIndikator: "",
@@ -402,7 +502,11 @@ export default function NilaiIndikatorPage() {
       setKelasList(snapKelas.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Kelas[]);
     }
     if (item.namaKelas) {
-      const qSiswa = query(collection(db, "siswa"), where("kelas", "==", item.namaKelas));
+      const qSiswa = query(
+        collection(db, "siswa"), 
+        where("kelas", "==", item.namaKelas),
+        where("cabang", "==", item.namaCabang)
+      );
       const snapSiswa = await getDocs(qSiswa);
       setSiswaList(snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[]);
     }
@@ -442,6 +546,7 @@ export default function NilaiIndikatorPage() {
           className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
           value={filterCabang}
           onChange={handleFilterCabangChange}
+          disabled={userRole === "Kepala Sekolah" || userRole === "Guru"}
         >
           <option value="">Semua Cabang</option>
           {cabangList.map((c) => (
@@ -453,7 +558,7 @@ export default function NilaiIndikatorPage() {
           className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
           value={filterKelas}
           onChange={handleFilterKelasChange}
-          disabled={!filterCabang}
+          disabled={!filterCabang || userRole === "Guru"}
         >
           <option value="">Semua Kelas</option>
           {filterKelasList.map((k) => (
@@ -584,9 +689,10 @@ export default function NilaiIndikatorPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Cabang</label>
                   <select 
                     required 
-                    className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                    className={`w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none ${userRole === "Kepala Sekolah" || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
                     value={form.cabangId}
                     onChange={handleCabangChange}
+                    disabled={userRole === "Kepala Sekolah" || userRole === "Guru"}
                   >
                     <option value="">Pilih Cabang</option>
                     {cabangList.map(c => (
@@ -599,10 +705,10 @@ export default function NilaiIndikatorPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Kelas</label>
                   <select 
                     required 
-                    className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                    className={`w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none ${userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
                     value={form.kelasId}
                     onChange={handleKelasChange}
-                    disabled={!form.cabangId}
+                    disabled={!form.cabangId || userRole === "Guru"}
                   >
                     <option value="">Pilih Kelas</option>
                     {kelasList.map(k => (

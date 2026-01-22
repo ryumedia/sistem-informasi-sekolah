@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { collection, query, where, getDocs, orderBy, collectionGroup } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import { Building, Users, UserSquare, Star, ArrowDown, ArrowUp, Scale, Loader2 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -10,6 +11,7 @@ export default function AdminDashboard() {
   const [selectedCabang, setSelectedCabang] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [kelasStatsList, setKelasStatsList] = useState<any[]>([]);
+  const [userRole, setUserRole] = useState<string>("");
 
   const [stats, setStats] = useState({
     kelas: 0,
@@ -36,6 +38,28 @@ export default function AdminDashboard() {
       }
     };
     fetchCabang();
+  }, []);
+
+  // Cek Role User (Kepala Sekolah hanya bisa lihat cabangnya sendiri)
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        try {
+          const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const userData = querySnapshot.docs[0].data();
+            setUserRole(userData.role);
+            if (userData.role === "Kepala Sekolah") {
+              setSelectedCabang(userData.cabang);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   // Fetch Dashboard Data based on Filter
@@ -154,9 +178,10 @@ export default function AdminDashboard() {
           <select 
             value={selectedCabang} 
             onChange={(e) => setSelectedCabang(e.target.value)}
-            className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+            disabled={userRole === "Kepala Sekolah"}
+            className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`}
           >
-            <option value="">Semua Cabang</option>
+            {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
             {cabangList.map(c => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
         </div>

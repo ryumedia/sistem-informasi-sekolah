@@ -2,10 +2,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { db, firebaseConfig } from "@/lib/firebase";
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from "firebase/firestore";
+import { db, firebaseConfig, auth } from "@/lib/firebase";
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from "firebase/firestore";
 import { initializeApp, deleteApp } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
+import { getAuth, createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
 import { Plus, X, Pencil, Trash2, Search, Lock, FileText } from "lucide-react";
 
 interface Siswa {
@@ -38,6 +38,7 @@ export default function DataSiswaPage() {
   const [submitting, setSubmitting] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewDetail, setViewDetail] = useState<Siswa | null>(null);
+  const [userRole, setUserRole] = useState<string>("");
   
   // Filter State
   const [searchQuery, setSearchQuery] = useState("");
@@ -119,6 +120,28 @@ export default function DataSiswaPage() {
     fetchCabang();
     fetchKelas();
     fetchUsia();
+  }, []);
+
+  // Cek Role User (Kepala Sekolah hanya bisa lihat cabangnya sendiri)
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        try {
+          const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const userData = querySnapshot.docs[0].data();
+            setUserRole(userData.role);
+            if (userData.role === "Kepala Sekolah") {
+              setFilterCabang(userData.cabang);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   // Handle File Change (Base64)
@@ -297,11 +320,12 @@ export default function DataSiswaPage() {
           />
         </div>
         <select
-          className="border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+          className={`border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900 ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`}
           value={filterCabang}
           onChange={(e) => setFilterCabang(e.target.value)}
+          disabled={userRole === "Kepala Sekolah"}
         >
-          <option value="">Semua Cabang</option>
+          {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
           {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
         </select>
         <select

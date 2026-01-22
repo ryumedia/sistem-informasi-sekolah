@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { db, firebaseConfig } from "@/lib/firebase";
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from "firebase/firestore";
+import { db, firebaseConfig, auth } from "@/lib/firebase";
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from "firebase/firestore";
 import { initializeApp, deleteApp } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
+import { getAuth, createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
 import { Plus, X, Pencil, Trash2, Lock, Search } from "lucide-react";
 
 interface Guru {
@@ -25,6 +25,7 @@ export default function DataGuruPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCabang, setFilterCabang] = useState("");
+  const [userRole, setUserRole] = useState<string>("");
 
   // State untuk Form
   const [formData, setFormData] = useState({
@@ -69,6 +70,28 @@ export default function DataGuruPage() {
       }
     };
     fetchCabang();
+  }, []);
+
+  // Cek Role User (Kepala Sekolah hanya bisa lihat cabangnya sendiri)
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        try {
+          const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const userData = querySnapshot.docs[0].data();
+            setUserRole(userData.role);
+            if (userData.role === "Kepala Sekolah") {
+              setFilterCabang(userData.cabang);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   // Fungsi Tambah Data
@@ -181,11 +204,12 @@ export default function DataGuruPage() {
           />
         </div>
         <select
-          className="border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none min-w-[200px] text-gray-900"
+          className={`border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none min-w-[200px] text-gray-900 ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`}
           value={filterCabang}
           onChange={(e) => setFilterCabang(e.target.value)}
+          disabled={userRole === "Kepala Sekolah"}
         >
-          <option value="">Semua Cabang</option>
+          {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
           {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
         </select>
       </div>

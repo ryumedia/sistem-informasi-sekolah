@@ -1,7 +1,8 @@
 "use client";
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { db } from '@/lib/firebase';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { db, auth } from '@/lib/firebase';
+import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import { Printer, Loader2 } from 'lucide-react';
 import TemplateRapor from '@/components/TemplateRapor';
 
@@ -59,6 +60,7 @@ interface Kelas {
   id: string;
   namaKelas: string;
   cabang: string;
+  guruKelas?: string[];
 }
 
 const RaporPage = () => {
@@ -71,6 +73,7 @@ const RaporPage = () => {
   const [isPrinting, setIsPrinting] = useState(false);
   const [fetchingSiswa, setFetchingSiswa] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string>("");
 
   // Master Data State
   const [cabangList, setCabangList] = useState<Cabang[]>([]);
@@ -115,6 +118,42 @@ const RaporPage = () => {
     };
     fetchSiswa();
   }, []);
+
+  // Auth & Role Logic
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser && cabangList.length > 0 && kelasListData.length > 0) {
+        try {
+          const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const userData = querySnapshot.docs[0].data();
+            setUserRole(userData.role);
+
+            if (userData.role === "Kepala Sekolah" || userData.role === "Guru") {
+              const userCabangName = userData.cabang;
+              const foundCabang = cabangList.find(c => c.nama === userCabangName);
+              
+              if (foundCabang) {
+                setSelectedCabangId(foundCabang.id);
+                
+                if (userData.role === "Guru") {
+                   const guruName = userData.nama;
+                   const foundKelas = kelasListData.find(k => k.guruKelas && k.guruKelas.includes(guruName) && k.cabang === userCabangName);
+                   if (foundKelas) {
+                     setSelectedKelas(foundKelas.namaKelas);
+                   }
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [cabangList, kelasListData]);
 
   // Filter Kelas based on Selected Cabang
   const filteredKelasOptions = useMemo(() => {
@@ -280,7 +319,8 @@ const RaporPage = () => {
               id="cabang-select"
               value={selectedCabangId}
               onChange={handleCabangChange}
-              className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 transition"
+              className={`w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 transition ${userRole === "Kepala Sekolah" || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
+              disabled={userRole === "Kepala Sekolah" || userRole === "Guru"}
             >
               <option value="">-- Pilih Cabang --</option>
               {cabangList.map(c => (
@@ -316,8 +356,8 @@ const RaporPage = () => {
               id="kelas-select"
               value={selectedKelas}
               onChange={handleKelasChange}
-              disabled={!selectedCabangId}
-              className="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 transition"
+              disabled={!selectedCabangId || userRole === "Guru"}
+              className={`w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 transition ${!selectedCabangId || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
             >
               <option value="">-- Semua Kelas --</option>
               {filteredKelasOptions.map(k => (

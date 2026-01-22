@@ -31,6 +31,7 @@ import {
   Loader2,
   Save,
   UploadCloud,
+  Search,
 } from "lucide-react";
 
 interface Dokumen {
@@ -44,6 +45,7 @@ interface Dokumen {
 export default function DokumenPage() {
   const [dokumenList, setDokumenList] = useState<Dokumen[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
   
   // State untuk Modal Tambah/Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -219,6 +221,10 @@ export default function DokumenPage() {
     }).format(date);
   };
 
+  const filteredDokumen = dokumenList.filter((doc) =>
+    doc.nama.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -234,6 +240,18 @@ export default function DokumenPage() {
           <Plus className="w-4 h-4" />
           Tambah Dokumen
         </button>
+      </div>
+
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Cari dokumen..."
+          className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#581c87] outline-none text-sm"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
       </div>
 
       {/* Tabel Dokumen */}
@@ -255,14 +273,14 @@ export default function DokumenPage() {
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" />
                   </td>
                 </tr>
-              ) : dokumenList.length === 0 ? (
+              ) : filteredDokumen.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="p-8 text-center text-gray-500 italic">
-                    Belum ada dokumen yang diupload.
+                    {searchTerm ? "Tidak ada dokumen yang ditemukan." : "Belum ada dokumen yang diupload."}
                   </td>
                 </tr>
               ) : (
-                dokumenList.map((doc, index) => (
+                filteredDokumen.map((doc, index) => (
                   <tr key={doc.id} className="hover:bg-gray-50 transition">
                     <td className="p-4 text-center">{index + 1}</td>
                     <td className="p-4">

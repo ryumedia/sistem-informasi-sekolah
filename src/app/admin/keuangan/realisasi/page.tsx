@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, query, orderBy, where, doc, updateDoc } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, where, doc, updateDoc, addDoc } from "firebase/firestore";
 import { FileText, Filter, X, Save, Eye } from "lucide-react";
 
 interface Pengajuan {
@@ -17,6 +17,8 @@ interface Pengajuan {
   realisasi?: number;
   selisih?: number;
   buktiRealisasi?: string;
+  arusKasId?: string;
+  nomenklatur?: string;
 }
 
 export default function RealisasiPage() {
@@ -101,12 +103,40 @@ export default function RealisasiPage() {
     setSubmitting(true);
     try {
       const selisih = selectedItem.total - realisasiInput;
+      
+      // Logic: Catat ke Arus Kas sebagai Pengeluaran
+      const arusKasData = {
+        tanggal: new Date().toISOString().split("T")[0], // Tanggal hari ini
+        cabang: selectedItem.cabang,
+        nomenklatur: selectedItem.nomenklatur || "Realisasi Pengajuan", // Ambil dari pengajuan
+        keterangan: selectedItem.barang, // Nama kegiatan/barang
+        jenis: "Keluar",
+        nominal: realisasiInput,
+        createdAt: new Date(),
+      };
+
+      let arusKasId = selectedItem.arusKasId;
+
+      if (arusKasId) {
+        // Jika sudah ada ID arus kas (edit realisasi), update datanya
+        await updateDoc(doc(db, "arus_kas", arusKasId), arusKasData).catch(async () => {
+           // Jika dokumen arus kas tidak ditemukan (misal terhapus manual), buat baru
+           const newDoc = await addDoc(collection(db, "arus_kas"), arusKasData);
+           arusKasId = newDoc.id;
+        });
+      } else {
+        // Buat data arus kas baru
+        const newDoc = await addDoc(collection(db, "arus_kas"), arusKasData);
+        arusKasId = newDoc.id;
+      }
+
       await updateDoc(doc(db, "pengajuan", selectedItem.id), {
         realisasi: realisasiInput,
         selisih: selisih,
-        buktiRealisasi: buktiInput
+        buktiRealisasi: buktiInput,
+        arusKasId: arusKasId // Simpan referensi ID Arus Kas
       });
-      alert("Laporan realisasi berhasil disimpan!");
+      alert("Laporan realisasi berhasil disimpan dan tercatat di Arus Kas!");
       setIsModalOpen(false);
       fetchData();
     } catch (error) {
@@ -227,6 +257,10 @@ export default function RealisasiPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Kegiatan / Barang</label>
                 <input disabled type="text" className="w-full border rounded-lg p-2 bg-gray-100 text-gray-600" value={selectedItem.barang} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nomenklatur</label>
+                <input disabled type="text" className="w-full border rounded-lg p-2 bg-gray-100 text-gray-600" value={selectedItem.nomenklatur || "-"} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Anggaran Disetujui</label>
