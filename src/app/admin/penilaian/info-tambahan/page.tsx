@@ -34,6 +34,7 @@ export default function InfoTambahanPage() {
     cabang: "",
     kelas: "",
     semester: "", 
+    titimangsa: "",
   });
 
   // Fetch Data
@@ -131,6 +132,7 @@ export default function InfoTambahanPage() {
           cabang: formData.cabang,
           kelas: formData.kelas,
           semester: formData.semester,
+          titimangsa: formData.titimangsa,
         });
         alert("Data berhasil diperbarui!");
       } else {
@@ -138,6 +140,7 @@ export default function InfoTambahanPage() {
           cabang: formData.cabang,
           kelas: formData.kelas,
           semester: formData.semester,
+          titimangsa: formData.titimangsa,
           createdAt: serverTimestamp(),
         });
         alert("Data berhasil ditambahkan!");
@@ -146,7 +149,7 @@ export default function InfoTambahanPage() {
       setEditingId(null);
       
       const defaultSem = semesterList.find((s: any) => s.isDefault);
-      setFormData({ cabang: "", kelas: "", semester: defaultSem ? defaultSem.namaPeriode : "" });
+      setFormData({ cabang: "", kelas: "", semester: defaultSem ? defaultSem.namaPeriode : "", titimangsa: "" });
       
       fetchData();
     } catch (error) {
@@ -175,6 +178,7 @@ export default function InfoTambahanPage() {
       cabang: item.cabang,
       kelas: item.kelas,
       semester: item.semester,
+      titimangsa: item.titimangsa || "",
     });
     setIsModalOpen(true);
   };
@@ -198,7 +202,7 @@ export default function InfoTambahanPage() {
           onClick={() => {
             setEditingId(null);
             const defaultSem = semesterList.find((s: any) => s.isDefault);
-            setFormData({ cabang: userCabang || "", kelas: userKelas || "", semester: defaultSem ? defaultSem.namaPeriode : "" });
+            setFormData({ cabang: userCabang || "", kelas: userKelas || "", semester: defaultSem ? defaultSem.namaPeriode : "", titimangsa: "" });
             setIsModalOpen(true);
           }}
           className="bg-[#581c87] text-white px-4 py-2 rounded-lg hover:bg-[#45156b] transition flex items-center gap-2"
@@ -262,6 +266,7 @@ export default function InfoTambahanPage() {
                 <th className="p-4">Cabang</th>
                 <th className="p-4">Kelas</th>
                 <th className="p-4">Semester</th>
+                <th className="p-4">Titimangsa</th>
                 <th className="p-4 text-center w-48">Aksi</th>
               </tr>
             </thead>
@@ -277,6 +282,7 @@ export default function InfoTambahanPage() {
                     <td className="p-4">{item.cabang}</td>
                     <td className="p-4">{item.kelas}</td>
                     <td className="p-4">{item.semester}</td>
+                    <td className="p-4">{item.titimangsa}</td>
                     <td className="p-4 flex justify-center gap-2">
                       {/* Tombol Tambah Info (Detail) - Placeholder Link */}
                       <Link 
@@ -350,6 +356,16 @@ export default function InfoTambahanPage() {
                   <option value="">Pilih Semester</option>
                   {semesterList.map(s => <option key={s.id} value={s.namaPeriode}>{s.namaPeriode}</option>)}
                 </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Titimangsa (Tanggal Rapor)</label>
+                <input
+                  required
+                  type="date"
+                  className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none"
+                  value={formData.titimangsa}
+                  onChange={(e) => setFormData({ ...formData, titimangsa: e.target.value })}
+                />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium">Batal</button>

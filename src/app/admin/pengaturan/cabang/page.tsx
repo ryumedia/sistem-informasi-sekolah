@@ -10,6 +10,7 @@ interface Cabang {
   nama: string;
   kepalaSekolah: string;
   alamat: string;
+  kota: string;
   status: string;
 }
 
@@ -24,6 +25,7 @@ export default function PengaturanCabangPage() {
     nama: "",
     kepalaSekolah: "",
     alamat: "",
+    kota: "",
     status: "Aktif",
   });
 
@@ -90,6 +92,7 @@ export default function PengaturanCabangPage() {
       nama: item.nama,
       kepalaSekolah: item.kepalaSekolah,
       alamat: item.alamat,
+      kota: item.kota || "",
       status: item.status,
     });
     setIsModalOpen(true);
@@ -97,7 +100,7 @@ export default function PengaturanCabangPage() {
 
   const closeModal = () => {
     setIsModalOpen(false);
-    setFormData({ nama: "", kepalaSekolah: "", alamat: "", status: "Aktif" });
+    setFormData({ nama: "", kepalaSekolah: "", alamat: "", kota: "", status: "Aktif" });
     setEditId(null);
   };
 
@@ -121,6 +124,7 @@ export default function PengaturanCabangPage() {
               <th className="p-4 w-16">No</th>
               <th className="p-4">Nama Cabang</th>
               <th className="p-4">Kepala Sekolah</th>
+              <th className="p-4">Kota</th>
               <th className="p-4">Alamat</th>
               <th className="p-4">Status</th>
               <th className="p-4 w-32">Aksi</th>
@@ -137,6 +141,7 @@ export default function PengaturanCabangPage() {
                   <td className="p-4 text-center">{index + 1}</td>
                   <td className="p-4 font-medium text-gray-900">{item.nama}</td>
                   <td className="p-4">{item.kepalaSekolah}</td>
+                  <td className="p-4">{item.kota}</td>
                   <td className="p-4">{item.alamat}</td>
                   <td className="p-4">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -180,6 +185,11 @@ export default function PengaturanCabangPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Kepala Sekolah</label>
                 <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   placeholder="Nama Kepala Sekolah" value={formData.kepalaSekolah} onChange={(e) => setFormData({...formData, kepalaSekolah: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Kota</label>
+                <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                  placeholder="Contoh: Bandung" value={formData.kota} onChange={(e) => setFormData({...formData, kota: e.target.value})} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Alamat</label>

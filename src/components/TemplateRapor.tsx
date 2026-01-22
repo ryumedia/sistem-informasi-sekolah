@@ -53,6 +53,8 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
   const [kriteriaTrilogi, setKriteriaTrilogi] = useState<Record<number, string>>({});
   const [namaKepalaSekolah, setNamaKepalaSekolah] = useState<string>("-");
   const [namaWaliKelas, setNamaWaliKelas] = useState<string>("-");
+  const [kota, setKota] = useState<string>("-");
+  const [titimangsa, setTitimangsa] = useState<string>("-");
   const [infoTambahan, setInfoTambahan] = useState<InfoTambahan | null>(null);
   const [semesterName, setSemesterName] = useState<string>("-");
   const [loading, setLoading] = useState(true);
@@ -63,6 +65,8 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
       setLoading(true);
       setInfoTambahan(null);
       setSemesterName("-");
+      setKota("-");
+      setTitimangsa("-");
       try {
         // 0. Fetch Kriteria Nilai untuk "Nilai Perkembangan"
         const katQuery = query(collection(db, "kategori_penilaian"), where("nama", "==", "Nilai Perkembangan"));
@@ -199,6 +203,13 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
                 setNamaKepalaSekolah("-");
             }
 
+            // Fetch Kota dari Cabang
+            const cabangQuery = query(collection(db, "cabang"), where("nama", "==", siswa.cabang));
+            const cabangSnap = await getDocs(cabangQuery);
+            if (!cabangSnap.empty) {
+                setKota(cabangSnap.docs[0].data().kota || "-");
+            }
+
             // 2. Wali Kelas (Dari data Kelas)
             const kelasQuery = query(collection(db, "kelas"), where("namaKelas", "==", siswa.kelas), where("cabang", "==", siswa.cabang));
             const kelasSnap = await getDocs(kelasQuery);
@@ -238,7 +249,9 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
                 const infoSnap = await getDocs(infoQuery);
                 
                 if (!infoSnap.empty) {
-                    const infoId = infoSnap.docs[0].id;
+                    const infoDoc = infoSnap.docs[0];
+                    setTitimangsa(infoDoc.data().titimangsa || "-");
+                    const infoId = infoDoc.id;
                     const siswaInfoQuery = query(
                         collection(db, "info_tambahan_siswa"),
                         where("infoTambahanId", "==", infoId),
@@ -283,6 +296,13 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
     });
     return groups;
   }, [nilaiTrilogi]);
+
+  const formatTitimangsa = (dateStr: string) => {
+    if (!dateStr || dateStr === "-") return "-";
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    return new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric" }).format(date);
+  };
 
   if (!siswa) {
     return <div className="text-center p-10">Silakan pilih siswa untuk melihat rapor.</div>;
@@ -521,14 +541,16 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
        {/* TTD */}
        <div className="flex justify-between items-start pt-8 text-center break-inside-avoid text-sm">
             <div>
-                <p className="mb-16">Mengetahui,</p>
-                <p className="font-bold underline">Kepala Sekolah</p>
-                <p className="font-bold">{namaKepalaSekolah}</p>
+                <p className="mb-1"></p>
+                <p className="mb-1">Mengetahui,</p>
+                <p className="mb-16">Kepala Sekolah</p>
+                <p className="font-bold underline">{namaKepalaSekolah}</p>
             </div>
             <div>
+                <p className="mb-1">{kota}, {formatTitimangsa(titimangsa)}</p>
+                <p className="mb-1"></p>
                 <p className="mb-16">Wali Kelas,</p>
                 <p className="font-bold underline">{namaWaliKelas}</p>
-                <p className="font-bold"></p>
             </div>
         </div>
 
