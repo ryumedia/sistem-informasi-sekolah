@@ -82,12 +82,12 @@ export default function AdminLayout({
     { 
       name: "Akademik", 
       href: "#", 
-      roles: ["Admin", "Kepala Sekolah", "Guru"],
+      roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"],
       submenu: [
-        { name: "RPPH", href: "/admin/Akademik/rpph", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur"] },
-        { name: "Tahap Perkembangan", href: "/admin/Akademik/perkembangan", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur"] },
-        { name: "Indikator", href: "/admin/Akademik/indikator", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur"] },
-        { name: "Trilogi Mainriang", href: "/admin/Akademik/trilogi", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur"] },
+        { name: "RPPH", href: "/admin/Akademik/rpph", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Tahap Perkembangan", href: "/admin/Akademik/perkembangan", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Indikator", href: "/admin/Akademik/indikator", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Trilogi Mainriang", href: "/admin/Akademik/trilogi", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
       ]
     },
     { 
@@ -107,12 +107,12 @@ export default function AdminLayout({
     { 
       name: "Informasi", 
       href: "#", 
-      roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur"],
+      roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"],
       submenu: [
-        { name: "Jadwal", href: "/admin/informasi/jadwal", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur"] },
-        { name: "Kegiatan", href: "/admin/informasi/kegiatan", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur"] },
-        { name: "Pengumuman", href: "/admin/informasi/pengumuman", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur"] },
-        { name: "Dokumen", href: "/admin/informasi/dokumen", roles: ["Admin", "Kepala Sekolah", "Direktur"] },
+        { name: "Jadwal", href: "/admin/informasi/jadwal", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Kegiatan", href: "/admin/informasi/kegiatan", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Pengumuman", href: "/admin/informasi/pengumuman", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Dokumen", href: "/admin/informasi/dokumen", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
       ]
     },
     { 

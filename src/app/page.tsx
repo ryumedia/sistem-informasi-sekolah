@@ -942,6 +942,9 @@ function PengajuanModal({ user, userData, onClose }: { user: any; userData: any;
     e.preventDefault();
     setSubmitting(true);
     try {
+      // Cek jika cabang adalah Main Riang Pusat, langsung ke status Menunggu Direktur
+      const initialStatus = formData.cabang === 'Main Riang Pusat' ? 'Menunggu Direktur' : 'Menunggu KS';
+
       await addDoc(collection(db, "pengajuan"), {
         tanggal: formData.tanggal,
         pengaju: formData.pengaju,
@@ -951,7 +954,7 @@ function PengajuanModal({ user, userData, onClose }: { user: any; userData: any;
         hargaSatuan: Number(formData.harga),
         qty: Number(formData.qty),
         total: totalHarga,
-        status: "Menunggu KS", // Default status awal
+        status: initialStatus, // Status dinamis berdasarkan cabang
         userId: user.uid,
         createdAt: new Date(),
       });
