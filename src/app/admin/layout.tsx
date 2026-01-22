@@ -93,15 +93,15 @@ export default function AdminLayout({
     { 
       name: "Penilaian", 
       href: "#", 
-      roles: ["Admin", "Kepala Sekolah", "Guru"],
+      roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"],
       submenu: [
-        { name: "Kategori Penilaian", href: "/admin/penilaian/kategori-penilaian", roles: ["Admin", "Kepala Sekolah", "Guru"] },
-        { name: "Kriteria Nilai", href: "/admin/penilaian/kriteria-nilai", roles: ["Admin", "Kepala Sekolah", "Guru"] },
-        { name: "Nilai Perkembangan", href: "/admin/penilaian/nilai-perkembangan", roles: ["Admin", "Kepala Sekolah", "Guru"] },
-        { name: "Nilai Indikator", href: "/admin/penilaian/nilai-indikator", roles: ["Admin", "Kepala Sekolah", "Guru"] },
-        { name: "Nilai Trilogi", href: "/admin/penilaian/nilai-trilogi", roles: ["Admin", "Kepala Sekolah", "Guru"] },
-        { name: "Info Tambahan", href: "/admin/penilaian/info-tambahan", roles: ["Admin", "Kepala Sekolah", "Guru"] },
-        { name: "Rapor", href: "/admin/penilaian/rapor", roles: ["Admin", "Kepala Sekolah", "Guru"] },
+        { name: "Kategori Penilaian", href: "/admin/penilaian/kategori-penilaian", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Kriteria Nilai", href: "/admin/penilaian/kriteria-nilai", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Nilai Perkembangan", href: "/admin/penilaian/nilai-perkembangan", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Nilai Indikator", href: "/admin/penilaian/nilai-indikator", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Nilai Trilogi", href: "/admin/penilaian/nilai-trilogi", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Info Tambahan", href: "/admin/penilaian/info-tambahan", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Rapor", href: "/admin/penilaian/rapor", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
       ]
     },
     { 
@@ -129,12 +129,12 @@ export default function AdminLayout({
     { 
       name: "Pengaturan", 
       href: "#",
-      roles: ["Admin"],
+      roles: ["Admin", "Yayasan"],
       submenu: [
-        { name: "Pengaturan Keuangan", href: "/admin/pengaturan/keuangan", roles: ["Admin"] },
-        { name: "Pengaturan Cabang", href: "/admin/pengaturan/cabang", roles: ["Admin"] },
-        { name: "Pengaturan Kelas", href: "/admin/pengaturan/kelas", roles: ["Admin"] },
-        { name: "Pengaturan Semester", href: "/admin/pengaturan/performance", roles: ["Admin"] }
+        { name: "Pengaturan Keuangan", href: "/admin/pengaturan/keuangan", roles: ["Admin", "Yayasan"] },
+        { name: "Pengaturan Cabang", href: "/admin/pengaturan/cabang", roles: ["Admin", "Yayasan"] },
+        { name: "Pengaturan Kelas", href: "/admin/pengaturan/kelas", roles: ["Admin", "Yayasan"] },
+        { name: "Pengaturan Semester", href: "/admin/pengaturan/performance", roles: ["Admin", "Yayasan"] }
       ]
     },
   ];
