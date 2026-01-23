@@ -172,6 +172,21 @@ export default function DataGuruPage() {
   const handleDelete = async (id: string) => {
     if (confirm("Apakah Anda yakin ingin menghapus data ini?")) {
       try {
+        // 1. Cari data guru untuk mendapatkan UID
+        const guruToDelete = guruList.find(g => g.id === id);
+        
+        // 2. Hapus user di Auth (Kirim UID atau Email untuk legacy data)
+        if (guruToDelete) {
+            await fetch('/api/admin/delete-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    uid: guruToDelete.uid,
+                    email: guruToDelete.email // Kirim email juga sebagai fallback
+                })
+            });
+        }
+
         await deleteDoc(doc(db, "guru", id));
         alert("Data berhasil dihapus.");
         fetchGuru();

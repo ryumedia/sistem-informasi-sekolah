@@ -26,6 +26,7 @@ interface Siswa {
   status: string;
   foto?: string;
   jenjangUsia?: string;
+  uid?: string; // Tambahkan field UID
 }
 
 export default function DataSiswaPage() {
@@ -162,7 +163,23 @@ export default function DataSiswaPage() {
     setSubmitting(true);
     try {
       if (editId) {
-        // Update data siswa (tanpa ubah password/auth)
+        // Mode Edit: Update data yang ada
+        
+        // 1. Cek apakah email berubah, jika ya update di Auth via API
+        const currentSiswa = siswaList.find(s => s.id === editId);
+        if (currentSiswa && currentSiswa.uid && currentSiswa.email !== formData.email) {
+           const res = await fetch('/api/admin/update-user', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ uid: currentSiswa.uid, email: formData.email })
+           });
+           
+           if (!res.ok) {
+             const errData = await res.json();
+             throw new Error(errData.error || "Gagal update email di Auth System");
+           }
+        }
+
         await updateDoc(doc(db, "siswa", editId), {
           nama: formData.nama,
           jenisKelamin: formData.jenisKelamin,
@@ -227,6 +244,18 @@ export default function DataSiswaPage() {
   const handleDelete = async (id: string) => {
     if (confirm("Yakin ingin menghapus data siswa ini?")) {
       try {
+        // 1. Cari data siswa untuk mendapatkan UID/Email
+        const siswaToDelete = siswaList.find(s => s.id === id);
+        
+        // 2. Hapus user di Auth via API
+        if (siswaToDelete) {
+            await fetch('/api/admin/delete-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: siswaToDelete.uid, email: siswaToDelete.email })
+            });
+        }
+
         await deleteDoc(doc(db, "siswa", id));
         alert("Data siswa berhasil dihapus.");
         fetchSiswa();
