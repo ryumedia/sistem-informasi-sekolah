@@ -12,6 +12,7 @@ interface Kelas {
   jenjangKelas: string;
   cabang: string;
   guruKelas: string[]; // Array of teacher names
+  asistenGuru?: string[];
 }
 
 interface Guru {
@@ -28,6 +29,7 @@ interface JenjangKelas {
 export default function PengaturanKelasPage() {
   const [kelasList, setKelasList] = useState<Kelas[]>([]);
   const [guruList, setGuruList] = useState<Guru[]>([]);
+  const [asistenList, setAsistenList] = useState<Guru[]>([]);
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [jenjangKelasList, setJenjangKelasList] = useState<JenjangKelas[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,11 +43,13 @@ export default function PengaturanKelasPage() {
     jenjangKelas: string;
     cabang: string;
     guruKelas: string[];
+    asistenGuru: string[];
   }>({
     namaKelas: "",
     jenjangKelas: "",
     cabang: "",
     guruKelas: [],
+    asistenGuru: [],
   });
 
   // Fetch all necessary data
@@ -62,7 +66,7 @@ export default function PengaturanKelasPage() {
       setKelasList(kelasData);
 
       // Fetch Guru
-      const guruQuery = query(collection(db, "guru"), where("role", "==", "Guru"), orderBy("nama", "asc"));
+      const guruQuery = query(collection(db, "guru"), where("role", "in", ["Guru", "Caregiver"]), orderBy("nama", "asc"));
       const guruSnapshot = await getDocs(guruQuery);
       const guruData = guruSnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -70,6 +74,16 @@ export default function PengaturanKelasPage() {
         cabang: doc.data().cabang,
       })) as Guru[];
       setGuruList(guruData);
+
+      // Fetch Asisten Guru
+      const asistenQuery = query(collection(db, "guru"), where("role", "==", "Asisten Guru"), orderBy("nama", "asc"));
+      const asistenSnapshot = await getDocs(asistenQuery);
+      const asistenData = asistenSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        nama: doc.data().nama,
+        cabang: doc.data().cabang,
+      })) as Guru[];
+      setAsistenList(asistenData);
 
       // Fetch Cabang
       const cabangQuery = query(collection(db, "cabang"), orderBy("nama", "asc"));
@@ -147,6 +161,7 @@ export default function PengaturanKelasPage() {
       jenjangKelas: kelas.jenjangKelas || "",
       cabang: kelas.cabang,
       guruKelas: kelas.guruKelas || [], // Ensure it's an array
+      asistenGuru: kelas.asistenGuru || [],
     });
     setIsModalOpen(true);
   };
@@ -154,13 +169,19 @@ export default function PengaturanKelasPage() {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditId(null);
-    setFormData({ namaKelas: "", jenjangKelas: "", cabang: "", guruKelas: [] });
+    setFormData({ namaKelas: "", jenjangKelas: "", cabang: "", guruKelas: [], asistenGuru: [] });
   };
 
   // Handle multi-select change for teachers
   const handleGuruSelection = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
     setFormData({ ...formData, guruKelas: selectedOptions });
+  };
+
+  // Handle multi-select change for assistants
+  const handleAsistenSelection = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
+    setFormData({ ...formData, asistenGuru: selectedOptions });
   };
 
   return (
@@ -181,24 +202,25 @@ export default function PengaturanKelasPage() {
           <table className="w-full text-left text-sm text-gray-600 min-w-[600px]">
           <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
             <tr>
-              <th className="p-4 w-16">No</th>
+              <th className="p-4 w-12">No</th>
               <th className="p-4">Nama Kelas</th>
               <th className="p-4">Jenjang Kelas</th>
               <th className="p-4">Cabang</th>
               <th className="p-4">Guru Kelas</th>
+              <th className="p-4">Asisten Guru</th>
               <th className="p-4">Aksi</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={6} className="p-8 text-center">
+              <tr><td colSpan={7} className="p-8 text-center">
                 <div className="flex justify-center items-center gap-2">
                     <Loader2 className="w-5 h-5 animate-spin text-[#581c87]" />
                     <span>Memuat data...</span>
                 </div>
               </td></tr>
             ) : kelasList.length === 0 ? (
-              <tr><td colSpan={6} className="p-8 text-center text-gray-500">Belum ada data kelas.</td></tr>
+              <tr><td colSpan={7} className="p-8 text-center text-gray-500">Belum ada data kelas.</td></tr>
             ) : (
               kelasList.map((kelas, index) => (
                 <tr key={kelas.id} className="hover:bg-gray-50">
@@ -207,6 +229,7 @@ export default function PengaturanKelasPage() {
                   <td className="p-4">{kelas.jenjangKelas}</td>
                   <td className="p-4">{kelas.cabang}</td>
                   <td className="p-4">{kelas.guruKelas.join(", ")}</td>
+                  <td className="p-4">{kelas.asistenGuru?.join(", ") || "-"}</td>
                   <td className="p-4 flex gap-2">
                     <button onClick={() => handleEdit(kelas)} className="p-2 text-[#581c87] hover:bg-[#581c87]/10 rounded-lg transition" title="Edit">
                       <Pencil className="w-4 h-4" />
@@ -275,6 +298,23 @@ export default function PengaturanKelasPage() {
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">Tahan Ctrl (atau Cmd di Mac) untuk memilih beberapa guru.</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Asisten Guru (Opsional)</label>
+                <select 
+                  multiple 
+                  className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none h-24 text-gray-900"
+                  value={formData.asistenGuru} 
+                  onChange={handleAsistenSelection}
+                >
+                  {asistenList
+                    .filter((guru) => !formData.cabang || guru.cabang === formData.cabang)
+                    .map((guru) => (
+                    <option key={guru.id} value={guru.nama}>{guru.nama}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Tahan Ctrl (atau Cmd di Mac) untuk memilih beberapa asisten.</p>
               </div>
 
               <div className="pt-2 flex justify-end gap-3">

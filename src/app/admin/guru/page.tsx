@@ -325,6 +325,8 @@ export default function DataGuruPage() {
                     <option value="Kepala Sekolah">Kepala Sekolah</option>
                     <option value="Direktur">Direktur</option>
                     <option value="Yayasan">Yayasan</option>
+                    <option value="Caregiver">Caregiver</option>
+                    <option value="Asisten Guru">Asisten Guru</option>
                   </select>
                 </div>
                 <div>

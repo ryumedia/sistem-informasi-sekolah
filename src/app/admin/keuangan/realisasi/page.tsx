@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, query, orderBy, where, doc, updateDoc, addDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
-import { FileText, Filter, X, Save, Eye } from "lucide-react";
+import { FileText, Filter, X, Save, Eye, Wallet, TrendingUp, TrendingDown } from "lucide-react";
 
 interface Pengajuan {
   id: string;
@@ -113,6 +113,10 @@ export default function RealisasiPage() {
     return filterTahun === year && filterBulan === month && (filterCabang ? item.cabang === filterCabang : true);
   });
 
+  const totalAnggaran = filteredData.reduce((acc, curr) => acc + (curr.total || 0), 0);
+  const totalRealisasi = filteredData.reduce((acc, curr) => acc + (curr.realisasi || 0), 0);
+  const totalSelisih = totalAnggaran - totalRealisasi;
+
   const handleOpenModal = (item: Pengajuan) => {
     setSelectedItem(item);
     setRealisasiInput(item.realisasi || 0);
@@ -210,6 +214,42 @@ export default function RealisasiPage() {
           <button className="bg-gray-100 p-2 rounded-lg text-gray-600 hover:bg-gray-200">
             <Filter className="w-4 h-4" />
           </button>
+        </div>
+      </div>
+
+      {/* Cards Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Card Total Anggaran */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="p-3 rounded-full bg-blue-50 text-blue-600">
+            <Wallet className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Total Anggaran</p>
+            <h3 className="text-xl font-bold text-gray-800">Rp {totalAnggaran.toLocaleString("id-ID")}</h3>
+          </div>
+        </div>
+
+        {/* Card Total Realisasi */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="p-3 rounded-full bg-green-50 text-green-600">
+            <TrendingUp className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Total Realisasi</p>
+            <h3 className="text-xl font-bold text-green-600">Rp {totalRealisasi.toLocaleString("id-ID")}</h3>
+          </div>
+        </div>
+
+        {/* Card Total Selisih */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="p-3 rounded-full bg-orange-50 text-orange-600">
+            <TrendingDown className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Total Selisih (Sisa)</p>
+            <h3 className={`text-xl font-bold ${totalSelisih < 0 ? "text-red-600" : "text-orange-600"}`}>Rp {totalSelisih.toLocaleString("id-ID")}</h3>
+          </div>
         </div>
       </div>
 

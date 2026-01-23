@@ -613,29 +613,30 @@ function JadwalView({ user, userData, onBack }: { user: any, userData: any, onBa
            q = query(collection(db, "jadwal"));
         } else if (role === "Kepala Sekolah") {
            q = query(collection(db, "jadwal"), where("cabang", "==", cabang));
-        } else if (role === "Guru") {
-           // Guru melihat jadwal sesuai cabang dan kelas (jika ada data kelas di profil)
+        } else if (role === "Guru" || role === "Asisten Guru") {
+           // Guru & Asisten Guru melihat jadwal sesuai cabang dan kelas
            let targetKelas = kelas;
            
-           // Jika data kelas tidak ada di profil guru, cari di koleksi kelas
+           // Jika data kelas tidak ada di profil, cari di koleksi kelas
            if (!targetKelas) {
               const qKelas = query(collection(db, "kelas"), where("cabang", "==", cabang));
               const snapKelas = await getDocs(qKelas);
               const foundClass = snapKelas.docs.find(doc => {
                   const d = doc.data();
-                  const g = d.guruKelas; 
-                  if (Array.isArray(g)) {
-                      return g.some((item: any) => (typeof item === 'string' ? item === userData.nama : item.nama === userData.nama));
+                  if (role === "Guru" && Array.isArray(d.guruKelas)) {
+                    return d.guruKelas.includes(userData.nama);
+                  }
+                  if (role === "Asisten Guru" && Array.isArray(d.asistenGuru)) {
+                    return d.asistenGuru.includes(userData.nama);
                   }
                   return false;
               });
               if (foundClass) targetKelas = foundClass.data().namaKelas;
            }
-
            if (targetKelas) {
              q = query(collection(db, "jadwal"), where("cabang", "==", cabang), where("kelas", "==", targetKelas));
            } else {
-             // Fallback jika Guru tidak memiliki data kelas spesifik, tampilkan semua di cabang tersebut
+             // Fallback jika tidak memiliki data kelas spesifik, tampilkan semua jadwal di cabang tersebut
              q = query(collection(db, "jadwal"), where("cabang", "==", cabang));
            }
         } else {
