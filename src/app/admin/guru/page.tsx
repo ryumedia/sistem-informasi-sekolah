@@ -14,6 +14,7 @@ interface Guru {
   role: string;
   status: string;
   cabang?: string;
+  uid?: string; // Tambahkan field UID
 }
 
 export default function DataGuruPage() {
@@ -101,6 +102,28 @@ export default function DataGuruPage() {
     try {
       if (editId) {
         // Mode Edit: Update data yang ada
+        
+        // 1. Cek apakah email berubah, jika ya update di Auth via API
+        const currentGuru = guruList.find(g => g.id === editId);
+        if (currentGuru && currentGuru.uid && currentGuru.email !== formData.email) {
+           const res = await fetch('/api/admin/update-user', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ uid: currentGuru.uid, email: formData.email })
+           });
+           
+           if (!res.ok) {
+             let errMsg = "Gagal update email di Auth System";
+             try {
+                const errData = await res.json();
+                if (errData.error) errMsg = errData.error;
+             } catch (e) {
+                errMsg = `Gagal menghubungi server (Status: ${res.status})`;
+             }
+             throw new Error(errMsg);
+           }
+        }
+
         const docRef = doc(db, "guru", editId);
         await updateDoc(docRef, {
           nama: formData.nama,
@@ -138,9 +161,9 @@ export default function DataGuruPage() {
       
       closeModal();
       fetchGuru(); // Refresh data tabel
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving document: ", error);
-      alert("Gagal menyimpan data. Pastikan email belum terdaftar dan password minimal 6 karakter.");
+      alert(error.message || "Gagal menyimpan data.");
     } finally {
       setSubmitting(false);
     }
