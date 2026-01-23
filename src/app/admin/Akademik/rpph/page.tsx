@@ -41,7 +41,7 @@ interface RPPH {
   subTema: string;
   materi: string;
   deskripsi: string;
-  kelas: string;
+  jenjangKelas: string;
   kelompokUsia: string;
   tahapPerkembangan: string[]; // Array of IDs or Strings
   indikator: string[];
@@ -61,7 +61,7 @@ export default function RPPHPage() {
   const [loading, setLoading] = useState(true);
 
   // --- State Data Master (untuk Dropdown) ---
-  const [kelasList, setKelasList] = useState<DataMaster[]>([]);
+  const [jenjangList, setJenjangList] = useState<DataMaster[]>([]);
   const [usiaList, setUsiaList] = useState<DataMaster[]>([]);
   const [tahapList, setTahapList] = useState<DataMaster[]>([]); // Filtered by Usia
   const [indikatorList, setIndikatorList] = useState<DataMaster[]>([]);
@@ -77,7 +77,7 @@ export default function RPPHPage() {
 
   const [filterTahun, setFilterTahun] = useState<string>(currentYear.toString());
   const [filterBulan, setFilterBulan] = useState<string>("");
-  const [filterKelas, setFilterKelas] = useState<string>("");
+  const [filterJenjang, setFilterJenjang] = useState<string>("");
 
   // --- State Modal & Form ---
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -92,7 +92,7 @@ export default function RPPHPage() {
     subTema: "",
     materi: "",
     deskripsi: "",
-    kelas: "",
+    jenjangKelas: "",
     kelompokUsiaId: "", // ID untuk filter
     kelompokUsia: "", // Nama untuk display
     tahapPerkembangan: [] as string[],
@@ -123,9 +123,9 @@ export default function RPPHPage() {
 
   const fetchDataMaster = async () => {
     try {
-      // Kelas
-      const kelasSnap = await getDocs(query(collection(db, "kelas"), orderBy("namaKelas", "asc")));
-      setKelasList(kelasSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      // Jenjang Kelas
+      const jenjangSnap = await getDocs(query(collection(db, "jenjang_kelas"), orderBy("nama", "asc")));
+      setJenjangList(jenjangSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
 
       // Kelompok Usia
       const usiaSnap = await getDocs(query(collection(db, "kelompok_usia"), orderBy("usia", "asc")));
@@ -144,7 +144,7 @@ export default function RPPHPage() {
       const trilogiSnap = await getDocs(collection(db, "sub_trilogi"));
       const trilogiData = trilogiSnap.docs.map((d) => ({ id: d.id, ...d.data() } as DataMaster));
       trilogiData.sort((a, b) => 
-        (a.kode || "").localeCompare(b.kode || "", undefined, { numeric: true })
+        (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true })
       );
       setTrilogiList(trilogiData);
     } catch (error) {
@@ -205,7 +205,7 @@ export default function RPPHPage() {
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
           <tr><td style="width: 150px; font-weight: bold;">Hari/Tanggal</td><td>: ${new Date(data.tanggal).toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</td></tr>
           <tr><td style="font-weight: bold;">Kelompok Usia</td><td>: ${data.kelompokUsia}</td></tr>
-          <tr><td style="font-weight: bold;">Tema / Sub Tema</td><td>: ${data.tema} / ${data.subTema}</td></tr>
+          <tr><td style="font-weight: bold;">Tema / Sub Tema</td><td>: ${data.tema} / ${data.subTema} (${data.jenjangKelas})</td></tr>
           <tr><td style="font-weight: bold;">Materi</td><td>: ${data.materi}</td></tr>
         </table>
 
@@ -326,7 +326,7 @@ export default function RPPHPage() {
       subTema: item.subTema,
       materi: item.materi,
       deskripsi: item.deskripsi,
-      kelas: item.kelas,
+      jenjangKelas: item.jenjangKelas,
       kelompokUsia: item.kelompokUsia,
       kelompokUsiaId: selectedUsia ? selectedUsia.id : "",
       tahapPerkembangan: item.tahapPerkembangan,
@@ -372,9 +372,9 @@ export default function RPPHPage() {
 
     const matchTahun = filterTahun ? year === filterTahun : true;
     const matchBulan = filterBulan ? month === filterBulan : true;
-    const matchKelas = filterKelas ? item.kelas === filterKelas : true;
+    const matchJenjang = filterJenjang ? item.jenjangKelas === filterJenjang : true;
 
-    return matchTahun && matchBulan && matchKelas;
+    return matchTahun && matchBulan && matchJenjang;
   });
 
   return (
@@ -427,12 +427,12 @@ export default function RPPHPage() {
 
         <select
           className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
-          value={filterKelas}
-          onChange={(e) => setFilterKelas(e.target.value)}
+          value={filterJenjang}
+          onChange={(e) => setFilterJenjang(e.target.value)}
         >
-          <option value="">Semua Kelas</option>
-          {kelasList.map((k) => (
-            <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>
+          <option value="">Semua Jenjang</option>
+          {jenjangList.map((j) => (
+            <option key={j.id} value={j.nama}>{j.nama}</option>
           ))}
         </select>
       </div>
@@ -446,7 +446,7 @@ export default function RPPHPage() {
                 <th className="p-4 w-12">No</th>
                 <th className="p-4">Tanggal</th>
                 <th className="p-4">Tema / Sub Tema</th>
-                <th className="p-4">Kelas</th>
+                <th className="p-4">Jenjang Kelas</th>
                 <th className="p-4 text-center">Aksi</th>
               </tr>
             </thead>
@@ -478,7 +478,7 @@ export default function RPPHPage() {
                       <div className="font-medium text-gray-900">{item.tema}</div>
                       <div className="text-xs text-gray-500">{item.subTema}</div>
                     </td>
-                    <td className="p-4">{item.kelas}</td>
+                    <td className="p-4">{item.jenjangKelas}</td>
                     <td className="p-4 flex justify-center gap-2">
                       <button
                         onClick={() => handlePrint(item.content)}
@@ -538,16 +538,16 @@ export default function RPPHPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Kelas</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Jenjang Kelas</label>
                   <select
                     required
                     className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
-                    value={formData.kelas}
-                    onChange={(e) => setFormData({ ...formData, kelas: e.target.value })}
+                    value={formData.jenjangKelas}
+                    onChange={(e) => setFormData({ ...formData, jenjangKelas: e.target.value })}
                   >
-                    <option value="">Pilih Kelas</option>
-                    {kelasList.map((k) => (
-                      <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>
+                    <option value="">Pilih Jenjang</option>
+                    {jenjangList.map((j) => (
+                      <option key={j.id} value={j.nama}>{j.nama}</option>
                     ))}
                   </select>
                 </div>
@@ -669,16 +669,25 @@ export default function RPPHPage() {
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-gray-800">Trilogi Mainriang</label>
                   <div className="h-40 overflow-y-auto border rounded-lg p-2 bg-gray-50 text-sm">
-                    {trilogiList.map((item) => (
-                      <div key={item.id} className="flex items-start gap-2 mb-2 cursor-pointer" onClick={() => handleMultiSelect("trilogi", item.deskripsi)}>
-                        {formData.trilogi.includes(item.deskripsi) ? (
-                          <CheckSquare className="w-4 h-4 text-[#581c87] mt-0.5 shrink-0" />
-                        ) : (
-                          <Square className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" />
-                        )}
-                        <span className="text-xs text-gray-700">{item.kode} - {item.deskripsi}</span>
-                      </div>
-                    ))}
+                    {!formData.jenjangKelas ? (
+                      <p className="text-xs text-gray-400 italic p-2">Pilih Jenjang Kelas terlebih dahulu.</p>
+                    ) : (
+                      trilogiList
+                        .filter((item) => item.jenjangKelas === formData.jenjangKelas)
+                        .map((item) => {
+                          const valueToStore = `${item.habit} - ${item.deskripsi}`;
+                          return (
+                            <div key={item.id} className="flex items-start gap-2 mb-2 cursor-pointer" onClick={() => handleMultiSelect("trilogi", valueToStore)}>
+                              {formData.trilogi.includes(valueToStore) ? (
+                                <CheckSquare className="w-4 h-4 text-[#581c87] mt-0.5 shrink-0" />
+                              ) : (
+                                <Square className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" />
+                              )}
+                              <span className="text-xs text-gray-700">{valueToStore}</span>
+                            </div>
+                          );
+                        })
+                    )}
                   </div>
                 </div>
               </div>

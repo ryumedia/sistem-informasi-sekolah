@@ -23,7 +23,8 @@ interface TrilogiGroup {
 interface SubTrilogi {
   id: string;
   groupId: string;
-  kode: string;
+  jenjangKelas: string;
+  habit: string;
   deskripsi: string;
 }
 
@@ -35,13 +36,15 @@ export default function TrilogiMainriangPage() {
   const [groupFormData, setGroupFormData] = useState({ nama: "" });
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [isSubmittingGroup, setIsSubmittingGroup] = useState(false);
+  const [jenjangList, setJenjangList] = useState<any[]>([]);
+  const [habitList, setHabitList] = useState<any[]>([]);
 
   // State untuk Child (Sub Trilogi)
   const [selectedGroup, setSelectedGroup] = useState<TrilogiGroup | null>(null);
   const [subTrilogiList, setSubTrilogiList] = useState<SubTrilogi[]>([]);
   const [loadingSubs, setLoadingSubs] = useState(false);
   const [isSubModalOpen, setIsSubModalOpen] = useState(false);
-  const [subFormData, setSubFormData] = useState({ kode: "", deskripsi: "" });
+  const [subFormData, setSubFormData] = useState({ jenjangKelas: "", habit: "", deskripsi: "" });
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [isSubmittingSub, setIsSubmittingSub] = useState(false);
 
@@ -66,7 +69,24 @@ export default function TrilogiMainriangPage() {
 
   useEffect(() => {
     fetchGroups();
+    fetchMasterData();
   }, []);
+
+  const fetchMasterData = async () => {
+    try {
+      // Fetch Jenjang Kelas
+      const qJenjang = query(collection(db, "jenjang_kelas"), orderBy("nama", "asc"));
+      const snapJenjang = await getDocs(qJenjang);
+      setJenjangList(snapJenjang.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // Fetch 7 Habits
+      const qHabits = query(collection(db, "seven_habits"), orderBy("nama", "asc"));
+      const snapHabits = await getDocs(qHabits);
+      setHabitList(snapHabits.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (error) {
+      console.error("Error fetching master data:", error);
+    }
+  };
 
   const handleSaveGroup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,7 +142,7 @@ export default function TrilogiMainriangPage() {
   const openSubModal = async (group: TrilogiGroup) => {
     setSelectedGroup(group);
     setIsSubModalOpen(true);
-    setSubFormData({ kode: "", deskripsi: "" });
+    setSubFormData({ jenjangKelas: "", habit: "", deskripsi: "" });
     setEditingSubId(null);
     await fetchSubTrilogi(group.id);
   };
@@ -139,8 +159,8 @@ export default function TrilogiMainriangPage() {
       querySnapshot.forEach((doc) => {
         items.push({ id: doc.id, ...doc.data() } as SubTrilogi);
       });
-      // Sort manual by kode
-      items.sort((a, b) => a.kode.localeCompare(b.kode));
+      // Sort manual by jenjangKelas
+      items.sort((a, b) => (a.jenjangKelas || "").localeCompare(b.jenjangKelas || ""));
       setSubTrilogiList(items);
     } catch (error) {
       console.error("Error fetching sub trilogi:", error);
@@ -168,7 +188,7 @@ export default function TrilogiMainriangPage() {
         });
         alert("Sub Trilogi berhasil ditambahkan!");
       }
-      setSubFormData({ kode: "", deskripsi: "" });
+      setSubFormData({ jenjangKelas: "", habit: "", deskripsi: "" });
       setEditingSubId(null);
       fetchSubTrilogi(selectedGroup.id);
     } catch (error) {
@@ -181,7 +201,7 @@ export default function TrilogiMainriangPage() {
 
   const handleEditSub = (item: SubTrilogi) => {
     setEditingSubId(item.id);
-    setSubFormData({ kode: item.kode, deskripsi: item.deskripsi });
+    setSubFormData({ jenjangKelas: item.jenjangKelas, habit: item.habit, deskripsi: item.deskripsi });
   };
 
   const handleDeleteSub = async (id: string) => {
@@ -331,23 +351,44 @@ export default function TrilogiMainriangPage() {
                   {editingSubId ? "Edit Sub Trilogi" : "Tambah Sub Trilogi Baru"}
                 </h4>
                 <form onSubmit={handleSaveSub} className="space-y-3">
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Kode
+                        Jenjang Kelas
                       </label>
-                      <input
+                      <select
                         required
-                        type="text"
-                        className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                        placeholder="Contoh: 1.1"
-                        value={subFormData.kode}
+                        className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                        value={subFormData.jenjangKelas}
                         onChange={(e) =>
-                          setSubFormData({ ...subFormData, kode: e.target.value })
+                          setSubFormData({ ...subFormData, jenjangKelas: e.target.value })
                         }
-                      />
+                      >
+                        <option value="">Pilih Jenjang</option>
+                        {jenjangList.map((j) => (
+                          <option key={j.id} value={j.nama}>{j.nama}</option>
+                        ))}
+                      </select>
                     </div>
-                    <div className="md:col-span-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Habit
+                      </label>
+                      <select
+                        required
+                        className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                        value={subFormData.habit}
+                        onChange={(e) =>
+                          setSubFormData({ ...subFormData, habit: e.target.value })
+                        }
+                      >
+                        <option value="">Pilih Habit</option>
+                        {habitList.map((h) => (
+                          <option key={h.id} value={h.nama}>{h.nama}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
                         Deskripsi
                       </label>
@@ -369,7 +410,7 @@ export default function TrilogiMainriangPage() {
                         type="button"
                         onClick={() => {
                           setEditingSubId(null);
-                          setSubFormData({ kode: "", deskripsi: "" });
+                          setSubFormData({ jenjangKelas: "", habit: "", deskripsi: "" });
                         }}
                         className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
                       >
@@ -393,7 +434,8 @@ export default function TrilogiMainriangPage() {
                   <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
                     <tr>
                       <th className="p-3 w-12 text-center">No</th>
-                      <th className="p-3 w-24">Kode</th>
+                      <th className="p-3 w-32">Jenjang</th>
+                      <th className="p-3 w-48">Habit</th>
                       <th className="p-3">Deskripsi</th>
                       <th className="p-3 w-24 text-center">Aksi</th>
                     </tr>
@@ -412,15 +454,20 @@ export default function TrilogiMainriangPage() {
                         </td>
                       </tr>
                     ) : (
-                      subTrilogiList.map((item, index) => (
-                        <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="p-3 text-center">{index + 1}</td>
-                          <td className="p-3 font-medium">{item.kode}</td>
-                          <td className="p-3">{item.deskripsi}</td>
-                          <td className="p-3 flex justify-center gap-2">
-                            <button
-                              onClick={() => handleEditSub(item)}
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
+                      subTrilogiList.map((item, index) => {
+                        const habitDetail = habitList.find((h) => h.nama === item.habit);
+                        return (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="p-3 text-center">{index + 1}</td>
+                            <td className="p-3 font-medium">{item.jenjangKelas}</td>
+                            <td className="p-3 text-gray-600 text-xs">
+                              {item.habit} {habitDetail?.deskripsi ? `(${habitDetail.deskripsi})` : ""}
+                            </td>
+                            <td className="p-3">{item.deskripsi}</td>
+                            <td className="p-3 flex justify-center gap-2">
+                              <button
+                                onClick={() => handleEditSub(item)}
+                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
                               title="Edit"
                             >
                               <Pencil className="w-3.5 h-3.5" />
@@ -433,8 +480,9 @@ export default function TrilogiMainriangPage() {
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </td>
-                        </tr>
-                      ))
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

@@ -3,12 +3,13 @@
 
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from "firebase/firestore";
-import { Plus, X, Pencil, Trash2 } from "lucide-react";
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where, serverTimestamp } from "firebase/firestore";
+import { Plus, X, Pencil, Trash2, Loader2, Save } from "lucide-react";
 
 interface Kelas {
   id: string;
   namaKelas: string;
+  jenjangKelas: string;
   cabang: string;
   guruKelas: string[]; // Array of teacher names
 }
@@ -19,10 +20,16 @@ interface Guru {
     cabang: string;
 }
 
+interface JenjangKelas {
+    id: string;
+    nama: string;
+}
+
 export default function PengaturanKelasPage() {
   const [kelasList, setKelasList] = useState<Kelas[]>([]);
   const [guruList, setGuruList] = useState<Guru[]>([]);
   const [cabangList, setCabangList] = useState<any[]>([]);
+  const [jenjangKelasList, setJenjangKelasList] = useState<JenjangKelas[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -31,10 +38,12 @@ export default function PengaturanKelasPage() {
   // State Form
   const [formData, setFormData] = useState<{
     namaKelas: string;
+    jenjangKelas: string;
     cabang: string;
     guruKelas: string[];
   }>({
     namaKelas: "",
+    jenjangKelas: "",
     cabang: "",
     guruKelas: [],
   });
@@ -68,6 +77,12 @@ export default function PengaturanKelasPage() {
       const cabangData = cabangSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setCabangList(cabangData);
 
+      // Fetch Jenjang Kelas
+      const jenjangKelasQuery = query(collection(db, "jenjang_kelas"), orderBy("nama", "asc"));
+      const jenjangKelasSnapshot = await getDocs(jenjangKelasQuery);
+      const jenjangKelasData = jenjangKelasSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as JenjangKelas[];
+      setJenjangKelasList(jenjangKelasData);
+
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
@@ -89,12 +104,15 @@ export default function PengaturanKelasPage() {
     setSubmitting(true);
     try {
       if (editId) {
-        await updateDoc(doc(db, "kelas", editId), formData);
+        await updateDoc(doc(db, "kelas", editId), {
+            ...formData,
+            updatedAt: serverTimestamp()
+        });
         alert("Data kelas berhasil diperbarui!");
       } else {
         await addDoc(collection(db, "kelas"), {
           ...formData,
-          createdAt: new Date(),
+          createdAt: serverTimestamp(),
         });
         alert("Kelas baru berhasil ditambahkan!");
       }
@@ -126,6 +144,7 @@ export default function PengaturanKelasPage() {
     setEditId(kelas.id);
     setFormData({
       namaKelas: kelas.namaKelas,
+      jenjangKelas: kelas.jenjangKelas || "",
       cabang: kelas.cabang,
       guruKelas: kelas.guruKelas || [], // Ensure it's an array
     });
@@ -135,7 +154,7 @@ export default function PengaturanKelasPage() {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditId(null);
-    setFormData({ namaKelas: "", cabang: "", guruKelas: [] });
+    setFormData({ namaKelas: "", jenjangKelas: "", cabang: "", guruKelas: [] });
   };
 
   // Handle multi-select change for teachers
@@ -164,6 +183,7 @@ export default function PengaturanKelasPage() {
             <tr>
               <th className="p-4 w-16">No</th>
               <th className="p-4">Nama Kelas</th>
+              <th className="p-4">Jenjang Kelas</th>
               <th className="p-4">Cabang</th>
               <th className="p-4">Guru Kelas</th>
               <th className="p-4">Aksi</th>
@@ -171,14 +191,20 @@ export default function PengaturanKelasPage() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={5} className="p-8 text-center">Memuat data...</td></tr>
+              <tr><td colSpan={6} className="p-8 text-center">
+                <div className="flex justify-center items-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin text-[#581c87]" />
+                    <span>Memuat data...</span>
+                </div>
+              </td></tr>
             ) : kelasList.length === 0 ? (
-              <tr><td colSpan={5} className="p-8 text-center">Belum ada data kelas.</td></tr>
+              <tr><td colSpan={6} className="p-8 text-center text-gray-500">Belum ada data kelas.</td></tr>
             ) : (
               kelasList.map((kelas, index) => (
                 <tr key={kelas.id} className="hover:bg-gray-50">
                   <td className="p-4 text-center">{index + 1}</td>
                   <td className="p-4 font-medium text-gray-900">{kelas.namaKelas}</td>
+                  <td className="p-4">{kelas.jenjangKelas}</td>
                   <td className="p-4">{kelas.cabang}</td>
                   <td className="p-4">{kelas.guruKelas.join(", ")}</td>
                   <td className="p-4 flex gap-2">
@@ -214,6 +240,15 @@ export default function PengaturanKelasPage() {
                 <input required type="text" placeholder="Contoh: TK A" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.namaKelas} onChange={(e) => setFormData({...formData, namaKelas: e.target.value})} />
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Jenjang Kelas</label>
+                <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                  value={formData.jenjangKelas} onChange={(e) => setFormData({...formData, jenjangKelas: e.target.value})}>
+                  <option value="">Pilih Jenjang Kelas</option>
+                  {jenjangKelasList.map((j) => <option key={j.id} value={j.nama}>{j.nama}</option>)}
+                </select>
+              </div>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cabang</label>
@@ -242,9 +277,18 @@ export default function PengaturanKelasPage() {
                 <p className="text-xs text-gray-500 mt-1">Tahan Ctrl (atau Cmd di Mac) untuk memilih beberapa guru.</p>
               </div>
 
-              <button disabled={submitting} type="submit" className="w-full bg-[#581c87] text-white py-2 rounded-lg hover:bg-[#45156b] transition font-medium mt-2">
-                {submitting ? "Menyimpan..." : "Simpan Data"}
-              </button>
+              <div className="pt-2 flex justify-end gap-3">
+                <button type="button" onClick={closeModal} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
+                    Batal
+                </button>
+                <button type="submit" disabled={submitting} className="px-4 py-2 bg-[#581c87] text-white rounded-lg hover:bg-[#45156b] transition flex items-center gap-2">
+                    {submitting ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</>
+                    ) : (
+                        <><Save className="w-4 h-4" /> Simpan</>
+                    )}
+                </button>
+              </div>
             </form>
           </div>
         </div>

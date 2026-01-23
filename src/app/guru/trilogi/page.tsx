@@ -15,6 +15,7 @@ export default function GuruTrilogiPage() {
   const [guruData, setGuruData] = useState<any>(null);
   const [siswaList, setSiswaList] = useState<any[]>([]);
   const [namaKelas, setNamaKelas] = useState("");
+  const [kelasJenjangMap, setKelasJenjangMap] = useState<Record<string, string>>({});
 
   // Modal & Data Nilai
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -61,7 +62,17 @@ export default function GuruTrilogiPage() {
           where("guruKelas", "array-contains", guruData.nama)
         );
         const kelasSnap = await getDocs(qKelas);
-        const classes = kelasSnap.docs.map(doc => doc.data().namaKelas);
+        
+        const jMap: Record<string, string> = {};
+        const classes: string[] = [];
+        kelasSnap.docs.forEach(doc => {
+            const d = doc.data();
+            if (d.namaKelas) {
+                classes.push(d.namaKelas);
+                jMap[d.namaKelas] = d.jenjangKelas || "";
+            }
+        });
+        setKelasJenjangMap(jMap);
         setNamaKelas(classes.join(", "));
 
         if (classes.length > 0) {
@@ -124,11 +135,11 @@ export default function GuruTrilogiPage() {
             };
         });
         
-        // Sort by groupName then deskripsi
+        // Sort by groupName then habit
         subTrilogis.sort((a: any, b: any) => {
              if (a.groupName < b.groupName) return -1;
              if (a.groupName > b.groupName) return 1;
-             return (a.deskripsi || "").localeCompare(b.deskripsi || "");
+             return (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true });
         });
         setTrilogiList(subTrilogis);
 
@@ -282,9 +293,15 @@ export default function GuruTrilogiPage() {
                             </div>
                         ) : (
                             <div className="space-y-4 pb-4">
-                                {trilogiList.map((item, idx) => {
+                                {trilogiList
+                                    .filter(item => {
+                                        if (!selectedSiswa?.kelas) return false;
+                                        const jenjang = kelasJenjangMap[selectedSiswa.kelas];
+                                        return item.jenjangKelas === jenjang;
+                                    })
+                                    .map((item, idx, arr) => {
                                     // Grouping header logic
-                                    const showHeader = idx === 0 || trilogiList[idx - 1].groupName !== item.groupName;
+                                    const showHeader = idx === 0 || arr[idx - 1].groupName !== item.groupName;
                                     const nilai = nilaiMap[item.id];
 
                                     return (
@@ -295,7 +312,10 @@ export default function GuruTrilogiPage() {
                                                 </h4>
                                             )}
                                             <div className="flex justify-between items-start gap-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition px-1 rounded">
-                                                <p className="text-sm text-gray-700 flex-1 leading-snug">{item.deskripsi}</p>
+                                                <div className="flex-1">
+                                                    <span className="block text-xs font-bold text-purple-700 mb-0.5">{item.habit}</span>
+                                                    <p className="text-sm text-gray-700 leading-snug">{item.deskripsi}</p>
+                                                </div>
                                                 <div className="shrink-0">
                                                     {nilai ? (
                                                         <span className={`
@@ -317,8 +337,10 @@ export default function GuruTrilogiPage() {
                                         </div>
                                     );
                                 })}
-                                {trilogiList.length === 0 && (
-                                    <p className="text-center text-gray-500 text-sm py-4">Belum ada data trilogi.</p>
+                                {trilogiList.filter(item => item.jenjangKelas === kelasJenjangMap[selectedSiswa?.kelas]).length === 0 && (
+                                    <p className="text-center text-gray-500 text-sm py-4">
+                                        Belum ada data trilogi untuk jenjang {kelasJenjangMap[selectedSiswa?.kelas] || "ini"}.
+                                    </p>
                                 )}
                             </div>
                         )}

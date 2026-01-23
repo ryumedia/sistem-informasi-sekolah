@@ -84,10 +84,11 @@ export default function AdminLayout({
       href: "#", 
       roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"],
       submenu: [
-        { name: "RPPH", href: "/admin/Akademik/rpph", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "7 Habits", href: "/admin/Akademik/7habits", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"]},
         { name: "Tahap Perkembangan", href: "/admin/Akademik/perkembangan", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
         { name: "Indikator", href: "/admin/Akademik/indikator", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
         { name: "Trilogi Mainriang", href: "/admin/Akademik/trilogi", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "RPPH", href: "/admin/Akademik/rpph", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
       ]
     },
     { 
@@ -133,6 +134,7 @@ export default function AdminLayout({
       submenu: [
         { name: "Pengaturan Keuangan", href: "/admin/pengaturan/keuangan", roles: ["Admin", "Yayasan"] },
         { name: "Pengaturan Cabang", href: "/admin/pengaturan/cabang", roles: ["Admin", "Yayasan"] },
+        { name: "Pengaturan Jenjang", href: "/admin/pengaturan/jenjang-kelas", roles: ["Admin", "Yayasan"] },
         { name: "Pengaturan Kelas", href: "/admin/pengaturan/kelas", roles: ["Admin", "Yayasan"] },
         { name: "Pengaturan Semester", href: "/admin/pengaturan/performance", roles: ["Admin", "Yayasan"] }
       ]

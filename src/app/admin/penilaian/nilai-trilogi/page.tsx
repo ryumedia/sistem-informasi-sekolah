@@ -45,6 +45,7 @@ interface Kelas {
   id: string;
   namaKelas: string;
   cabang: string;
+  jenjangKelas: string;
   guruKelas?: string[];
 }
 
@@ -69,6 +70,8 @@ interface SubTrilogi {
   id: string;
   deskripsi: string;
   groupId: string;
+  jenjangKelas: string;
+  habit: string;
 }
 
 interface KriteriaNilai {
@@ -255,6 +258,16 @@ export default function NilaiTrilogiPage() {
       const qKelas = query(collection(db, "kelas"), where("cabang", "==", selectedCabang.nama));
       const snapKelas = await getDocs(qKelas);
       setKelasList(snapKelas.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Kelas[]);
+      
+      // Reset Sub Trilogi list as well since class list changed
+      setSubTrilogiList([]);
+      setForm((prev) => ({
+        ...prev,
+        trilogiId: "",
+        namaTrilogi: "",
+        subTrilogiId: "",
+        namaSubTrilogi: ""
+      }));
     } else {
       setKelasList([]);
     }
@@ -268,7 +281,11 @@ export default function NilaiTrilogiPage() {
     setForm((prev) => ({
       ...prev,
       kelasId: selectedKelasId,
-      namaKelas: selectedKelas?.namaKelas || "",
+      namaKelas: selectedKelas?.namaKelas || "", 
+      // Reset Sub Trilogi when class changes
+      subTrilogiId: "", namaSubTrilogi: "",
+      trilogiId: "", namaTrilogi: "",
+      // Reset Siswa
       siswaId: "", namaSiswa: "", // Reset bawahnya
     }));
 
@@ -280,8 +297,21 @@ export default function NilaiTrilogiPage() {
       );
       const snapSiswa = await getDocs(qSiswa);
       setSiswaList(snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[]);
+
+      // Fetch Sub Trilogi based on Jenjang Kelas
+      if (selectedKelas.jenjangKelas) {
+        const qSub = query(collection(db, "sub_trilogi"), where("jenjangKelas", "==", selectedKelas.jenjangKelas));
+        const snapSub = await getDocs(qSub);
+        const subs = snapSub.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as SubTrilogi[];
+        // Sort by Habit
+        subs.sort((a, b) => (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true }));
+        setSubTrilogiList(subs);
+      } else {
+        setSubTrilogiList([]);
+      }
     } else {
       setSiswaList([]);
+      setSubTrilogiList([]);
     }
   };
 
@@ -308,35 +338,20 @@ export default function NilaiTrilogiPage() {
     }));
   };
 
-  // 5. Handle Trilogi Change -> Fetch Sub Trilogi
-  const handleTrilogiChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedId = e.target.value;
-    const selectedTrilogi = trilogiList.find((i) => i.id === selectedId);
-
-    setForm((prev) => ({
-      ...prev,
-      trilogiId: selectedId,
-      namaTrilogi: selectedTrilogi?.nama || "",
-      subTrilogiId: "", namaSubTrilogi: "" // Reset sub trilogi
-    }));
-
-    if (selectedId) {
-      const qSub = query(collection(db, "sub_trilogi"), where("groupId", "==", selectedId));
-      const snapSub = await getDocs(qSub);
-      setSubTrilogiList(snapSub.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as SubTrilogi[]);
-    } else {
-      setSubTrilogiList([]);
-    }
-  };
-
-  // 6. Handle Sub Trilogi Change
+  // 5. Handle Sub Trilogi Change (Auto set Trilogi Group)
   const handleSubTrilogiChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedId = e.target.value;
     const selectedSub = subTrilogiList.find((s) => s.id === selectedId);
+    
+    // Find the group based on selected sub trilogi
+    const group = trilogiList.find(g => g.id === selectedSub?.groupId);
+
     setForm((prev) => ({
       ...prev,
       subTrilogiId: selectedId,
-      namaSubTrilogi: selectedSub?.deskripsi || ""
+      namaSubTrilogi: selectedSub?.deskripsi || "",
+      trilogiId: group?.id || "",
+      namaTrilogi: group?.nama || ""
     }));
   };
 
@@ -461,6 +476,15 @@ export default function NilaiTrilogiPage() {
          );
          const snapSiswa = await getDocs(qSiswa);
          setSiswaList(snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[]);
+
+         // Fetch Sub Trilogi if class has jenjang
+         if (foundKelas?.jenjangKelas) {
+            const qSub = query(collection(db, "sub_trilogi"), where("jenjangKelas", "==", foundKelas.jenjangKelas));
+            const snapSub = await getDocs(qSub);
+            const subs = snapSub.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as SubTrilogi[];
+            subs.sort((a, b) => (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true }));
+            setSubTrilogiList(subs);
+         }
        }
     } else {
        setKelasList([]);
@@ -499,7 +523,18 @@ export default function NilaiTrilogiPage() {
     if (item.namaCabang) {
       const qKelas = query(collection(db, "kelas"), where("cabang", "==", item.namaCabang));
       const snapKelas = await getDocs(qKelas);
-      setKelasList(snapKelas.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Kelas[]);
+      const classes = snapKelas.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Kelas[];
+      setKelasList(classes);
+
+      // Fetch Sub Trilogi based on the Class's Jenjang
+      const currentClass = classes.find(c => c.id === item.kelasId);
+      if (currentClass?.jenjangKelas) {
+        const qSub = query(collection(db, "sub_trilogi"), where("jenjangKelas", "==", currentClass.jenjangKelas));
+        const snapSub = await getDocs(qSub);
+        const subs = snapSub.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as SubTrilogi[];
+        subs.sort((a, b) => (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true }));
+        setSubTrilogiList(subs);
+      }
     }
     if (item.namaKelas) {
       const qSiswa = query(
@@ -509,11 +544,6 @@ export default function NilaiTrilogiPage() {
       );
       const snapSiswa = await getDocs(qSiswa);
       setSiswaList(snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[]);
-    }
-    if (item.trilogiId) {
-      const qSub = query(collection(db, "sub_trilogi"), where("groupId", "==", item.trilogiId));
-      const snapSub = await getDocs(qSub);
-      setSubTrilogiList(snapSub.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as SubTrilogi[]);
     }
 
     setCurrentId(item.id);
@@ -733,36 +763,21 @@ export default function NilaiTrilogiPage() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Trilogi</label>
-                  <select 
-                    required 
-                    className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
-                    value={form.trilogiId}
-                    onChange={handleTrilogiChange}
-                  >
-                    <option value="">Pilih Trilogi</option>
-                    {trilogiList.map(i => (
-                      <option key={i.id} value={i.id}>{i.nama}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub Trilogi</label>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sub Trilogi (Habit)</label>
                   <select 
                     required 
                     className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
                     value={form.subTrilogiId}
                     onChange={handleSubTrilogiChange}
-                    disabled={!form.trilogiId}
+                    disabled={!form.kelasId}
                   >
-                    <option value="">Pilih Sub Trilogi</option>
-                    {subTrilogiList.length === 0 && form.trilogiId && (
-                      <option disabled>Tidak ada sub trilogi</option>
+                    <option value="">Pilih Habit / Sub Trilogi</option>
+                    {subTrilogiList.length === 0 && form.kelasId && (
+                      <option disabled>Tidak ada data untuk jenjang ini</option>
                     )}
                     {subTrilogiList.map(s => (
-                      <option key={s.id} value={s.id}>{s.deskripsi}</option>
+                      <option key={s.id} value={s.id}>{s.habit} - {s.deskripsi}</option>
                     ))}
                   </select>
                 </div>

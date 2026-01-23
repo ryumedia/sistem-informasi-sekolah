@@ -17,6 +17,7 @@ export default function SiswaTrilogiPage() {
   
   const [nilaiList, setNilaiList] = useState<any[]>([]);
   const [kriteriaMap, setKriteriaMap] = useState<Record<number, string>>({});
+  const [subTrilogiMap, setSubTrilogiMap] = useState<Record<string, string>>({});
   const [loadingData, setLoadingData] = useState(false);
 
   // 1. Auth & User Data
@@ -75,6 +76,16 @@ export default function SiswaTrilogiPage() {
           });
           setKriteriaMap(map);
         }
+
+        // Fetch Sub Trilogi untuk Info Habit
+        const qSub = query(collection(db, "sub_trilogi"));
+        const snapSub = await getDocs(qSub);
+        const subMap: Record<string, string> = {};
+        snapSub.forEach(d => {
+            const data = d.data();
+            subMap[d.id] = data.habit || "";
+        });
+        setSubTrilogiMap(subMap);
       } catch (e) {
         console.error("Error fetching master data:", e);
       }
@@ -169,6 +180,9 @@ export default function SiswaTrilogiPage() {
                                 )}
                                 <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex justify-between items-center gap-4 hover:shadow-md transition">
                                     <div className="flex-1">
+                                        <span className="block text-xs font-bold text-purple-700 mb-0.5">
+                                            {subTrilogiMap[item.subTrilogiId] || ""}
+                                        </span>
                                         <p className="text-sm text-gray-700 font-medium leading-snug">{item.namaSubTrilogi}</p>
                                     </div>
                                     <div className={`
