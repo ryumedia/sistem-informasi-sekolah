@@ -106,6 +106,16 @@ export default function AdminLayout({
       ]
     },
     { 
+      name: "Daycare", 
+      href: "#", 
+      roles: ["Admin", "Kepala Sekolah", "Caregiver", "Direktur", "Yayasan"],
+      submenu: [
+        { name: "Data Aktivitas", href: "/admin/daycare/data-aktivitas", roles: ["Admin", "Kepala Sekolah", "Caregiver", "Direktur", "Yayasan"] },
+        { name: "Aktivitas Harian", href: "/admin/daycare/aktivitas-harian", roles: ["Admin", "Kepala Sekolah", "Caregiver", "Direktur", "Yayasan"] },
+        { name: "Pertumbuhan Anak", href: "/admin/daycare/pertumbuhan-anak", roles: ["Admin", "Kepala Sekolah", "Caregiver", "Direktur", "Yayasan"] },
+      ]
+    },
+    {   
       name: "Informasi", 
       href: "#", 
       roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"],
