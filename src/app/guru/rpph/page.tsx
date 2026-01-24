@@ -108,7 +108,7 @@ export default function RPPHGuruPage() {
       <div className="w-full max-w-lg bg-white min-h-screen shadow-xl flex flex-col">
         {/* Header */}
         <header className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-3">
-          <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-full transition">
+          <button onClick={() => router.push("/?tab=akademik")} className="p-2 hover:bg-gray-100 rounded-full transition">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
           <h1 className="text-lg font-bold text-gray-800">Daftar RPPH</h1>
