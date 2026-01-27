@@ -69,6 +69,7 @@ interface SubIndikator {
   id: string;
   deskripsi: string;
   groupId: string;
+  kode?: string;
 }
 
 interface KriteriaNilai {
@@ -91,6 +92,7 @@ export default function NilaiIndikatorPage() {
   const [indikatorList, setIndikatorList] = useState<Indikator[]>([]);
   const [subIndikatorList, setSubIndikatorList] = useState<SubIndikator[]>([]); // Filtered by Indikator
   const [kriteriaOptions, setKriteriaOptions] = useState<KriteriaNilai[]>([]);
+  const [subIndikatorMap, setSubIndikatorMap] = useState<Record<string, string>>({});
 
   // --- Filter State ---
   const [filterCabang, setFilterCabang] = useState<string>("");
@@ -156,6 +158,15 @@ export default function NilaiIndikatorPage() {
         // 4. Fetch Master Indikator
         const snapIndikator = await getDocs(collection(db, "indikator_groups"));
         setIndikatorList(snapIndikator.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Indikator[]);
+
+        // Fetch All Sub Indikators for Map (to show kode in table)
+        const snapSubAll = await getDocs(collection(db, "sub_indikators"));
+        const subMap: Record<string, string> = {};
+        snapSubAll.forEach((doc) => {
+          const d = doc.data();
+          subMap[doc.id] = d.kode || "";
+        });
+        setSubIndikatorMap(subMap);
 
         // 5. Fetch Kriteria Nilai (Kategori: Nilai Indikator)
         const qKat = query(collection(db, "kategori_penilaian"), where("nama", "==", "Nilai Indikator"));
@@ -596,16 +607,16 @@ export default function NilaiIndikatorPage() {
           <table className="w-full text-left text-sm text-gray-600 min-w-[1100px]">
             <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
               <tr>
-                <th className="p-4 w-12">No</th>
-                <th className="p-4">Tanggal</th>
-                <th className="p-4">Cabang</th>
-                <th className="p-4">Kelas</th>
-                <th className="p-4">Nama Siswa</th>
-                <th className="p-4">Semester</th>
-                <th className="p-4">Indikator</th>
-                <th className="p-4">Sub Indikator</th>
-                <th className="p-4 text-center">Nilai</th>
-                <th className="p-4 text-center">Aksi</th>
+                <th className="p-3 w-10 text-center">No</th>
+                <th className="p-3 w-24">Tanggal</th>
+                <th className="p-3 w-24">Cabang</th>
+                <th className="p-3 w-20">Kelas</th>
+                <th className="p-3 w-32">Nama Siswa</th>
+                <th className="p-3 w-24">Semester</th>
+                <th className="p-3 w-40">Indikator</th>
+                <th className="p-3 w-64">Sub Indikator</th>
+                <th className="p-3 w-16 text-center">Nilai</th>
+                <th className="p-3 w-20 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -616,22 +627,25 @@ export default function NilaiIndikatorPage() {
               ) : (
                 filteredData.map((item, index) => (
                   <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="p-4 text-center">{index + 1}</td>
-                    <td className="p-4">{item.tanggal}</td>
-                    <td className="p-4">{item.namaCabang}</td>
-                    <td className="p-4">{item.namaKelas}</td>
-                    <td className="p-4 font-medium text-gray-900">{item.namaSiswa}</td>
-                    <td className="p-4">{item.namaSemester}</td>
-                    <td className="p-4 max-w-xs truncate" title={item.namaIndikator}>{item.namaIndikator}</td>
-                    <td className="p-4 max-w-xs truncate" title={item.namaSubIndikator}>{item.namaSubIndikator}</td>
-                    <td className="p-4 text-center">
+                    <td className="p-3 text-center align-top">{index + 1}</td>
+                    <td className="p-3 align-top">{item.tanggal}</td>
+                    <td className="p-3 align-top">{item.namaCabang}</td>
+                    <td className="p-3 align-top">{item.namaKelas}</td>
+                    <td className="p-3 font-medium text-gray-900 align-top">{item.namaSiswa}</td>
+                    <td className="p-3 align-top">{item.namaSemester}</td>
+                    <td className="p-3 align-top">{item.namaIndikator}</td>
+                    <td className="p-3 align-top">
+                      <span className="font-semibold mr-1">{subIndikatorMap[item.subIndikatorId] || ""}</span>
+                      {item.namaSubIndikator}
+                    </td>
+                    <td className="p-3 text-center align-top">
                       <span className={`inline-block w-8 h-8 leading-8 rounded-full font-bold text-white ${
                         item.nilai === 3 ? "bg-green-500" : item.nilai === 2 ? "bg-yellow-500" : "bg-red-500"
                       }`}>
                         {item.nilai}
                       </span>
                     </td>
-                    <td className="p-4 flex justify-center gap-2">
+                    <td className="p-3 flex justify-center gap-2 align-top">
                       <button onClick={() => handleEdit(item)} className="p-2 text-[#581c87] hover:bg-[#581c87]/10 rounded-lg transition" title="Edit">
                         <Pencil className="w-4 h-4" />
                       </button>
@@ -761,8 +775,13 @@ export default function NilaiIndikatorPage() {
                     {subIndikatorList.length === 0 && form.indikatorId && (
                       <option disabled>Tidak ada sub indikator</option>
                     )}
-                    {subIndikatorList.map(s => (
-                      <option key={s.id} value={s.id}>{s.deskripsi}</option>
+                    {subIndikatorList
+                      .slice() // Create a shallow copy to avoid modifying the original list
+                      .sort((a, b) => (a.kode || "").localeCompare(b.kode || ""))
+                      .map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.kode ? `[${s.kode}] ` : ''}{s.deskripsi}
+                        </option>
                     ))}
                   </select>
                 </div>

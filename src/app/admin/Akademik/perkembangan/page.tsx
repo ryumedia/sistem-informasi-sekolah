@@ -345,9 +345,10 @@ export default function TahapPerkembanganPage() {
                       >
                         <option value="">Pilih Lingkup</option>
                         <option value="Motorik Kasar">Motorik Kasar</option>
-                        <option value="Motorik Halus & Adaptif">Motorik Halus & Adaptif</option>
-                        <option value="Bicara & Bahasa">Bicara & Bahasa</option>
-                        <option value="Sosialisasi & Kemandirian">Sosialisasi & Kemandirian</option>
+                        <option value="Motorik Halus">Motorik Halus</option>
+                        <option value="Berpikir Logis">Berpikir Logis</option>
+                        <option value="Memahami Bahasa">Memahami Bahasa</option>
+                        <option value="Perilaku Prososial">Perilaku Prososial</option>
                       </select>
                     </div>
                     <div className="md:col-span-2">
@@ -415,7 +416,23 @@ export default function TahapPerkembanganPage() {
                         </td>
                       </tr>
                     ) : (
-                      details.map((item, index) => (
+                      details
+                        .slice()
+                        .sort((a, b) => {
+                          const order = [
+                            "Motorik Kasar",
+                            "Motorik Halus",
+                            "Berpikir Logis",
+                            "Memahami Bahasa",
+                            "Perilaku Prososial",
+                          ];
+                          const lingkupComparison = order.indexOf(a.lingkup) - order.indexOf(b.lingkup);
+                          if (lingkupComparison !== 0) {
+                            return lingkupComparison;
+                          }
+                          return a.deskripsi.localeCompare(b.deskripsi);
+                        })
+                        .map((item, index) => (
                         <tr key={item.id} className="hover:bg-gray-50">
                           <td className="p-3 text-center">{index + 1}</td>
                           <td className="p-3 font-medium">{item.lingkup}</td>

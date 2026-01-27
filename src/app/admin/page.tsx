@@ -202,6 +202,16 @@ export default function AdminDashboard() {
             <StatCard icon={<Star />} title="Nilai Performance" value={stats.performance} color="purple" suffix="%" />
           </div>
 
+          {/* Keuangan Recap */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <h2 className="text-lg font-bold text-gray-800 mb-4">Rekap Keuangan {selectedCabang && `(${selectedCabang})`}</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+              <KeuanganCard icon={<ArrowDown />} title="Total Pemasukan" value={formatCurrency(keuangan.pemasukan)} color="text-green-600" bgColor="bg-green-50" />
+              <KeuanganCard icon={<ArrowUp />} title="Total Pengeluaran" value={formatCurrency(keuangan.pengeluaran)} color="text-red-600" bgColor="bg-red-50" />
+              <KeuanganCard icon={<Scale />} title="Saldo Akhir" value={formatCurrency(keuangan.saldo)} color="text-blue-600" bgColor="bg-blue-50" />
+            </div>
+          </div>
+
           {/* Tabel Data Kelas & Siswa */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
             <h2 className="text-lg font-bold text-gray-800 mb-4">Data Kelas & Siswa</h2>
@@ -234,16 +244,6 @@ export default function AdminDashboard() {
                   )}
                 </tbody>
               </table>
-            </div>
-          </div>
-
-          {/* Keuangan Recap */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">Rekap Keuangan {selectedCabang && `(${selectedCabang})`}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-              <KeuanganCard icon={<ArrowDown />} title="Total Pemasukan" value={formatCurrency(keuangan.pemasukan)} color="text-green-600" bgColor="bg-green-50" />
-              <KeuanganCard icon={<ArrowUp />} title="Total Pengeluaran" value={formatCurrency(keuangan.pengeluaran)} color="text-red-600" bgColor="bg-red-50" />
-              <KeuanganCard icon={<Scale />} title="Saldo Akhir" value={formatCurrency(keuangan.saldo)} color="text-blue-600" bgColor="bg-blue-50" />
             </div>
           </div>
         </>
