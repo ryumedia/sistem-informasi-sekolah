@@ -45,7 +45,7 @@ export default function AdminLayout({
 
   // Redirect Guru from dashboard to performance page
   useEffect(() => {
-    if (userData?.role === 'Guru' && pathname === '/admin') {
+    if ((userData?.role === 'Guru' || userData?.role === "Caregiver")&& pathname === '/admin') {
       router.replace('/admin/performance');
     }
   }, [userData, pathname, router]);
@@ -78,7 +78,7 @@ export default function AdminLayout({
     { name: "Dashboard", href: "/admin", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
     { name: "Data Siswa", href: "/admin/siswa", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
     { name: "Data Guru", href: "/admin/guru", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
-    { name: "Performance", href: "/admin/performance", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru"] },
+    { name: "Performance", href: "/admin/performance", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"] },
     { 
       name: "Akademik", 
       href: "#", 
@@ -118,22 +118,22 @@ export default function AdminLayout({
     {   
       name: "Informasi", 
       href: "#", 
-      roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"],
+      roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan", "Caregiver"],
       submenu: [
-        { name: "Jadwal", href: "/admin/informasi/jadwal", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
-        { name: "Kegiatan", href: "/admin/informasi/kegiatan", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
-        { name: "Pengumuman", href: "/admin/informasi/pengumuman", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Jadwal", href: "/admin/informasi/jadwal", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan", "Caregiver"] },
+        { name: "Kegiatan", href: "/admin/informasi/kegiatan", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan", "Caregiver"] },
+        { name: "Pengumuman", href: "/admin/informasi/pengumuman", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan", "Caregiver"] },
         { name: "Dokumen", href: "/admin/informasi/dokumen", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
       ]
     },
     { 
       name: "Keuangan", 
       href: "#",
-      roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru"],
+      roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"],
       submenu: [
-        { name: "Pengajuan", href: "/admin/keuangan/pengajuan", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru"] },
+        { name: "Pengajuan", href: "/admin/keuangan/pengajuan", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"] },
         { name: "Anggaran", href: "/admin/keuangan/anggaran", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
-        { name: "Realisasi", href: "/admin/keuangan/realisasi", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru"] },
+        { name: "Realisasi", href: "/admin/keuangan/realisasi", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"] },
         { name: "Arus Kas", href: "/admin/keuangan/aruskas", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
       ]
     },

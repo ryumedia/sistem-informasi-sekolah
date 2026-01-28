@@ -28,13 +28,14 @@ export default function PengajuanPage() {
   const [filterTahun, setFilterTahun] = useState(currentYear.toString());
   const [filterBulan, setFilterBulan] = useState(monthNames[new Date().getMonth()]);
   const [filterCabang, setFilterCabang] = useState("");
+  const [filterNama, setFilterNama] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [nomenklaturList, setNomenklaturList] = useState<any[]>([]);
   
   const [dataList, setDataList] = useState<Pengajuan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState("");
+  const [currentUser, setCurrentUser] = useState<any>(null);
   
   // State Modal
   const [detailItem, setDetailItem] = useState<Pengajuan | null>(null);
@@ -49,26 +50,51 @@ export default function PengajuanPage() {
     qty: 0,
   });
 
-  // 1. Cek Role User yang Login (untuk proteksi tombol Approval)
+  // 1. Cek Role User yang Login
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
         try {
-          const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
-          const querySnapshot = await getDocs(q);
-          if (!querySnapshot.empty) {
-            const userData = querySnapshot.docs[0].data();
-            setUserRole(userData.role);
-            if (userData.role === "Kepala Sekolah") {
-              setFilterCabang(userData.cabang);
+          let userDoc: any = null;
+          let defaultRole = "User";
+
+          const guruQuery = query(collection(db, "guru"), where("email", "==", user.email));
+          const guruSnap = await getDocs(guruQuery);
+          
+          if (!guruSnap.empty) {
+            userDoc = guruSnap.docs[0];
+            defaultRole = 'Guru';
+          } else {
+            const caregiverQuery = query(collection(db, "caregivers"), where("email", "==", user.email));
+            const caregiverSnap = await getDocs(caregiverQuery);
+            if (!caregiverSnap.empty) {
+              userDoc = caregiverSnap.docs[0];
+              defaultRole = 'Caregiver';
+            }
+          }
+
+          if (userDoc) {
+            const docData = userDoc.data();
+            const role = docData.role || defaultRole;
+            setCurrentUser({
+              id: userDoc.id,
+              uid: user.uid,
+              ...docData,
+              role: role,
+            });
+            if (["Kepala Sekolah", "Guru", "Caregiver"].includes(role) && docData.cabang) {
+              setFilterCabang(docData.cabang);
             }
           } else {
-             // Fallback jika user admin manual (bukan dari data guru)
-             setUserRole("Admin"); 
+             // Fallback for admin or other roles not in guru/caregivers
+             setCurrentUser({ id: user.uid, uid: user.uid, email: user.email, role: "Admin" }); 
           }
         } catch (error) {
-          console.error("Error fetching role:", error);
+          console.error("Error fetching user data:", error);
+          setCurrentUser({ id: user.uid, email: user.email, role: "Admin" });
         }
+      } else {
+        setCurrentUser(null);
       }
     });
     return () => unsubscribe();
@@ -106,9 +132,21 @@ export default function PengajuanPage() {
 
   // 3. Ambil Data Pengajuan dari Firestore
   const fetchData = async () => {
+    if (!currentUser) return;
     setLoading(true);
     try {
-      const q = query(collection(db, "pengajuan"), orderBy("createdAt", "desc"));
+      let q;
+      const pengajuanCollection = collection(db, "pengajuan");
+      const userRoles = currentUser.role || [];
+
+      if (userRoles.includes('Guru') || userRoles.includes('Caregiver')) {
+        q = query(pengajuanCollection, where("userId", "==", currentUser.uid || currentUser.id), orderBy("createdAt", "desc"));
+      } else if (userRoles.includes('Kepala Sekolah') && currentUser.cabang) {
+        q = query(pengajuanCollection, where("cabang", "==", currentUser.cabang), orderBy("createdAt", "desc"));
+      } else {
+        q = query(pengajuanCollection, orderBy("createdAt", "desc"));
+      }
+      
       const querySnapshot = await getDocs(q);
       const data = querySnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -124,8 +162,10 @@ export default function PengajuanPage() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (currentUser) {
+      fetchData();
+    }
+  }, [currentUser]);
 
   // 4. Logic Filter Client-Side
   const filteredData = dataList.filter((item) => {
@@ -137,20 +177,22 @@ export default function PengajuanPage() {
     const matchTahun = filterTahun === year;
     const matchBulan = filterBulan === month;
     const matchCabang = filterCabang ? item.cabang === filterCabang : true;
+    const matchNama = filterNama ? (item.pengaju || "").toLowerCase().includes(filterNama.toLowerCase()) : true;
     const matchStatus = filterStatus ? item.status === filterStatus : true;
 
-    return matchTahun && matchBulan && matchCabang && matchStatus;
+    return matchTahun && matchBulan && matchCabang && matchStatus && matchNama;
   });
 
   // 5. Logic Approval Berjenjang
   const handleApprove = async (item: Pengajuan) => {
     let newStatus = "";
+    const userRoles = currentUser?.role || [];
     
     if (item.status === "Menunggu KS") {
-      if (userRole !== "Kepala Sekolah") return alert("Hanya Kepala Sekolah yang dapat menyetujui tahap ini.");
+      if (!userRoles.includes("Kepala Sekolah")) return alert("Hanya Kepala Sekolah yang dapat menyetujui tahap ini.");
       newStatus = "Menunggu Direktur";
     } else if (item.status === "Menunggu Direktur") {
-      if (userRole !== "Direktur") return alert("Hanya Direktur yang dapat menyetujui tahap ini.");
+      if (!userRoles.includes("Direktur")) return alert("Hanya Direktur yang dapat menyetujui tahap ini.");
       newStatus = "Disetujui";
     } else {
       return;
@@ -228,14 +270,21 @@ export default function PengajuanPage() {
             ))}
           </select>
           <select 
-            className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900 ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`} 
+            className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900 ${["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role) ? "bg-gray-100 cursor-not-allowed" : ""}`} 
             value={filterCabang} 
             onChange={(e) => setFilterCabang(e.target.value)}
-            disabled={userRole === "Kepala Sekolah"}
+            disabled={["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role)}
           >
-            {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
+            {!["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role) && <option value="">Semua Cabang</option>}
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
+          <input 
+            type="text" 
+            placeholder="Cari Nama Pengaju" 
+            className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900"
+            value={filterNama}
+            onChange={(e) => setFilterNama(e.target.value)}
+          />
           <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
             <option value="">Semua Status</option>
             <option value="Menunggu KS">Menunggu KS</option>

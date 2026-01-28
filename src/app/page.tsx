@@ -79,7 +79,14 @@ export default function UserHome() {
               }
             }
           } else {
-            setUserData({ nama: currentUser.email, role: "User" });
+            const qCaregiver = query(collection(db, "caregivers"), where("email", "==", currentUser.email));
+            const snapshotCaregiver = await getDocs(qCaregiver);
+
+            if (!snapshotCaregiver.empty) {
+              setUserData({ id: snapshotCaregiver.docs[0].id, ...snapshotCaregiver.docs[0].data() });
+            } else {
+              setUserData({ nama: currentUser.email, role: "User" });
+            }
           }
         }
       } catch (error) {
@@ -139,7 +146,7 @@ export default function UserHome() {
 
   // Tentukan tombol navigasi akademik/report
   const renderAkademikButton = () => {
-    if (userData?.role === "Siswa" && jenjangKelas === "Daycare") {
+    if ((userData?.role === "Siswa" && jenjangKelas === "Daycare") || userData?.role === "Caregiver") {
       return (
         <button 
           onClick={() => setActiveTab("report")}
@@ -274,7 +281,7 @@ export default function UserHome() {
               </div>
 
               <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                {["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru"].includes(userData?.role) && (
+                {["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"].includes(userData?.role) && (
                   <Link href="/admin" className="flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition">
                     <div className="bg-[#581c87]/10 p-2 rounded-lg text-[#581c87]">
                       <Shield className="w-5 h-5" />
@@ -286,7 +293,7 @@ export default function UserHome() {
                   </Link>
                 )}
 
-                {["Guru", "Admin", "Kepala Sekolah", "Direktur", "Yayasan"].includes(userData?.role) && (
+                {["Guru", "Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Caregiver"].includes(userData?.role) && (
                   <button onClick={() => setPengajuanModalOpen(true)} className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition text-left">
                     <div className="bg-green-100 p-2 rounded-lg text-green-600">
                       <FilePlus className="w-5 h-5" />

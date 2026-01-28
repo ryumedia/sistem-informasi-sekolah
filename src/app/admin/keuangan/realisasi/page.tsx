@@ -30,10 +30,11 @@ export default function RealisasiPage() {
   const [filterTahun, setFilterTahun] = useState(currentYear.toString());
   const [filterBulan, setFilterBulan] = useState(monthNames[new Date().getMonth()]);
   const [filterCabang, setFilterCabang] = useState("");
+  const [filterNama, setFilterNama] = useState("");
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [dataList, setDataList] = useState<Pengajuan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState("");
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // State untuk Modal Laporan
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -58,31 +59,68 @@ export default function RealisasiPage() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
         try {
-          const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
-          const querySnapshot = await getDocs(q);
-          if (!querySnapshot.empty) {
-            const userData = querySnapshot.docs[0].data();
-            setUserRole(userData.role);
-            if (userData.role === "Kepala Sekolah") {
-              setFilterCabang(userData.cabang);
+          let userDoc: any = null;
+          let defaultRole = "User";
+
+          const guruQuery = query(collection(db, "guru"), where("email", "==", user.email));
+          const guruSnap = await getDocs(guruQuery);
+          
+          if (!guruSnap.empty) {
+            userDoc = guruSnap.docs[0];
+            defaultRole = 'Guru';
+          } else {
+            const caregiverQuery = query(collection(db, "caregivers"), where("email", "==", user.email));
+            const caregiverSnap = await getDocs(caregiverQuery);
+            if (!caregiverSnap.empty) {
+              userDoc = caregiverSnap.docs[0];
+              defaultRole = 'Caregiver';
             }
+          }
+
+          if (userDoc) {
+            const docData = userDoc.data();
+            const role = docData.role || defaultRole;
+            setCurrentUser({
+              id: userDoc.id,
+              uid: user.uid,
+              ...docData,
+              role: role,
+            });
+            if (["Kepala Sekolah", "Guru", "Caregiver"].includes(role) && docData.cabang) {
+              setFilterCabang(docData.cabang);
+            }
+          } else {
+             setCurrentUser({ id: user.uid, uid: user.uid, email: user.email, role: "Admin" }); 
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
+          setCurrentUser({ id: user.uid, email: user.email, role: "Admin" });
         }
+      } else {
+        setCurrentUser(null);
       }
     });
     return () => unsubscribe();
   }, []);
 
   const fetchData = async () => {
+    if (!currentUser) return;
     setLoading(true);
     try {
       // Ambil data pengajuan yang sudah disetujui
-      const q = query(collection(db, "pengajuan"), where("status", "==", "Disetujui"));
+      const pengajuanCollection = collection(db, "pengajuan");
+      const constraints: any[] = [where("status", "==", "Disetujui")];
+
+      if (["Guru", "Caregiver"].includes(currentUser.role)) {
+         constraints.push(where("userId", "==", currentUser.uid || currentUser.id));
+      } else if (currentUser.role === "Kepala Sekolah" && currentUser.cabang) {
+         constraints.push(where("cabang", "==", currentUser.cabang));
+      }
+
+      const q = query(pengajuanCollection, ...constraints);
       const querySnapshot = await getDocs(q);
       const data = querySnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -101,16 +139,19 @@ export default function RealisasiPage() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (currentUser) {
+      fetchData();
+    }
+  }, [currentUser]);
 
   const filteredData = dataList.filter((item) => {
     const date = new Date(item.tanggal);
     const year = date.getFullYear().toString();
     const monthIndex = date.getMonth();
     const month = monthNames[monthIndex];
+    const matchNama = filterNama ? (item.pengaju || "").toLowerCase().includes(filterNama.toLowerCase()) : true;
 
-    return filterTahun === year && filterBulan === month && (filterCabang ? item.cabang === filterCabang : true);
+    return filterTahun === year && filterBulan === month && (filterCabang ? item.cabang === filterCabang : true) && matchNama;
   });
 
   const totalAnggaran = filteredData.reduce((acc, curr) => acc + (curr.total || 0), 0);
@@ -203,14 +244,21 @@ export default function RealisasiPage() {
             ))}
           </select>
           <select 
-            className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900 ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`} 
+            className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900 ${["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role) ? "bg-gray-100 cursor-not-allowed" : ""}`} 
             value={filterCabang} 
             onChange={(e) => setFilterCabang(e.target.value)}
-            disabled={userRole === "Kepala Sekolah"}
+            disabled={["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role)}
           >
-            {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
+            {!["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role) && <option value="">Semua Cabang</option>}
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
+          <input 
+            type="text" 
+            placeholder="Cari Nama Pengaju" 
+            className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900"
+            value={filterNama}
+            onChange={(e) => setFilterNama(e.target.value)}
+          />
           <button className="bg-gray-100 p-2 rounded-lg text-gray-600 hover:bg-gray-200">
             <Filter className="w-4 h-4" />
           </button>
@@ -259,6 +307,7 @@ export default function RealisasiPage() {
           <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
             <tr>
               <th className="p-4">No</th>
+              <th className="p-4">Nama Pengaju</th>
               <th className="p-4">Kegiatan</th>
               <th className="p-4">Cabang</th>
               <th className="p-4">Anggaran</th>
@@ -276,6 +325,7 @@ export default function RealisasiPage() {
               filteredData.map((item, index) => (
                 <tr key={item.id} className="hover:bg-gray-50">
                   <td className="p-4">{index + 1}</td>
+                  <td className="p-4 font-medium text-gray-900">{item.pengaju}</td>
                   <td className="p-4 font-medium text-gray-900">{item.barang}</td>
                   <td className="p-4">{item.cabang}</td>
                   <td className="p-4">Rp {item.total.toLocaleString("id-ID")}</td>

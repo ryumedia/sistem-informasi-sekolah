@@ -77,14 +77,20 @@ export default function PerformancePage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const docData = snapshot.docs[0].data();
-          const docId = snapshot.docs[0].id;
+        let userQuery = query(collection(db, "guru"), where("email", "==", currentUser.email));
+        let userSnap = await getDocs(userQuery);
+
+        if (userSnap.empty) {
+            userQuery = query(collection(db, "caregivers"), where("email", "==", currentUser.email));
+            userSnap = await getDocs(userQuery);
+        }
+        
+        if (!userSnap.empty) {
+          const docData = userSnap.docs[0].data();
+          const docId = userSnap.docs[0].id;
           setCurrentUserData({ id: docId, uid: currentUser.uid, ...docData });
         } else {
-          // Fallback for manually created admin or other roles not in 'guru'
+          // Fallback for manually created admin or other roles not in 'guru' or 'caregivers'
           setCurrentUserData({ role: 'Admin' }); // Assume Admin if not found
         }
       }
@@ -117,16 +123,27 @@ export default function PerformancePage() {
       }) as KPI[];
       setKpiList(kpiData);
 
-      // Fetch Guru
+      // Fetch Guru & Caregiver
       const qGuru = query(collection(db, "guru"), orderBy("nama", "asc"));
       const guruSnap = await getDocs(qGuru);
-      const guruData = guruSnap.docs.map(doc => ({ 
-        id: doc.id, 
+      const guruData = guruSnap.docs.map(doc => ({
+        id: doc.id,
         nama: doc.data().nama,
         cabang: doc.data().cabang || "",
         role: doc.data().role
       })) as Guru[];
-      setGuruList(guruData);
+
+      const qCaregiver = query(collection(db, "caregivers"), orderBy("nama", "asc"));
+      const caregiverSnap = await getDocs(qCaregiver);
+      const caregiverData = caregiverSnap.docs.map(doc => ({
+        id: doc.id,
+        nama: doc.data().nama,
+        cabang: doc.data().cabang || "",
+        role: doc.data().role
+      })) as Guru[];
+
+      const combinedList = [...guruData, ...caregiverData].sort((a, b) => a.nama.localeCompare(b.nama));
+      setGuruList(combinedList);
 
       // Fetch Cabang
       const qCabang = query(collection(db, "cabang"), orderBy("nama", "asc"));
@@ -317,7 +334,7 @@ export default function PerformancePage() {
     const matchPeriode = filterPeriode ? item.periodeId === filterPeriode : true;
 
     // Role-based data visibility and other filters
-    if (currentUserData.role === 'Guru') {
+    if (['Guru', 'Caregiver'].includes(currentUserData.role)) {
       const matchGuruId = item.guruId === currentUserData.id;
       return matchPeriode && matchGuruId; // Combine universal and specific filter
     }
@@ -336,7 +353,7 @@ export default function PerformancePage() {
   });
 
   const openTambahModal = () => {
-    if (currentUserData?.role === 'Guru') handleGuruChange({ target: { value: currentUserData.id } } as any);
+    if (['Guru', 'Caregiver'].includes(currentUserData?.role)) handleGuruChange({ target: { value: currentUserData.id } } as any);
     
     // Set default semester
     const defaultPeriode = periodeList.find(p => p.isDefault);
@@ -411,7 +428,7 @@ export default function PerformancePage() {
           {periodeList.map((p) => <option key={p.id} value={p.id}>{p.namaPeriode}</option>)}
         </select>
 
-        {currentUserData && !['Guru'].includes(currentUserData.role) && (
+        {currentUserData && !['Guru', 'Caregiver'].includes(currentUserData.role) && (
           <>
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
@@ -538,7 +555,7 @@ export default function PerformancePage() {
                   className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.guruId} 
                   onChange={handleGuruChange}
-                  disabled={!!editId || currentUserData?.role === 'Guru'} // Disable changing guru on edit or if user is a Guru
+                  disabled={!!editId || ['Guru', 'Caregiver'].includes(currentUserData?.role)} // Disable changing guru on edit or if user is a Guru/Caregiver
                 >
                   <option value="">Pilih Guru</option>
                   {guruList
@@ -546,7 +563,7 @@ export default function PerformancePage() {
                       if (currentUserData?.role === 'Kepala Sekolah') {
                         return g.cabang === currentUserData.cabang;
                       }
-                      if (currentUserData?.role === 'Guru') {
+                      if (['Guru', 'Caregiver'].includes(currentUserData?.role)) {
                         return g.id === currentUserData.id;
                       }
                       return true; // Admin, Direktur, Yayasan see all
