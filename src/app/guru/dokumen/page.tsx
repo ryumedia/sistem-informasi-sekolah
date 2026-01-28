@@ -114,8 +114,8 @@ export default function GuruDokumenPage() {
     );
   }
 
-  // Tampilan Akses Ditolak untuk Siswa
-  if (userData?.role === "Siswa") {
+  // Tampilan Akses Ditolak untuk Siswa atau User Role tidak diketahui
+  if (userData?.role === "Siswa" || userData?.role === "Unknown") {
     return (
       <div className="min-h-screen bg-gray-50 flex justify-center items-center p-4">
         <div className="bg-white p-8 rounded-xl shadow-lg text-center max-w-sm">

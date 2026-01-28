@@ -7,12 +7,13 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { collection, query, where, getDocs, addDoc, orderBy, limit } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc, addDoc, orderBy, limit } from "firebase/firestore";
 import { BookOpen, Calendar, Bell, User, LogOut, Shield, Home, KeyRound, Activity, FileText, FilePlus } from "lucide-react";
 import { formatDate } from "@/lib/dateUtils";
 
 import ChangePasswordModal from "../components/dashboard/changePasswordModal";
 import AkademikView from "../components/dashboard/AkademikView";
+import ReportView from "../components/dashboard/ReportView"; // Import ReportView
 import JadwalView from "../components/dashboard/JadwalView";
 import KegiatanView from "../components/dashboard/KegiatanView";
 import PengumumanView from "../components/dashboard/PengumumanView";
@@ -23,18 +24,18 @@ export default function UserHome() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [userData, setUserData] = useState<any>(null);
+  const [jenjangKelas, setJenjangKelas] = useState(""); // State untuk jenjang kelas siswa
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("home"); // 'home' | 'akademik' | 'akun'
+  const [activeTab, setActiveTab] = useState("home");
   const [isPasswordModalOpen, setPasswordModalOpen] = useState(false);
   const [isPengajuanModalOpen, setPengajuanModalOpen] = useState(false);
   const [latestPengumuman, setLatestPengumuman] = useState<any[]>([]);
   const [selectedPengumuman, setSelectedPengumuman] = useState<any>(null);
 
-  // Handle Tab dari URL (Deep Linking) agar bisa back ke tab tertentu
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get("tab");
-    if (tabParam && ["home", "jadwal", "akademik", "kegiatan", "pengumuman", "akun"].includes(tabParam)) {
+    if (tabParam && ["home", "jadwal", "akademik", "report", "kegiatan", "pengumuman", "akun"].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, []);
@@ -47,23 +48,37 @@ export default function UserHome() {
       }
       setUser(currentUser);
 
-      // Ambil data detail user dari Firestore (Cek koleksi 'guru' dulu)
       try {
         const qGuru = query(collection(db, "guru"), where("email", "==", currentUser.email));
         const snapshotGuru = await getDocs(qGuru);
         
         if (!snapshotGuru.empty) {
-          // Jika ditemukan di data Guru
           setUserData({ id: snapshotGuru.docs[0].id, ...snapshotGuru.docs[0].data() });
         } else {
-          // Jika tidak ada di 'guru', cek di koleksi 'siswa'
           const qSiswa = query(collection(db, "siswa"), where("email", "==", currentUser.email));
           const snapshotSiswa = await getDocs(qSiswa);
 
           if (!snapshotSiswa.empty) {
-            setUserData({ id: snapshotSiswa.docs[0].id, ...snapshotSiswa.docs[0].data() });
+            const siswaData = snapshotSiswa.docs[0].data();
+            setUserData({ id: snapshotSiswa.docs[0].id, ...siswaData });
+
+            // Jika siswa, ambil jenjang kelasnya
+            if (siswaData.kelas) {
+              // LOGIKA DIPERBAIKI: Query koleksi 'kelas' berdasarkan field 'nama'
+              const qKelas = query(collection(db, "kelas"), where("namaKelas", "==", siswaData.kelas));
+              const snapshotKelas = await getDocs(qKelas);
+
+              if (!snapshotKelas.empty) {
+                const kelasData = snapshotKelas.docs[0].data();
+                const jenjangNama = kelasData.jenjangKelas;
+                if (jenjangNama) {
+                  setJenjangKelas(jenjangNama);
+                }
+              } else {
+                console.error("Tidak bisa menemukan dokumen kelas dengan nama:", siswaData.kelas);
+              }
+            }
           } else {
-            // Jika tidak ditemukan di keduanya
             setUserData({ nama: currentUser.email, role: "User" });
           }
         }
@@ -90,7 +105,6 @@ export default function UserHome() {
            q = query(collection(db, "pengumuman"), orderBy("createdAt", "desc"), limit(3));
         } else {
            if (cabang) {
-             // Mengambil data berdasarkan cabang, sorting dilakukan di client-side untuk menghindari error index
              q = query(collection(db, "pengumuman"), where("cabang", "==", cabang));
            } else {
              q = query(collection(db, "pengumuman"), where("cabang", "==", "Unknown"));
@@ -100,7 +114,6 @@ export default function UserHome() {
         const snap = await getDocs(q);
         const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         
-        // Sort client side (terutama untuk query 'where' yang tidak pakai orderBy di server)
         items.sort((a: any, b: any) => {
             const dateA = a.createdAt?.seconds || 0;
             const dateB = b.createdAt?.seconds || 0;
@@ -124,15 +137,40 @@ export default function UserHome() {
     return <div className="min-h-screen flex items-center justify-center bg-gray-100 text-gray-500">Memuat...</div>;
   }
 
+  // Tentukan tombol navigasi akademik/report
+  const renderAkademikButton = () => {
+    if (userData?.role === "Siswa" && jenjangKelas === "Daycare") {
+      return (
+        <button 
+          onClick={() => setActiveTab("report")}
+          className={`flex flex-col items-center ${activeTab === "report" ? "text-[#581c87]" : "text-gray-400"}`}
+        >
+          <FileText className="w-6 h-6 mb-1" />
+          <span className="text-[10px]">Report</span>
+        </button>
+      );
+    }
+    // Sembunyikan untuk role selain siswa dan guru
+    if (!["Siswa", "Guru"].includes(userData?.role)) {
+      return null;
+    }
+    return (
+      <button 
+        onClick={() => setActiveTab("akademik")}
+        className={`flex flex-col items-center ${activeTab === "akademik" ? "text-[#581c87]" : "text-gray-400"}`}
+      >
+        <BookOpen className="w-6 h-6 mb-1" />
+        <span className="text-[10px]">Akademik</span>
+      </button>
+    );
+  };
+
   return (
     <main className="min-h-screen bg-gray-200 flex justify-center items-start">
-      {/* Container Mobile - max-w-lg */}
       <div className="w-full max-w-lg bg-white min-h-screen shadow-2xl flex flex-col">
         
-        {/* KONTEN: HOME */}
         {activeTab === "home" && (
           <>
-            {/* Header */}
             <header className="bg-[#581c87] text-white p-6 rounded-b-3xl shadow-md flex flex-col items-center">
               <div className="mb-3">
                 <Image 
@@ -149,9 +187,7 @@ export default function UserHome() {
               </div>
             </header>
 
-            {/* Content Body */}
             <div className="flex-1 p-6 space-y-6">
-              {/* Quick Menu Grid */}
               <section>
                 <h2 className="font-semibold text-gray-800 mb-3">Menu Utama</h2>
                 <div className="grid grid-cols-4 gap-4">
@@ -171,7 +207,6 @@ export default function UserHome() {
                 </div>
               </section>
 
-              {/* Pengumuman Card */}
               <section>
                 <div className="flex justify-between items-center mb-3">
                   <h2 className="font-semibold text-gray-800">Pengumuman Terbaru</h2>
@@ -198,27 +233,26 @@ export default function UserHome() {
           </>
         )}
 
-        {/* KONTEN: JADWAL */}
         {activeTab === "jadwal" && (
           <JadwalView user={user} userData={userData} onBack={() => setActiveTab("home")} />
         )}
 
-        {/* KONTEN: AKADEMIK */}
+        {/* KONTEN: AKADEMIK & REPORT */}
         {activeTab === "akademik" && (
           <AkademikView user={user} userData={userData} onBack={() => setActiveTab("home")} />
         )}
+        {activeTab === "report" && (
+          <ReportView user={user} userData={userData} onBack={() => setActiveTab("home")} />
+        )}
 
-        {/* KONTEN: KEGIATAN */}
         {activeTab === "kegiatan" && (
           <KegiatanView user={user} userData={userData} onBack={() => setActiveTab("home")} />
         )}
 
-        {/* KONTEN: PENGUMUMAN */}
         {activeTab === "pengumuman" && (
           <PengumumanView user={user} userData={userData} onBack={() => setActiveTab("home")} onSelect={setSelectedPengumuman} />
         )}
 
-        {/* KONTEN: AKUN */}
         {activeTab === "akun" && (
           <div className="flex-1 bg-gray-50">
             <header className="bg-white p-6 shadow-sm sticky top-0 z-10">
@@ -226,7 +260,6 @@ export default function UserHome() {
             </header>
             
             <div className="p-6 space-y-6">
-              {/* Profile Card */}
               <div className="bg-white p-6 rounded-2xl shadow-sm flex items-center gap-4">
                 <div className="w-16 h-16 bg-[#581c87]/10 rounded-full flex items-center justify-center text-[#581c87]">
                   <User className="w-8 h-8" />
@@ -240,9 +273,7 @@ export default function UserHome() {
                 </div>
               </div>
 
-              {/* Menu Akun */}
               <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                {/* Tombol Khusus Admin */}
                 {["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru"].includes(userData?.role) && (
                   <Link href="/admin" className="flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition">
                     <div className="bg-[#581c87]/10 p-2 rounded-lg text-[#581c87]">
@@ -255,7 +286,6 @@ export default function UserHome() {
                   </Link>
                 )}
 
-                {/* Tombol Pengajuan Anggaran */}
                 {["Guru", "Admin", "Kepala Sekolah", "Direktur", "Yayasan"].includes(userData?.role) && (
                   <button onClick={() => setPengajuanModalOpen(true)} className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition text-left">
                     <div className="bg-green-100 p-2 rounded-lg text-green-600">
@@ -268,7 +298,6 @@ export default function UserHome() {
                   </button>
                 )}
 
-                {/* Tombol Ubah Password */}
                 <button onClick={() => setPasswordModalOpen(true)} className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition text-left">
                   <div className="bg-gray-100 p-2 rounded-lg text-gray-600">
                     <KeyRound className="w-5 h-5" />
@@ -306,7 +335,6 @@ export default function UserHome() {
           <PengumumanDetailModal data={selectedPengumuman} onClose={() => setSelectedPengumuman(null)} />
         )}
 
-        {/* Bottom Navigation */}
         <nav className="border-t p-4 flex justify-around text-gray-400 bg-white sticky bottom-0">
            <button 
              onClick={() => setActiveTab("home")}
@@ -316,13 +344,7 @@ export default function UserHome() {
              <span className="text-[10px]">Home</span>
            </button>
            
-           <button 
-             onClick={() => setActiveTab("akademik")}
-             className={`flex flex-col items-center ${activeTab === "akademik" ? "text-[#581c87]" : "text-gray-400"}`}
-           >
-             <BookOpen className="w-6 h-6 mb-1" />
-             <span className="text-[10px]">Akademik</span>
-           </button>
+           {renderAkademikButton()}
            
            <button 
              onClick={() => setActiveTab("akun")}

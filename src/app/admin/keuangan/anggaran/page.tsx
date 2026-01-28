@@ -25,6 +25,7 @@ export default function AnggaranPage() {
   const [filterTahun, setFilterTahun] = useState(currentYear.toString());
   const [filterBulan, setFilterBulan] = useState(monthNames[new Date().getMonth()]);
   const [filterCabang, setFilterCabang] = useState("");
+  const [filterPengaju, setFilterPengaju] = useState(""); // State baru untuk filter pengaju
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [dataList, setDataList] = useState<Pengajuan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,7 +99,10 @@ export default function AnggaranPage() {
 
     const matchTahun = filterTahun ? filterTahun === year : true;
     const matchBulan = filterBulan ? filterBulan === month : true;
-    return matchTahun && matchBulan && (filterCabang ? item.cabang === filterCabang : true);
+    const matchCabang = filterCabang ? item.cabang === filterCabang : true;
+    const matchPengaju = filterPengaju ? item.pengaju.toLowerCase().includes(filterPengaju.toLowerCase()) : true;
+
+    return matchTahun && matchBulan && matchCabang && matchPengaju;
   });
 
   const totalAnggaran = filteredData.reduce((acc, curr) => acc + (curr.total || 0), 0);
@@ -131,6 +135,14 @@ export default function AnggaranPage() {
             {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
+          {/* Input baru untuk filter pengaju */}
+          <input
+            type="text"
+            placeholder="Cari Nama Pengaju..."
+            className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900"
+            value={filterPengaju}
+            onChange={(e) => setFilterPengaju(e.target.value)}
+          />
           <button className="bg-gray-100 p-2 rounded-lg text-gray-600 hover:bg-gray-200">
             <Filter className="w-4 h-4" />
           </button>
