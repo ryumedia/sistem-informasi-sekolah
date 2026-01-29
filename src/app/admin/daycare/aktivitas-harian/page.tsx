@@ -1,7 +1,9 @@
+// src/app/admin/daycare/aktivitas-harian/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase"; // Added auth
+import { onAuthStateChanged } from "firebase/auth"; // Added onAuthStateChanged
 import {
   collection,
   query,
@@ -26,6 +28,7 @@ interface Kelas {
   id: string;
   namaKelas: string;
   cabang: string; 
+  guruKelas?: string[]; // Added optional property
 }
 interface Siswa {
   id: string;
@@ -85,30 +88,101 @@ export default function AktivitasHarianPage() {
   const [editingLaporanId, setEditingLaporanId] = useState<string | null>(null);
   const [selectedLaporan, setSelectedLaporan] = useState<LaporanHarian | null>(null);
   const [formData, setFormData] = useState<any>(initialFormData);
-  
-  // Fetch all necessary data on component mount
+  const [currentUser, setCurrentUser] = useState<any>(null); // State for logged-in user
+
+  // 1. Auth Check & Get User Data
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        let role = "Admin";
+        let userData: any = { email: user.email, uid: user.uid };
+
+        // Cek apakah Guru
+        const qGuru = query(collection(db, "guru"), where("email", "==", user.email));
+        const snapGuru = await getDocs(qGuru);
+        
+        if (!snapGuru.empty) {
+            userData = { ...snapGuru.docs[0].data(), id: snapGuru.docs[0].id };
+            role = "Guru";
+        } else {
+            // Cek apakah Caregiver
+            const qCaregiver = query(collection(db, "caregivers"), where("email", "==", user.email));
+            const snapCaregiver = await getDocs(qCaregiver);
+            if (!snapCaregiver.empty) {
+                userData = { ...snapCaregiver.docs[0].data(), id: snapCaregiver.docs[0].id };
+                role = "Caregiver";
+            }
+        }
+        setCurrentUser({ ...userData, role });
+      } else {
+        setCurrentUser(null);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+  
+  // 2. Fetch Data based on User Role
+  useEffect(() => {
+    if (!currentUser) return;
+
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Fetch master data in parallel
-        const [cabangSnapshot, kelasSnapshot, siswaSnapshot, aktivitasSnapshot, laporanSnapshot] = await Promise.all([
-            getDocs(query(collection(db, "cabang"), orderBy("nama", "asc"))),
-            getDocs(query(collection(db, "kelas"), orderBy("namaKelas", "asc"))),
-            getDocs(query(collection(db, "siswa"), orderBy("nama", "asc"))),
-            getDocs(query(collection(db, "daycare_aktivitas"), orderBy("urutan", "asc"))),
-            getDocs(query(collection(db, "daycare_laporan_harian"), orderBy("tanggal", "desc")))
-        ]);
-
-        const cabangData = cabangSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabang));
-        const kelasData = kelasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kelas));
-        const siswaData = siswaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Siswa));
+        // --- Fetch Cabang ---
+        const cabangSnapshot = await getDocs(query(collection(db, "cabang"), orderBy("nama", "asc")));
+        let allCabang = cabangSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabang));
         
-        setCabangList(cabangData);
-        setKelasList(kelasData);
-        setSiswaList(siswaData);
+        // Filter Cabang jika Caregiver/Guru
+        if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
+            allCabang = allCabang.filter(c => c.nama === currentUser.cabang);
+        }
+        setCabangList(allCabang);
 
-        // Fetch sub-aktivitas for each aktivitas
+        // --- Fetch Kelas ---
+        let kelasQuery;
+        // Logic: cari array 'guruKelas' berarti itu guru yang sedang log in
+        if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.nama) {
+             kelasQuery = query(collection(db, "kelas"), where("guruKelas", "array-contains", currentUser.nama));
+        } else {
+             kelasQuery = query(collection(db, "kelas"), orderBy("namaKelas", "asc"));
+        }
+        
+        const kelasSnapshot = await getDocs(kelasQuery);
+        let allKelas = kelasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kelas));
+        
+        // Extra safety: filter by branch if user has branch
+        if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
+            allKelas = allKelas.filter(k => k.cabang === currentUser.cabang);
+        }
+        setKelasList(allKelas);
+
+        // --- Fetch Siswa ---
+        // Filter siswa based on allowed classes
+        const allowedKelasNames = allKelas.map(k => k.namaKelas);
+        let siswaQuery;
+        
+        if (currentUser.role === "Admin") {
+             siswaQuery = query(collection(db, "siswa"), orderBy("nama", "asc"));
+        } else {
+             // Optimasi: Filter by branch dulu jika ada
+             if (currentUser.cabang) {
+                 siswaQuery = query(collection(db, "siswa"), where("cabang", "==", currentUser.cabang));
+             } else {
+                 siswaQuery = query(collection(db, "siswa"), orderBy("nama", "asc"));
+             }
+        }
+
+        const siswaSnapshot = await getDocs(siswaQuery);
+        let allSiswa = siswaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Siswa));
+        
+        // Filter siswa agar hanya yang ada di kelas yang diampu
+        if (currentUser.role !== "Admin") {
+            allSiswa = allSiswa.filter(s => allowedKelasNames.includes(s.kelas));
+        }
+        setSiswaList(allSiswa);
+
+        // --- Fetch Aktivitas (Static) ---
+        const aktivitasSnapshot = await getDocs(query(collection(db, "daycare_aktivitas"), orderBy("urutan", "asc")));
         const aktivitasDataPromises = aktivitasSnapshot.docs.map(async (aktivitasDoc) => {
             const subAktivitasQuery = query(collection(db, "daycare_sub_aktivitas"), where("aktivitasId", "==", aktivitasDoc.id), orderBy("urutan", "asc"));
             const subAktivitasSnapshot = await getDocs(subAktivitasQuery);
@@ -118,20 +192,37 @@ export default function AktivitasHarianPage() {
         const aktivitasData = await Promise.all(aktivitasDataPromises);
         setAktivitasChecklist(aktivitasData);
 
-        // Map laporan data with names for display
+        // --- Fetch Laporan ---
+        const laporanSnapshot = await getDocs(query(collection(db, "daycare_laporan_harian"), orderBy("tanggal", "desc")));
         const laporanData = laporanSnapshot.docs.map(doc => {
             const data = doc.data() as LaporanHarian;
-            const siswa = siswaData.find(s => s.id === data.siswaId);
-            const cabang = cabangData.find(c => c.id === data.cabangId);
-            const kelas = kelasData.find(k => k.id === data.kelasId);
+            
+            // Filter logic: Hanya tampilkan jika kelas ada di daftar kelas yang diampu
+            const kelas = allKelas.find(k => k.id === data.kelasId);
+            
+            if (currentUser.role !== "Admin" && !kelas) {
+                return null;
+            }
+
+            const siswa = allSiswa.find(s => s.id === data.siswaId);
+            // Jika siswa tidak ditemukan di daftar siswa yang diampu (misal pindah kelas), sembunyikan
+            if (currentUser.role !== "Admin" && !siswa) {
+                 return null;
+            }
+            
+            const displaySiswa = siswa || { nama: 'Siswa tidak ditemukan' };
+            const displayKelas = kelas || { namaKelas: 'Kelas tidak ditemukan' };
+            const displayCabang = allCabang.find(c => c.id === data.cabangId) || { nama: 'Cabang tidak ditemukan' };
+
             return {
                 ...data,
                 id: doc.id,
-                namaSiswa: siswa?.nama || 'Siswa tidak ditemukan',
-                namaCabang: cabang?.nama || 'Cabang tidak ditemukan',
-                namaKelas: kelas?.namaKelas || 'Kelas tidak ditemukan',
+                namaSiswa: displaySiswa.nama,
+                namaCabang: displayCabang.nama,
+                namaKelas: displayKelas.namaKelas,
             };
-        });
+        }).filter(item => item !== null) as LaporanHarian[];
+        
         setLaporanList(laporanData);
 
       } catch (error) {
@@ -142,7 +233,7 @@ export default function AktivitasHarianPage() {
       }
     };
     fetchData();
-  }, []);
+  }, [currentUser]);
 
   // Effect for cascading dropdowns
   // UPDATED: Now filters by name, not ID
@@ -157,8 +248,14 @@ export default function AktivitasHarianPage() {
     } else {
       setFilteredKelasList([]);
     }
-    setFormData((prev: any) => ({ ...prev, kelasId: "", siswaId: "" }));
-  }, [formData.cabangId, cabangList, kelasList]);
+    // Only reset if not editing or if values are invalid
+    if (!editingLaporanId) {
+        // If user is restricted and has only 1 class, don't reset if it matches
+        if (!((currentUser?.role === "Caregiver" || currentUser?.role === "Guru") && kelasList.length === 1)) {
+             setFormData((prev: any) => ({ ...prev, kelasId: "", siswaId: "" }));
+        }
+    }
+  }, [formData.cabangId, cabangList, kelasList, currentUser, editingLaporanId]);
 
   // UPDATED: Now filters by name, not ID
   useEffect(() => {
@@ -175,8 +272,10 @@ export default function AktivitasHarianPage() {
     } else {
       setFilteredSiswaList([]);
     }
-    setFormData((prev: any) => ({ ...prev, siswaId: "" }));
-  }, [formData.cabangId, formData.kelasId, siswaList, cabangList, kelasList]);
+    if (!editingLaporanId) {
+        setFormData((prev: any) => ({ ...prev, siswaId: "" }));
+    }
+  }, [formData.cabangId, formData.kelasId, siswaList, cabangList, kelasList, editingLaporanId]);
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -238,7 +337,24 @@ export default function AktivitasHarianPage() {
       });
     } else {
       setEditingLaporanId(null);
-      setFormData(initialFormData);
+      
+      // Auto-select and Lock for Caregiver/Guru
+      let defaultCabangId = "";
+      let defaultKelasId = "";
+      
+      if ((currentUser?.role === "Caregiver" || currentUser?.role === "Guru") && cabangList.length > 0) {
+          defaultCabangId = cabangList[0].id;
+      }
+      // If only one class available (common for teachers), select it
+      if ((currentUser?.role === "Caregiver" || currentUser?.role === "Guru") && kelasList.length === 1) {
+          defaultKelasId = kelasList[0].id;
+      }
+
+      setFormData({
+          ...initialFormData,
+          cabangId: defaultCabangId,
+          kelasId: defaultKelasId
+      });
     }
     setIsModalOpen(true);
   };
@@ -399,14 +515,28 @@ export default function AktivitasHarianPage() {
                           </div>
                           <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Cabang</label>
-                              <select name="cabangId" value={formData.cabangId} onChange={handleInputChange} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" required>
+                              <select 
+                                name="cabangId" 
+                                value={formData.cabangId} 
+                                onChange={handleInputChange} 
+                                className={`w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none ${(currentUser?.role === "Caregiver" || currentUser?.role === "Guru") ? "bg-gray-100 cursor-not-allowed" : ""}`} 
+                                required
+                                disabled={currentUser?.role === "Caregiver" || currentUser?.role === "Guru"}
+                              >
                                   <option value="">Pilih Cabang</option>
                                   {cabangList.map(c => <option key={c.id} value={c.id}>{c.nama}</option>)}
                               </select>
                           </div>
                           <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Kelas</label>
-                              <select name="kelasId" value={formData.kelasId} onChange={handleInputChange} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" disabled={!formData.cabangId} required>
+                              <select 
+                                name="kelasId" 
+                                value={formData.kelasId} 
+                                onChange={handleInputChange} 
+                                className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" 
+                                disabled={!formData.cabangId} 
+                                required
+                              >
                                   <option value="">Pilih Kelas</option>
                                   {filteredKelasList.map(k => <option key={k.id} value={k.id}>{k.namaKelas}</option>)}
                               </select>

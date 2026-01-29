@@ -13,6 +13,7 @@ import { formatDate } from "@/lib/dateUtils";
 
 import ChangePasswordModal from "../components/dashboard/changePasswordModal";
 import AkademikView from "../components/dashboard/AkademikView";
+import CaregiverReportView from "../components/dashboard/CaregiverReportView"; // Import CaregiverReportView
 import ReportView from "../components/dashboard/ReportView"; // Import ReportView
 import JadwalView from "../components/dashboard/JadwalView";
 import KegiatanView from "../components/dashboard/KegiatanView";
@@ -249,7 +250,13 @@ export default function UserHome() {
           <AkademikView user={user} userData={userData} onBack={() => setActiveTab("home")} />
         )}
         {activeTab === "report" && (
-          <ReportView user={user} userData={userData} onBack={() => setActiveTab("home")} />
+          // Logika baru: Cek role, jika Caregiver tampilkan view khusus
+          userData?.role === "Caregiver" ? (
+            <CaregiverReportView user={user} userData={userData} onBack={() => setActiveTab("home")} />
+          ) : (
+            // Jika bukan Caregiver (misal: Siswa Daycare), tampilkan view lama
+            <ReportView user={user} userData={userData} onBack={() => setActiveTab("home")} />
+          )
         )}
 
         {activeTab === "kegiatan" && (
