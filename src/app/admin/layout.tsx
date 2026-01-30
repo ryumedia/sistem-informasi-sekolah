@@ -134,7 +134,7 @@ export default function AdminLayout({
         { name: "Pengajuan", href: "/admin/keuangan/pengajuan", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"] },
         { name: "Anggaran", href: "/admin/keuangan/anggaran", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
         { name: "Realisasi", href: "/admin/keuangan/realisasi", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"] },
-        { name: "Arus Kas", href: "/admin/keuangan/aruskas", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
+        { name: "Arus Kas", href: "/admin/keuangan/aruskas", roles: ["Admin", "Direktur"] },
       ]
     },
     { 
