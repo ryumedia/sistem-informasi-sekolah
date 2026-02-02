@@ -25,6 +25,7 @@ export default function ArusKasPage() {
   const [filterTahun, setFilterTahun] = useState(currentYear.toString());
   const [filterBulan, setFilterBulan] = useState(monthNames[new Date().getMonth()]);
   const [filterCabang, setFilterCabang] = useState("");
+  const [filterNomenklatur, setFilterNomenklatur] = useState("");
   
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [nomenklaturList, setNomenklaturList] = useState<any[]>([]);
@@ -115,8 +116,9 @@ export default function ArusKasPage() {
     const matchTahun = filterTahun ? filterTahun === year : true;
     const matchBulan = filterBulan ? filterBulan === month : true;
     const matchCabang = filterCabang ? item.cabang === filterCabang : true;
+    const matchNomenklatur = filterNomenklatur ? item.nomenklatur === filterNomenklatur : true;
 
-    return matchTahun && matchBulan && matchCabang;
+    return matchTahun && matchBulan && matchCabang && matchNomenklatur;
   });
 
   const totalPemasukan = filteredData
@@ -251,6 +253,12 @@ export default function ArusKasPage() {
           >
             {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
+          </select>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterNomenklatur} onChange={(e) => setFilterNomenklatur(e.target.value)}>
+            <option value="">Semua Nomenklatur</option>
+            {nomenklaturList.map((n) => (
+              <option key={n.id} value={n.nama}>{n.nama}</option>
+            ))}
           </select>
 
           {["Admin", "Direktur", "Yayasan"].includes(userRole) && (

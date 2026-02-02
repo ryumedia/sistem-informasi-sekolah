@@ -30,6 +30,7 @@ export default function PengajuanPage() {
   const [filterCabang, setFilterCabang] = useState("");
   const [filterNama, setFilterNama] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [filterNomenklatur, setFilterNomenklatur] = useState("");
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [nomenklaturList, setNomenklaturList] = useState<any[]>([]);
   
@@ -179,8 +180,9 @@ export default function PengajuanPage() {
     const matchCabang = filterCabang ? item.cabang === filterCabang : true;
     const matchNama = filterNama ? (item.pengaju || "").toLowerCase().includes(filterNama.toLowerCase()) : true;
     const matchStatus = filterStatus ? item.status === filterStatus : true;
+    const matchNomenklatur = filterNomenklatur ? item.nomenklatur === filterNomenklatur : true;
 
-    return matchTahun && matchBulan && matchCabang && matchStatus && matchNama;
+    return matchTahun && matchBulan && matchCabang && matchStatus && matchNama && matchNomenklatur;
   });
 
   // 5. Logic Approval Berjenjang
@@ -254,11 +256,11 @@ export default function PengajuanPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <h1 className="text-2xl font-bold text-gray-800">Daftar Pengajuan Anggaran</h1>
         
         {/* Filter Area */}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
             {years.map((y) => (
               <option key={y} value={y}>{y}</option>
@@ -277,6 +279,12 @@ export default function PengajuanPage() {
           >
             {!["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role) && <option value="">Semua Cabang</option>}
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
+          </select>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterNomenklatur} onChange={(e) => setFilterNomenklatur(e.target.value)}>
+            <option value="">Semua Nomenklatur</option>
+            {nomenklaturList.map((n) => (
+              <option key={n.id} value={n.nama}>{n.nama}</option>
+            ))}
           </select>
           <input 
             type="text" 

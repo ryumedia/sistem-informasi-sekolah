@@ -12,6 +12,7 @@ interface Pengajuan {
   tanggal: string;
   pengaju: string;
   cabang: string;
+  nomenklatur: string;
   barang: string;
   total: number;
   status: string;
@@ -26,7 +27,9 @@ export default function AnggaranPage() {
   const [filterBulan, setFilterBulan] = useState(monthNames[new Date().getMonth()]);
   const [filterCabang, setFilterCabang] = useState("");
   const [filterPengaju, setFilterPengaju] = useState(""); // State baru untuk filter pengaju
+  const [filterNomenklatur, setFilterNomenklatur] = useState("");
   const [cabangList, setCabangList] = useState<any[]>([]);
+  const [nomenklaturList, setNomenklaturList] = useState<any[]>([]);
   const [dataList, setDataList] = useState<Pengajuan[]>([]);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState("");
@@ -43,6 +46,20 @@ export default function AnggaranPage() {
       }
     };
     fetchCabang();
+  }, []);
+
+  useEffect(() => {
+    const fetchNomenklatur = async () => {
+      try {
+        const q = query(collection(db, "nomenklatur_keuangan"), orderBy("nama", "asc"));
+        const querySnapshot = await getDocs(q);
+        const data = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setNomenklaturList(data);
+      } catch (error) {
+        console.error("Error fetching nomenklatur:", error);
+      }
+    };
+    fetchNomenklatur();
   }, []);
 
   useEffect(() => {
@@ -101,19 +118,20 @@ export default function AnggaranPage() {
     const matchBulan = filterBulan ? filterBulan === month : true;
     const matchCabang = filterCabang ? item.cabang === filterCabang : true;
     const matchPengaju = filterPengaju ? item.pengaju.toLowerCase().includes(filterPengaju.toLowerCase()) : true;
+    const matchNomenklatur = filterNomenklatur ? item.nomenklatur === filterNomenklatur : true;
 
-    return matchTahun && matchBulan && matchCabang && matchPengaju;
+    return matchTahun && matchBulan && matchCabang && matchPengaju && matchNomenklatur;
   });
 
   const totalAnggaran = filteredData.reduce((acc, curr) => acc + (curr.total || 0), 0);
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <h1 className="text-2xl font-bold text-gray-800">Data Anggaran Disetujui</h1>
         
         {/* Filter Area */}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
             <option value="">Semua Tahun</option>
             {years.map((y) => (
@@ -134,6 +152,12 @@ export default function AnggaranPage() {
           >
             {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
+          </select>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterNomenklatur} onChange={(e) => setFilterNomenklatur(e.target.value)}>
+            <option value="">Semua Nomenklatur</option>
+            {nomenklaturList.map((n) => (
+              <option key={n.id} value={n.nama}>{n.nama}</option>
+            ))}
           </select>
           {/* Input baru untuk filter pengaju */}
           <input
@@ -165,7 +189,7 @@ export default function AnggaranPage() {
               <th className="p-4">Tanggal Disetujui</th>
               <th className="p-4">Nama Pengaju</th>
               <th className="p-4">Cabang</th>
-              <th className="p-4">Keterangan</th>
+              <th className="p-4">Keterangan / Nomenklatur</th>
               <th className="p-4">Nominal</th>
             </tr>
           </thead>
@@ -181,7 +205,10 @@ export default function AnggaranPage() {
                   <td className="p-4">{item.tanggal}</td>
                   <td className="p-4 font-medium">{item.pengaju}</td>
                   <td className="p-4">{item.cabang}</td>
-                  <td className="p-4">{item.barang}</td>
+                  <td className="p-4">
+                    <div className="font-medium text-gray-900">{item.barang}</div>
+                    <div className="text-xs text-gray-500">{item.nomenklatur}</div>
+                  </td>
                   <td className="p-4 font-bold text-gray-800">Rp {item.total.toLocaleString("id-ID")}</td>
                 </tr>
               ))

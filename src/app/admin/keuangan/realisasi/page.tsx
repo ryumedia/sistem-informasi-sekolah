@@ -31,7 +31,9 @@ export default function RealisasiPage() {
   const [filterBulan, setFilterBulan] = useState(monthNames[new Date().getMonth()]);
   const [filterCabang, setFilterCabang] = useState("");
   const [filterNama, setFilterNama] = useState("");
+  const [filterNomenklatur, setFilterNomenklatur] = useState("");
   const [cabangList, setCabangList] = useState<any[]>([]);
+  const [nomenklaturList, setNomenklaturList] = useState<any[]>([]);
   const [dataList, setDataList] = useState<Pengajuan[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -56,6 +58,20 @@ export default function RealisasiPage() {
       }
     };
     fetchCabang();
+  }, []);
+
+  useEffect(() => {
+    const fetchNomenklatur = async () => {
+      try {
+        const q = query(collection(db, "nomenklatur_keuangan"), orderBy("nama", "asc"));
+        const querySnapshot = await getDocs(q);
+        const data = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setNomenklaturList(data);
+      } catch (error) {
+        console.error("Error fetching nomenklatur:", error);
+      }
+    };
+    fetchNomenklatur();
   }, []);
 
   useEffect(() => {
@@ -150,8 +166,9 @@ export default function RealisasiPage() {
     const monthIndex = date.getMonth();
     const month = monthNames[monthIndex];
     const matchNama = filterNama ? (item.pengaju || "").toLowerCase().includes(filterNama.toLowerCase()) : true;
+    const matchNomenklatur = filterNomenklatur ? item.nomenklatur === filterNomenklatur : true;
 
-    return filterTahun === year && filterBulan === month && (filterCabang ? item.cabang === filterCabang : true) && matchNama;
+    return filterTahun === year && filterBulan === month && (filterCabang ? item.cabang === filterCabang : true) && matchNama && matchNomenklatur;
   });
 
   const totalAnggaran = filteredData.reduce((acc, curr) => acc + (curr.total || 0), 0);
@@ -232,7 +249,7 @@ export default function RealisasiPage() {
         <h1 className="text-2xl font-bold text-gray-800">Realisasi Anggaran</h1>
         
         {/* Filter Area */}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
             {years.map((y) => (
               <option key={y} value={y}>{y}</option>
@@ -251,6 +268,12 @@ export default function RealisasiPage() {
           >
             {!["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role) && <option value="">Semua Cabang</option>}
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
+          </select>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterNomenklatur} onChange={(e) => setFilterNomenklatur(e.target.value)}>
+            <option value="">Semua Nomenklatur</option>
+            {nomenklaturList.map((n) => (
+              <option key={n.id} value={n.nama}>{n.nama}</option>
+            ))}
           </select>
           <input 
             type="text" 
@@ -308,7 +331,7 @@ export default function RealisasiPage() {
             <tr>
               <th className="p-4">No</th>
               <th className="p-4">Nama Pengaju</th>
-              <th className="p-4">Kegiatan</th>
+              <th className="p-4">Kegiatan / Nomenklatur</th>
               <th className="p-4">Cabang</th>
               <th className="p-4">Anggaran</th>
               <th className="p-4">Realisasi</th>
@@ -326,7 +349,10 @@ export default function RealisasiPage() {
                 <tr key={item.id} className="hover:bg-gray-50">
                   <td className="p-4">{index + 1}</td>
                   <td className="p-4 font-medium text-gray-900">{item.pengaju}</td>
-                  <td className="p-4 font-medium text-gray-900">{item.barang}</td>
+                  <td className="p-4">
+                    <div className="font-medium text-gray-900">{item.barang}</div>
+                    <div className="text-xs text-gray-500">{item.nomenklatur}</div>
+                  </td>
                   <td className="p-4">{item.cabang}</td>
                   <td className="p-4">Rp {item.total.toLocaleString("id-ID")}</td>
                   <td className={`p-4 font-medium ${item.realisasi ? "text-green-600" : "text-gray-400"}`}>
