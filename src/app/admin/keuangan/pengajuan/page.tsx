@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, query, orderBy, doc, updateDoc, where, deleteDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
-import { Eye, CheckCircle, XCircle, Filter, X, Pencil, Trash2, Save } from "lucide-react";
+import { Eye, CheckCircle, XCircle, Filter, X, Pencil, Trash2, Save, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Pengajuan {
   id: string;
@@ -21,12 +21,16 @@ interface Pengajuan {
 }
 
 export default function PengajuanPage() {
-  const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 5 }, (_, i) => (currentYear - 1 + i).toString());
+  const now = new Date();
+  const formatDate = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
-  const [filterTahun, setFilterTahun] = useState(currentYear.toString());
-  const [filterBulan, setFilterBulan] = useState(monthNames[new Date().getMonth()]);
+  const [startDate, setStartDate] = useState(formatDate(new Date(now.getFullYear(), now.getMonth(), 1)));
+  const [endDate, setEndDate] = useState(formatDate(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
   const [filterCabang, setFilterCabang] = useState("");
   const [filterNama, setFilterNama] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -50,6 +54,9 @@ export default function PengajuanPage() {
     hargaSatuan: 0,
     qty: 0,
   });
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // 1. Cek Role User yang Login
   useEffect(() => {
@@ -170,20 +177,24 @@ export default function PengajuanPage() {
 
   // 4. Logic Filter Client-Side
   const filteredData = dataList.filter((item) => {
-    const date = new Date(item.tanggal);
-    const year = date.getFullYear().toString();
-    const monthIndex = date.getMonth();
-    const month = monthNames[monthIndex];
-
-    const matchTahun = filterTahun === year;
-    const matchBulan = filterBulan === month;
+    const matchDate = (!startDate || item.tanggal >= startDate) && (!endDate || item.tanggal <= endDate);
     const matchCabang = filterCabang ? item.cabang === filterCabang : true;
     const matchNama = filterNama ? (item.pengaju || "").toLowerCase().includes(filterNama.toLowerCase()) : true;
     const matchStatus = filterStatus ? item.status === filterStatus : true;
     const matchNomenklatur = filterNomenklatur ? item.nomenklatur === filterNomenklatur : true;
 
-    return matchTahun && matchBulan && matchCabang && matchStatus && matchNama && matchNomenklatur;
+    return matchDate && matchCabang && matchStatus && matchNama && matchNomenklatur;
   });
+
+  // Pagination Logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredData.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [startDate, endDate, filterCabang, filterStatus, filterNama, filterNomenklatur]);
 
   // 5. Logic Approval Berjenjang
   const handleApprove = async (item: Pengajuan) => {
@@ -208,10 +219,24 @@ export default function PengajuanPage() {
   };
 
   // 6. Logic Delete
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (item: Pengajuan) => {
+    const userRoles = currentUser?.role || [];
+
+    if (item.status === "Menunggu Direktur") {
+      if (!userRoles.includes("Kepala Sekolah") && !userRoles.includes("Direktur")) {
+        alert("Pengajuan yang sudah disetujui Kepala Sekolah hanya bisa dihapus oleh Kepala Sekolah atau Direktur.");
+        return;
+      }
+    } else if (item.status === "Disetujui") {
+      if (!userRoles.includes("Direktur")) {
+        alert("Pengajuan yang sudah disetujui Direktur hanya bisa dihapus oleh Direktur.");
+        return;
+      }
+    }
+
     if (confirm("Yakin ingin menghapus pengajuan ini? Tindakan ini tidak dapat dibatalkan.")) {
       try {
-        await deleteDoc(doc(db, "pengajuan", id));
+        await deleteDoc(doc(db, "pengajuan", item.id));
         alert("Data berhasil dihapus.");
         fetchData();
       } catch (error) {
@@ -261,16 +286,22 @@ export default function PengajuanPage() {
         
         {/* Filter Area */}
         <div className="flex flex-wrap gap-2">
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
-            {years.map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterBulan} onChange={(e) => setFilterBulan(e.target.value)}>
-            {monthNames.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Dari:</span>
+            <input 
+              type="date" 
+              className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900"
+              value={startDate} 
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+            <span className="text-sm text-gray-600">Sampai:</span>
+            <input 
+              type="date" 
+              className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900"
+              value={endDate} 
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </div>
           <select 
             className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900 ${["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role) ? "bg-gray-100 cursor-not-allowed" : ""}`} 
             value={filterCabang} 
@@ -326,9 +357,9 @@ export default function PengajuanPage() {
             ) : filteredData.length === 0 ? (
               <tr><td colSpan={7} className="p-8 text-center">Tidak ada data pengajuan pada periode ini.</td></tr>
             ) : (
-              filteredData.map((item, index) => (
+              currentItems.map((item, index) => (
                 <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="p-4">{index + 1}</td>
+                  <td className="p-4">{indexOfFirstItem + index + 1}</td>
                   <td className="p-4">{item.tanggal}</td>
                   <td className="p-4 font-medium text-gray-900">{item.pengaju}</td>
                   <td className="p-4">{item.cabang}</td>
@@ -353,7 +384,7 @@ export default function PengajuanPage() {
                     <button onClick={() => openEditModal(item)} className="p-2 text-[#581c87] hover:bg-[#581c87]/10 rounded-lg" title="Edit">
                       <Pencil className="w-4 h-4" />
                     </button>
-                    <button onClick={() => handleDelete(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Hapus">
+                    <button onClick={() => handleDelete(item)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg" title="Hapus">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </td>
@@ -364,6 +395,62 @@ export default function PengajuanPage() {
         </table>
         </div>
       </div>
+
+      {/* Pagination */}
+      {!loading && filteredData.length > 0 && (
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          <p className="text-sm text-gray-600">
+            Menampilkan {indexOfFirstItem + 1} hingga {Math.min(indexOfLastItem, filteredData.length)} dari {filteredData.length} data
+          </p>
+          
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="p-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition ${
+                      currentPage === pageNum
+                        ? "bg-[#581c87] text-white"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="p-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal Detail Pengajuan */}
       {detailItem && (

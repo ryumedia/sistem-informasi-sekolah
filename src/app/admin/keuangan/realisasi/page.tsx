@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, query, orderBy, where, doc, updateDoc, addDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
-import { FileText, Filter, X, Save, Eye, Wallet, TrendingUp, TrendingDown } from "lucide-react";
+import { FileText, Filter, X, Save, Eye, Wallet, TrendingUp, TrendingDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Pengajuan {
   id: string;
@@ -20,15 +20,20 @@ interface Pengajuan {
   buktiRealisasi?: string;
   arusKasId?: string;
   nomenklatur?: string;
+  tanggalRealisasi?: string;
 }
 
 export default function RealisasiPage() {
-  const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 5 }, (_, i) => (currentYear - 1 + i).toString());
+  const now = new Date();
+  const formatDate = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
-  const [filterTahun, setFilterTahun] = useState(currentYear.toString());
-  const [filterBulan, setFilterBulan] = useState(monthNames[new Date().getMonth()]);
+  const [startDate, setStartDate] = useState(formatDate(new Date(now.getFullYear(), now.getMonth(), 1)));
+  const [endDate, setEndDate] = useState(formatDate(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
   const [filterCabang, setFilterCabang] = useState("");
   const [filterNama, setFilterNama] = useState("");
   const [filterNomenklatur, setFilterNomenklatur] = useState("");
@@ -42,9 +47,13 @@ export default function RealisasiPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Pengajuan | null>(null);
   const [realisasiInput, setRealisasiInput] = useState<number>(0);
+  const [realisasiDate, setRealisasiDate] = useState<string>("");
   const [buktiInput, setBuktiInput] = useState<string>("");
   const [viewBukti, setViewBukti] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     const fetchCabang = async () => {
@@ -161,15 +170,23 @@ export default function RealisasiPage() {
   }, [currentUser]);
 
   const filteredData = dataList.filter((item) => {
-    const date = new Date(item.tanggal);
-    const year = date.getFullYear().toString();
-    const monthIndex = date.getMonth();
-    const month = monthNames[monthIndex];
+    const matchDate = (!startDate || item.tanggal >= startDate) && (!endDate || item.tanggal <= endDate);
     const matchNama = filterNama ? (item.pengaju || "").toLowerCase().includes(filterNama.toLowerCase()) : true;
     const matchNomenklatur = filterNomenklatur ? item.nomenklatur === filterNomenklatur : true;
+    const matchCabang = filterCabang ? item.cabang === filterCabang : true;
 
-    return filterTahun === year && filterBulan === month && (filterCabang ? item.cabang === filterCabang : true) && matchNama && matchNomenklatur;
+    return matchDate && matchCabang && matchNama && matchNomenklatur;
   });
+
+  // Pagination Logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredData.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [startDate, endDate, filterCabang, filterNomenklatur, filterNama]);
 
   const totalAnggaran = filteredData.reduce((acc, curr) => acc + (curr.total || 0), 0);
   const totalRealisasi = filteredData.reduce((acc, curr) => acc + (curr.realisasi || 0), 0);
@@ -178,6 +195,7 @@ export default function RealisasiPage() {
   const handleOpenModal = (item: Pengajuan) => {
     setSelectedItem(item);
     setRealisasiInput(item.realisasi || 0);
+    setRealisasiDate(item.tanggalRealisasi || new Date().toISOString().split("T")[0]);
     setBuktiInput(item.buktiRealisasi || "");
     setIsModalOpen(true);
   };
@@ -190,28 +208,27 @@ export default function RealisasiPage() {
       const selisih = selectedItem.total - realisasiInput;
       
       // Logic: Catat ke Arus Kas sebagai Pengeluaran
-      const arusKasData = {
-        tanggal: new Date().toISOString().split("T")[0], // Tanggal hari ini
+      const baseArusKasData = {
+        tanggal: realisasiDate,
         cabang: selectedItem.cabang,
         nomenklatur: selectedItem.nomenklatur || "Realisasi Pengajuan", // Ambil dari pengajuan
         keterangan: selectedItem.barang, // Nama kegiatan/barang
         jenis: "Keluar",
         nominal: realisasiInput,
-        createdAt: new Date(),
       };
 
       let arusKasId = selectedItem.arusKasId;
 
       if (arusKasId) {
         // Jika sudah ada ID arus kas (edit realisasi), update datanya
-        await updateDoc(doc(db, "arus_kas", arusKasId), arusKasData).catch(async () => {
+        await updateDoc(doc(db, "arus_kas", arusKasId), baseArusKasData).catch(async () => {
            // Jika dokumen arus kas tidak ditemukan (misal terhapus manual), buat baru
-           const newDoc = await addDoc(collection(db, "arus_kas"), arusKasData);
+           const newDoc = await addDoc(collection(db, "arus_kas"), { ...baseArusKasData, createdAt: new Date() });
            arusKasId = newDoc.id;
         });
       } else {
         // Buat data arus kas baru
-        const newDoc = await addDoc(collection(db, "arus_kas"), arusKasData);
+        const newDoc = await addDoc(collection(db, "arus_kas"), { ...baseArusKasData, createdAt: new Date() });
         arusKasId = newDoc.id;
       }
 
@@ -219,7 +236,8 @@ export default function RealisasiPage() {
         realisasi: realisasiInput,
         selisih: selisih,
         buktiRealisasi: buktiInput,
-        arusKasId: arusKasId // Simpan referensi ID Arus Kas
+        arusKasId: arusKasId, // Simpan referensi ID Arus Kas
+        tanggalRealisasi: realisasiDate
       });
       alert("Laporan realisasi berhasil disimpan dan tercatat di Arus Kas!");
       setIsModalOpen(false);
@@ -250,16 +268,22 @@ export default function RealisasiPage() {
         
         {/* Filter Area */}
         <div className="flex flex-wrap gap-2">
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)}>
-            {years.map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterBulan} onChange={(e) => setFilterBulan(e.target.value)}>
-            {monthNames.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">Dari:</span>
+            <input 
+              type="date" 
+              className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900"
+              value={startDate} 
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+            <span className="text-sm text-gray-600">Sampai:</span>
+            <input 
+              type="date" 
+              className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900"
+              value={endDate} 
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </div>
           <select 
             className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900 ${["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role) ? "bg-gray-100 cursor-not-allowed" : ""}`} 
             value={filterCabang} 
@@ -345,9 +369,9 @@ export default function RealisasiPage() {
             ) : filteredData.length === 0 ? (
               <tr><td colSpan={7} className="p-8 text-center">Tidak ada data anggaran disetujui pada periode ini.</td></tr>
             ) : (
-              filteredData.map((item, index) => (
+              currentItems.map((item, index) => (
                 <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="p-4">{index + 1}</td>
+                  <td className="p-4">{indexOfFirstItem + index + 1}</td>
                   <td className="p-4 font-medium text-gray-900">{item.pengaju}</td>
                   <td className="p-4">
                     <div className="font-medium text-gray-900">{item.barang}</div>
@@ -387,10 +411,66 @@ export default function RealisasiPage() {
         </div>
       </div>
 
+      {/* Pagination */}
+      {!loading && filteredData.length > 0 && (
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          <p className="text-sm text-gray-600">
+            Menampilkan {indexOfFirstItem + 1} hingga {Math.min(indexOfLastItem, filteredData.length)} dari {filteredData.length} data
+          </p>
+          
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="p-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition ${
+                      currentPage === pageNum
+                        ? "bg-[#581c87] text-white"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="p-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Modal Laporan Realisasi */}
       {isModalOpen && selectedItem && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden">
             <div className="p-4 border-b flex justify-between items-center bg-gray-50">
               <h3 className="font-bold text-gray-800">Laporan Realisasi</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
@@ -398,22 +478,35 @@ export default function RealisasiPage() {
               </button>
             </div>
             <form onSubmit={handleSubmitLaporan} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Kegiatan / Barang</label>
-                <input disabled type="text" className="w-full border rounded-lg p-2 bg-gray-100 text-gray-600" value={selectedItem.barang} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nomenklatur</label>
-                <input disabled type="text" className="w-full border rounded-lg p-2 bg-gray-100 text-gray-600" value={selectedItem.nomenklatur || "-"} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Anggaran Disetujui</label>
-                <input disabled type="text" className="w-full border rounded-lg p-2 bg-gray-100 text-gray-800 font-bold" value={`Rp ${selectedItem.total.toLocaleString("id-ID")}`} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Realisasi (Rp)</label>
-                <input required type="number" min="0" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                  value={realisasiInput} onChange={(e) => setRealisasiInput(Number(e.target.value))} />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal Realisasi</label>
+                  <input required type="date" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                    value={realisasiDate} onChange={(e) => setRealisasiDate(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Kegiatan / Barang</label>
+                  <input disabled type="text" className="w-full border rounded-lg p-2 bg-gray-100 text-gray-600" value={selectedItem.barang} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nomenklatur</label>
+                  <input disabled type="text" className="w-full border rounded-lg p-2 bg-gray-100 text-gray-600" value={selectedItem.nomenklatur || "-"} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Anggaran Disetujui</label>
+                  <input disabled type="text" className="w-full border rounded-lg p-2 bg-gray-100 text-gray-800 font-bold" value={`Rp ${selectedItem.total.toLocaleString("id-ID")}`} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Realisasi (Rp)</label>
+                  <input required type="number" min="0" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                    value={realisasiInput} onChange={(e) => setRealisasiInput(Number(e.target.value))} />
+                </div>
+                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                  <label className="block text-xs font-medium text-blue-600 mb-1">Selisih (Sisa Anggaran)</label>
+                  <div className={`text-lg font-bold ${(selectedItem.total - realisasiInput) < 0 ? "text-red-600" : "text-blue-700"}`}>
+                    Rp {(selectedItem.total - realisasiInput).toLocaleString("id-ID")}
+                  </div>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Bukti Realisasi (Gambar)</label>
@@ -429,14 +522,8 @@ export default function RealisasiPage() {
                   </div>
                 )}
               </div>
-              <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                <label className="block text-xs font-medium text-blue-600 mb-1">Selisih (Sisa Anggaran)</label>
-                <div className={`text-lg font-bold ${(selectedItem.total - realisasiInput) < 0 ? "text-red-600" : "text-blue-700"}`}>
-                  Rp {(selectedItem.total - realisasiInput).toLocaleString("id-ID")}
-                </div>
-              </div>
               <button disabled={submitting} type="submit" className="w-full bg-[#581c87] text-white py-2 rounded-lg hover:bg-[#45156b] transition font-medium mt-2 flex justify-center items-center gap-2">
-                <Save className="w-4 h-4" /> {submitting ? "Menyimpan..." : "Kirim Laporan"}
+                <Save className="w-4 h-4" /> {submitting ? "Menyimpan..." : (selectedItem.arusKasId ? "Perbarui Realisasi" : "Kirim Realisasi")}
               </button>
             </form>
           </div>
