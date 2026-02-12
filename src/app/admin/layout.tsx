@@ -61,7 +61,12 @@ export default function AdminLayout({
     // 2. Hitung Anggaran Belum Terealisasi (Status Disetujui)
     const qRealisasi = query(collection(db, "pengajuan"), where("status", "==", "Disetujui"));
     const unsubRealisasi = onSnapshot(qRealisasi, (snap) => {
-      setRealisasiCount(snap.size);
+      // Filter hanya yang belum memiliki data realisasi (field realisasi kosong/0)
+        const belumRealisasi = snap.docs.filter(doc => {
+          const data = doc.data();
+          return !data.realisasi; 
+        }).length;
+        setRealisasiCount(belumRealisasi);
     });
 
     return () => {
