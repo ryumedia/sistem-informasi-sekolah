@@ -36,6 +36,7 @@ export default function PengaturanKelasPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [filterCabang, setFilterCabang] = useState<string>("");
 
   // State Form
   const [formData, setFormData] = useState<{
@@ -184,6 +185,10 @@ export default function PengaturanKelasPage() {
     setFormData({ ...formData, asistenGuru: selectedOptions });
   };
 
+  const filteredKelasList = kelasList.filter(kelas => {
+    return filterCabang ? kelas.cabang === filterCabang : true;
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -194,6 +199,22 @@ export default function PengaturanKelasPage() {
         >
           <Plus className="w-4 h-4" /> Tambah Kelas
         </button>
+      </div>
+
+      {/* Filter Section */}
+      <div className="flex justify-end">
+        <select
+          className="border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+          value={filterCabang}
+          onChange={(e) => setFilterCabang(e.target.value)}
+        >
+          <option value="">Semua Cabang</option>
+          {cabangList.map((c) => (
+            <option key={c.id} value={c.nama}>
+              {c.nama}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Tabel Data */}
@@ -219,10 +240,10 @@ export default function PengaturanKelasPage() {
                     <span>Memuat data...</span>
                 </div>
               </td></tr>
-            ) : kelasList.length === 0 ? (
+            ) : filteredKelasList.length === 0 ? (
               <tr><td colSpan={7} className="p-8 text-center text-gray-500">Belum ada data kelas.</td></tr>
             ) : (
-              kelasList.map((kelas, index) => (
+              filteredKelasList.map((kelas, index) => (
                 <tr key={kelas.id} className="hover:bg-gray-50">
                   <td className="p-4 text-center">{index + 1}</td>
                   <td className="p-4 font-medium text-gray-900">{kelas.namaKelas}</td>

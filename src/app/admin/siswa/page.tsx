@@ -1,12 +1,12 @@
 // src/app/admin/siswa/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db, firebaseConfig, auth } from "@/lib/firebase";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from "firebase/firestore";
 import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
-import { Plus, X, Pencil, Trash2, Search, Lock, FileText } from "lucide-react";
+import { Plus, X, Pencil, Trash2, Search, Lock, FileText, Upload, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Siswa {
   id: string;
@@ -26,6 +26,8 @@ interface Siswa {
   status: string;
   foto?: string;
   jenjangUsia?: string;
+  isDaycare?: boolean;
+  kelasDaycare?: string;
   uid?: string; // Tambahkan field UID
 }
 
@@ -40,6 +42,12 @@ export default function DataSiswaPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [viewDetail, setViewDetail] = useState<Siswa | null>(null);
   const [userRole, setUserRole] = useState<string>("");
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
   
   // Filter State
   const [searchQuery, setSearchQuery] = useState("");
@@ -65,6 +73,8 @@ export default function DataSiswaPage() {
     status: "Aktif",
     foto: "",
     jenjangUsia: "",
+    isDaycare: false,
+    kelasDaycare: "",
   });
 
   // Fetch Data Siswa
@@ -197,9 +207,29 @@ export default function DataSiswaPage() {
           status: formData.status,
           foto: formData.foto,
           jenjangUsia: formData.jenjangUsia,
+          isDaycare: formData.isDaycare,
+          kelasDaycare: formData.isDaycare ? formData.kelasDaycare : "",
         });
         alert("Data siswa berhasil diperbarui!");
       } else {
+
+        // Mode Tambah: Buat data baru
+
+        // Cek apakah email sudah ada di koleksi lain
+        const emailExistsQuery = [
+          query(collection(db, "siswa"), where("email", "==", formData.email)),
+          query(collection(db, "guru"), where("email", "==", formData.email)),
+          query(collection(db, "caregivers"), where("email", "==", formData.email)),
+        ];
+
+        const queryResults = await Promise.all(emailExistsQuery.map(q => getDocs(q)));
+        
+        if (queryResults.some(snap => !snap.empty)) {
+          alert("Email sudah terdaftar, silakan gunakan email lain.");
+          setSubmitting(false);
+          return;
+        }
+
         // 1. Buat User di Firebase Auth (gunakan Secondary App)
         const secondaryApp = initializeApp(firebaseConfig, "Secondary");
         const secondaryAuth = getAuth(secondaryApp);
@@ -227,6 +257,8 @@ export default function DataSiswaPage() {
           uid: userCredential.user.uid,
           createdAt: new Date(),
           jenjangUsia: formData.jenjangUsia,
+          isDaycare: formData.isDaycare,
+          kelasDaycare: formData.isDaycare ? formData.kelasDaycare : "",
         });
         alert("Siswa baru berhasil ditambahkan sebagai User!");
       }
@@ -234,7 +266,11 @@ export default function DataSiswaPage() {
       fetchSiswa();
     } catch (error: any) {
       console.error("Error saving siswa:", error);
-      alert("Gagal menyimpan data: " + error.message);
+      if (error.code === 'auth/email-already-in-use') {
+        alert("Email sudah terdaftar, silakan gunakan email lain.");
+      } else {
+        alert("Gagal menyimpan data: " + error.message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -286,6 +322,8 @@ export default function DataSiswaPage() {
       password: "",
       foto: siswa.foto || "",
       jenjangUsia: siswa.jenjangUsia || "",
+      isDaycare: siswa.isDaycare || false,
+      kelasDaycare: siswa.kelasDaycare || "",
     });
     setIsModalOpen(true);
   };
@@ -310,8 +348,121 @@ export default function DataSiswaPage() {
       password: "",
       status: "Aktif",
       foto: "",
-      jenjangUsia: ""
+      jenjangUsia: "",
+      isDaycare: false,
+      kelasDaycare: "",
     });
+  };
+
+  // Handle Import Excel
+  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    let secondaryApp: any;
+
+    try {
+      // @ts-ignore
+      const XLSX = await import("xlsx");
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { cellDates: true });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+      if (jsonData.length === 0) {
+        alert("File Excel kosong.");
+        setImporting(false);
+        return;
+      }
+
+      // Initialize Secondary App for Auth creation
+      secondaryApp = initializeApp(firebaseConfig, "SecondaryImport");
+      const secondaryAuth = getAuth(secondaryApp);
+
+      let success = 0;
+      let failed = 0;
+      const errors: string[] = [];
+
+      for (const row of jsonData as any[]) {
+        // Basic Validation (Pastikan kolom Excel sesuai: Nama, Email, Password)
+        if (!row.Nama || !row.Email || !row.Password) {
+            failed++;
+            continue;
+        }
+
+        // Format Tanggal Lahir (Handle Date Object Excel & String DD/MM/YYYY)
+        let tglLahir = row['Tanggal Lahir'] || "";
+        if (tglLahir instanceof Date) {
+            const y = tglLahir.getFullYear();
+            const m = String(tglLahir.getMonth() + 1).padStart(2, '0');
+            const d = String(tglLahir.getDate()).padStart(2, '0');
+            tglLahir = `${y}-${m}-${d}`;
+        } else if (typeof tglLahir === 'string' && tglLahir.includes('/')) {
+            // Asumsi format DD/MM/YYYY
+            const parts = tglLahir.split('/');
+            if (parts.length === 3) {
+                tglLahir = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+        }
+
+        try {
+            // Check if email exists in Firestore
+             const emailExistsQuery = [
+                query(collection(db, "siswa"), where("email", "==", row.Email)),
+                query(collection(db, "guru"), where("email", "==", row.Email)),
+                query(collection(db, "caregivers"), where("email", "==", row.Email)),
+            ];
+            const queryResults = await Promise.all(emailExistsQuery.map(q => getDocs(q)));
+            if (queryResults.some(snap => !snap.empty)) {
+                throw new Error(`Email ${row.Email} sudah terdaftar.`);
+            }
+
+            // Create Auth User
+            const userCredential = await createUserWithEmailAndPassword(secondaryAuth, row.Email, row.Password);
+            
+            // Add to Firestore
+            await addDoc(collection(db, "siswa"), {
+                nama: row.Nama,
+                email: row.Email,
+                jenisKelamin: row['Jenis Kelamin'] || "Laki-laki",
+                nisn: row.NISN || "",
+                tempatLahir: row['Tempat Lahir'] || "",
+                tanggalLahir: tglLahir, 
+                agama: row.Agama || "",
+                anakKe: row['Anak Ke'] || "",
+                alamat: row.Alamat || "",
+                namaAyah: row['Nama Ayah'] || "",
+                namaIbu: row['Nama Ibu'] || "",
+                kelas: row.Kelas || "",
+                cabang: row.Cabang || "",
+                status: "Aktif",
+                role: "Siswa",
+                uid: userCredential.user.uid,
+                createdAt: new Date(),
+                jenjangUsia: row['Jenjang Usia'] || "",
+                isDaycare: row.Daycare === true || row.Daycare === "Ya" || row.Daycare === "TRUE",
+                kelasDaycare: row['Kelas Daycare'] || "",
+            });
+            success++;
+        } catch (err: any) {
+            console.error(`Gagal import ${row.Nama}:`, err);
+            failed++;
+            errors.push(`${row.Nama}: ${err.message}`);
+        }
+      }
+
+      alert(`Import Selesai.\nSukses: ${success}\nGagal: ${failed}\n${errors.length > 0 ? "Cek console untuk detail error." : ""}`);
+      if (errors.length > 0) console.log("Import Errors:", errors);
+      fetchSiswa();
+    } catch (error) {
+      console.error("Error processing file:", error);
+      alert("Terjadi kesalahan saat memproses file. Pastikan format Excel benar.");
+    } finally {
+      if (secondaryApp) await deleteApp(secondaryApp);
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   // Logic Filter
@@ -324,16 +475,43 @@ export default function DataSiswaPage() {
     return matchSearch && matchCabang && matchKelas;
   });
 
+  // Pagination Logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredSiswa.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredSiswa.length / itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterCabang, filterKelas]);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-800">Data Siswa</h1>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="bg-[#581c87] text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-[#45156b] transition"
-        >
-          <Plus className="w-4 h-4" /> Tambah Siswa
-        </button>
+        <div className="flex gap-2">
+            <input 
+                type="file" 
+                accept=".xlsx, .xls" 
+                ref={fileInputRef} 
+                className="hidden" 
+                onChange={handleFileImport} 
+            />
+            <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition disabled:opacity-50"
+            >
+                {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                Import Excel
+            </button>
+            <button
+            onClick={() => setIsModalOpen(true)}
+            className="bg-[#581c87] text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-[#45156b] transition"
+            >
+            <Plus className="w-4 h-4" /> Tambah Siswa
+            </button>
+        </div>
       </div>
 
       {/* Filter Section */}
@@ -390,10 +568,17 @@ export default function DataSiswaPage() {
             ) : filteredSiswa.length === 0 ? (
               <tr><td colSpan={8} className="p-8 text-center">Data tidak ditemukan.</td></tr>
             ) : (
-              filteredSiswa.map((siswa, index) => (
+              currentItems.map((siswa, index) => (
                 <tr key={siswa.id} className="hover:bg-gray-50">
-                  <td className="p-4 text-center">{index + 1}</td>
-                  <td className="p-4 font-medium text-gray-900">{siswa.nama}</td>
+                  <td className="p-4 text-center">{indexOfFirstItem + index + 1}</td>
+                  <td className="p-4 font-medium text-gray-900">
+                    <div className="flex items-center gap-2">
+                      <span>{siswa.nama}</span>
+                      {siswa.isDaycare && (
+                        <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2 py-0.5 rounded-full">Daycare</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="p-4">{siswa.cabang}</td>
                   <td className="p-4">
                     <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium">
@@ -426,6 +611,62 @@ export default function DataSiswaPage() {
         </table>
         </div>
       </div>
+
+      {/* Pagination */}
+      {!loading && filteredSiswa.length > 0 && (
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          <p className="text-sm text-gray-600">
+            Menampilkan {indexOfFirstItem + 1} hingga {Math.min(indexOfLastItem, filteredSiswa.length)} dari {filteredSiswa.length} data
+          </p>
+          
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="p-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition ${
+                      currentPage === pageNum
+                        ? "bg-[#581c87] text-white"
+                        : "text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="p-2 border rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal Tambah/Edit */}
       {isModalOpen && (
@@ -539,6 +780,46 @@ export default function DataSiswaPage() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div className="col-span-1 md:grid-cols-2 lg:col-span-4 border-t pt-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                  <div>
+                    <label className="flex items-center cursor-pointer">
+                      <span className="mr-3 text-sm font-medium text-gray-700">Apakah Siswa Daycare?</span>
+                      <div className="relative">
+                          <input 
+                              type="checkbox" 
+                              id="isDaycareToggle" 
+                              className="sr-only peer"
+                              checked={formData.isDaycare}
+                              onChange={(e) => {
+                                  const isChecked = e.target.checked;
+                                  setFormData({
+                                      ...formData, 
+                                      isDaycare: isChecked, 
+                                      kelasDaycare: isChecked ? formData.kelasDaycare : "" 
+                                  });
+                              }}
+                          />
+                          <div className="block bg-gray-200 w-14 h-8 rounded-full peer-checked:bg-[#581c87]"></div>
+                          <div className="dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform peer-checked:translate-x-full"></div>
+                      </div>
+                    </label>
+                  </div>
+                  {formData.isDaycare && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Kelas Daycare</label>
+                      <select required={formData.isDaycare} className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                        value={formData.kelasDaycare} onChange={(e) => setFormData({...formData, kelasDaycare: e.target.value})}>
+                        <option value="">Pilih Kelas Daycare</option>
+                        {kelasList
+                          .filter((k) => k.jenjangKelas === 'Daycare' && (!formData.cabang || k.cabang === formData.cabang))
+                          .map((k) => <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

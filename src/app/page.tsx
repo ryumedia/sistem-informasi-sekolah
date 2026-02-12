@@ -145,34 +145,6 @@ export default function UserHome() {
     return <div className="min-h-screen flex items-center justify-center bg-gray-100 text-gray-500">Memuat...</div>;
   }
 
-  // Tentukan tombol navigasi akademik/report
-  const renderAkademikButton = () => {
-    if ((userData?.role === "Siswa" && jenjangKelas === "Daycare") || userData?.role === "Caregiver") {
-      return (
-        <button 
-          onClick={() => setActiveTab("report")}
-          className={`flex flex-col items-center ${activeTab === "report" ? "text-[#581c87]" : "text-gray-400"}`}
-        >
-          <FileText className="w-6 h-6 mb-1" />
-          <span className="text-[10px]">Report</span>
-        </button>
-      );
-    }
-    // Sembunyikan untuk role selain siswa dan guru
-    if (!["Siswa", "Guru"].includes(userData?.role)) {
-      return null;
-    }
-    return (
-      <button 
-        onClick={() => setActiveTab("akademik")}
-        className={`flex flex-col items-center ${activeTab === "akademik" ? "text-[#581c87]" : "text-gray-400"}`}
-      >
-        <BookOpen className="w-6 h-6 mb-1" />
-        <span className="text-[10px]">Akademik</span>
-      </button>
-    );
-  };
-
   return (
     <main className="min-h-screen bg-gray-200 flex justify-center items-start">
       <div className="w-full max-w-lg bg-white min-h-screen shadow-2xl flex flex-col">
@@ -358,7 +330,27 @@ export default function UserHome() {
              <span className="text-[10px]">Home</span>
            </button>
            
-           {renderAkademikButton()}
+           {/* Menu Akademik: Untuk Guru atau Siswa (kecuali Siswa murni Daycare) */}
+           {["Siswa", "Guru"].includes(userData?.role) && jenjangKelas !== "Daycare" && (
+             <button 
+               onClick={() => setActiveTab("akademik")}
+               className={`flex flex-col items-center ${activeTab === "akademik" ? "text-[#581c87]" : "text-gray-400"}`}
+             >
+               <BookOpen className="w-6 h-6 mb-1" />
+               <span className="text-[10px]">Akademik</span>
+             </button>
+           )}
+
+           {/* Menu Report: Untuk Caregiver atau Siswa Daycare (Murni atau Reguler+Daycare) */}
+           {((userData?.role === "Siswa" && (jenjangKelas === "Daycare" || userData?.isDaycare)) || userData?.role === "Caregiver") && (
+             <button 
+               onClick={() => setActiveTab("report")}
+               className={`flex flex-col items-center ${activeTab === "report" ? "text-[#581c87]" : "text-gray-400"}`}
+             >
+               <FileText className="w-6 h-6 mb-1" />
+               <span className="text-[10px]">Report</span>
+             </button>
+           )}
            
            <button 
              onClick={() => setActiveTab("akun")}

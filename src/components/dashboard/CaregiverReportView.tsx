@@ -229,7 +229,7 @@ function GrowthDataModal({
     const dataToSave = {
       tanggal: formData.tanggal,
       cabang: student.cabang,
-      kelas: student.kelas,
+      kelas: student.kelasDaycare || student.kelas,
       siswaId: student.id,
       lingkarKepala: parseFloat(formData.lingkarKepala) || 0,
       tinggiBadan: parseFloat(formData.tinggiBadan) || 0,
@@ -411,10 +411,31 @@ export default function CaregiverReportView({ userData, onBack }: { user: any, u
         const allowedKelas = kelasSnap.docs.map(doc => doc.data().namaKelas).filter(Boolean);
 
         if (allowedKelas.length > 0) {
-          // Ambil semua siswa dari kelas-kelas tersebut
-          const siswaQuery = query(collection(db, "siswa"), where("kelas", "in", allowedKelas), orderBy("nama", "asc"));
-          const siswaSnap = await getDocs(siswaQuery);
-          const list = siswaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          // 1. Ambil siswa yang kelas regulernya sesuai dengan kelas guru
+          const regularQuery = query(
+            collection(db, "siswa"),
+            where("kelas", "in", allowedKelas)
+          );
+
+          // 2. Ambil siswa yang status isDaycare=true DAN kelasDaycare sesuai dengan kelas guru
+          const daycareQuery = query(
+            collection(db, "siswa"), 
+            where("isDaycare", "==", true),
+            where("kelasDaycare", "in", allowedKelas)
+          );
+
+          const [regularSnap, daycareSnap] = await Promise.all([
+            getDocs(regularQuery),
+            getDocs(daycareQuery)
+          ]);
+
+          // Gabungkan hasil dan hapus duplikat berdasarkan ID
+          const studentMap = new Map();
+          regularSnap.docs.forEach(doc => studentMap.set(doc.id, { id: doc.id, ...doc.data() }));
+          daycareSnap.docs.forEach(doc => studentMap.set(doc.id, { id: doc.id, ...doc.data() }));
+
+          const list = Array.from(studentMap.values());
+          list.sort((a: any, b: any) => (a.nama || "").localeCompare(b.nama || ""));
           setStudents(list);
         } else {
           setStudents([]);
@@ -525,7 +546,7 @@ function StudentReportDetail({ student, onBack }: { student: any, onBack: () => 
         <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full transition"><ArrowLeft className="w-5 h-5 text-gray-600" /></button>
         <div>
           <h1 className="text-lg font-bold text-gray-800">Laporan: {student.nama}</h1>
-          <p className="text-xs text-gray-500">Kelas {student.kelas}</p>
+          <p className="text-xs text-gray-500">Kelas {student.kelasDaycare || student.kelas}</p>
         </div>
       </header>
 

@@ -13,7 +13,7 @@ import {
   getDoc,
   orderBy,
 } from "firebase/firestore";
-import { ArrowLeft, Loader2, Calendar, BookOpen, Scaling, Ruler, Baby } from "lucide-react";
+import { ArrowLeft, Loader2, Calendar, BookOpen, Scaling, Ruler, Baby, User } from "lucide-react";
 
 // --- Tipe Data ---
 interface Aktivitas {
@@ -307,6 +307,34 @@ const MonthlyReportTab = ({ userId }: { userId: string }) => {
 // --- Komponen Utama ---
 export default function ReportView({ user, userData, onBack }: ReportViewProps) {
   const [activeTab, setActiveTab] = useState("harian");
+  const [waliKelas, setWaliKelas] = useState("-");
+
+  const displayKelas = userData?.isDaycare ? userData?.kelasDaycare : userData?.kelas;
+
+  useEffect(() => {
+    if (displayKelas && userData?.cabang) {
+      const fetchWali = async () => {
+        try {
+           const q = query(collection(db, "kelas"), where("namaKelas", "==", displayKelas), where("cabang", "==", userData.cabang));
+           const snap = await getDocs(q);
+           if (!snap.empty) {
+             const data = snap.docs[0].data();
+             const guru = data.guruKelas || data.waliKelas;
+             if (Array.isArray(guru)) {
+                setWaliKelas(guru.map((g: any) => typeof g === 'string' ? g : g.nama).join(", "));
+             } else if (typeof guru === 'object' && guru !== null) {
+                setWaliKelas(guru.nama || "-");
+             } else {
+                setWaliKelas(guru || "-");
+             }
+           }
+        } catch (e) {
+          console.error("Error fetching wali kelas:", e);
+        }
+      };
+      fetchWali();
+    }
+  }, [userData, displayKelas]);
 
   return (
     <div className="flex-1 flex flex-col bg-gray-50">
@@ -319,6 +347,33 @@ export default function ReportView({ user, userData, onBack }: ReportViewProps) 
       </header>
 
       <div className="p-6">
+        <div className="bg-white p-3 rounded-xl shadow-sm flex flex-col md:flex-row items-center gap-3 mb-4 border border-gray-100">
+           <div className="flex flex-col items-center text-center w-full md:w-auto shrink-0 md:pr-4">
+               <div className="w-12 h-12 bg-purple-50 rounded-full flex items-center justify-center text-[#581c87] mb-1 overflow-hidden shadow-sm border-2 border-white ring-1 ring-gray-100">
+              {userData.foto ? (
+                <img src={userData.foto} alt={userData.nama} className="w-full h-full object-cover" />
+              ) : (
+                <User className="w-6 h-6" />
+              )}
+           </div>
+               <h2 className="text-sm font-bold text-gray-800 leading-tight">{userData.nama}</h2>
+               <p className="text-[10px] text-gray-500 mt-0.5 font-medium">{userData.nisn || "NISN -"}</p>
+           </div>
+
+           <div className="hidden md:block w-px h-16 bg-gray-100"></div>
+
+           <div className="flex-1 w-full grid grid-cols-2 gap-2 md:pl-2">
+              <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 flex flex-col justify-center">
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold mb-0.5">Kelas</p>
+                <p className="font-bold text-gray-800 text-sm">{displayKelas || "-"}</p>
+              </div>
+              <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 flex flex-col justify-center">
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold mb-0.5">Wali Kelas</p>
+                <p className="font-semibold text-gray-700 text-xs line-clamp-1">{waliKelas}</p>
+              </div>
+           </div>
+        </div>
+
         <div className="mb-4 border-b border-gray-200">
           <nav className="flex space-x-4" aria-label="Tabs">
             <button onClick={() => setActiveTab("harian")} className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-t-lg ${activeTab === "harian" ? "border-b-2 border-blue-500 text-blue-600" : "text-gray-500 hover:text-gray-700"}`}>
@@ -338,4 +393,3 @@ export default function ReportView({ user, userData, onBack }: ReportViewProps) 
     </div>
   );
 }
-
