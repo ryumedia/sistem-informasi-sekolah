@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, ChangeEvent, FormEvent } from 'react';
+import { useState, useEffect, ChangeEvent, FormEvent, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Save, Calendar, CheckCircle2, Plus, Trash2, Upload, Briefcase, Users, Target, DollarSign, Lightbulb, BookOpen, Activity, Home } from 'lucide-react';
@@ -101,7 +101,7 @@ const steps = [
     { id: 11, name: 'Konfirmasi' },
 ];
 
-export default function BuatLaporanPage() {
+function FormContent() {
     const [currentStep, setCurrentStep] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
@@ -732,5 +732,13 @@ export default function BuatLaporanPage() {
                 </div>
             </form>
         </div>
+    );
+}
+
+export default function BuatLaporanPage() {
+    return (
+        <Suspense fallback={<div className="p-8 text-center">Memuat form...</div>}>
+            <FormContent />
+        </Suspense>
     );
 }
