@@ -132,6 +132,14 @@ export default function AdminLayout({
       ]
     },
     { 
+      name: "Laporan", 
+      href: "#",
+      roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"],
+      submenu: [
+        { name: "Laporan Bulanan", href: "/admin/laporan/bulanan", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
+      ]
+    },
+    { 
       name: "Keuangan", 
       href: "#",
       roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"],
