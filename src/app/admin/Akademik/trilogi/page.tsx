@@ -26,6 +26,13 @@ interface SubTrilogi {
   jenjangKelas: string;
   habit: string;
   deskripsi: string;
+  periode: string;
+}
+
+interface Periode {
+  id: string;
+  namaPeriode: string;
+  isDefault?: boolean;
 }
 
 export default function TrilogiMainriangPage() {
@@ -44,9 +51,35 @@ export default function TrilogiMainriangPage() {
   const [subTrilogiList, setSubTrilogiList] = useState<SubTrilogi[]>([]);
   const [loadingSubs, setLoadingSubs] = useState(false);
   const [isSubModalOpen, setIsSubModalOpen] = useState(false);
-  const [subFormData, setSubFormData] = useState({ jenjangKelas: "", habit: "", deskripsi: "" });
+  const [subFormData, setSubFormData] = useState({ jenjangKelas: "", habit: "", deskripsi: "", periode: "" });
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [isSubmittingSub, setIsSubmittingSub] = useState(false);
+
+  // State untuk Periode KPI
+  const [periodeList, setPeriodeList] = useState<Periode[]>([]);
+  const [selectedPeriode, setSelectedPeriode] = useState<string>('');
+  const [periodeMap, setPeriodeMap] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    const fetchPeriode = async () => {
+      try {
+        const q = query(collection(db, 'kpi_periode'), orderBy('isDefault', 'desc'));
+        const querySnapshot = await getDocs(q);
+        const periods = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Periode));
+        const newPeriodeMap = new Map(periods.map(p => [p.id, p.namaPeriode]));
+        
+        setPeriodeList(periods);
+        setPeriodeMap(newPeriodeMap);
+
+        const defaultId = periods.length > 0 ? periods[0].id : '';
+        setSelectedPeriode(defaultId);
+
+      } catch (error) {
+        console.error("Error fetching kpi_periode: ", error);
+      }
+    };
+    fetchPeriode();
+  }, []);
 
   // --- Functions untuk Parent ---
 
@@ -142,7 +175,7 @@ export default function TrilogiMainriangPage() {
   const openSubModal = async (group: TrilogiGroup) => {
     setSelectedGroup(group);
     setIsSubModalOpen(true);
-    setSubFormData({ jenjangKelas: "", habit: "", deskripsi: "" });
+    setSubFormData({ jenjangKelas: "", habit: "", deskripsi: "", periode: selectedPeriode });
     setEditingSubId(null);
     await fetchSubTrilogi(group.id);
   };
@@ -188,7 +221,7 @@ export default function TrilogiMainriangPage() {
         });
         alert("Sub Trilogi berhasil ditambahkan!");
       }
-      setSubFormData({ jenjangKelas: "", habit: "", deskripsi: "" });
+      setSubFormData({ jenjangKelas: "", habit: "", deskripsi: "", periode: selectedPeriode });
       setEditingSubId(null);
       fetchSubTrilogi(selectedGroup.id);
     } catch (error) {
@@ -201,7 +234,7 @@ export default function TrilogiMainriangPage() {
 
   const handleEditSub = (item: SubTrilogi) => {
     setEditingSubId(item.id);
-    setSubFormData({ jenjangKelas: item.jenjangKelas, habit: item.habit, deskripsi: item.deskripsi });
+    setSubFormData({ jenjangKelas: item.jenjangKelas, habit: item.habit, deskripsi: item.deskripsi, periode: item.periode || selectedPeriode });
   };
 
   const handleDeleteSub = async (id: string) => {
@@ -403,6 +436,23 @@ export default function TrilogiMainriangPage() {
                         }
                       />
                     </div>
+                     <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Semester
+                      </label>
+                      <select
+                        required
+                        className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                        value={subFormData.periode}
+                        onChange={(e) =>
+                          setSubFormData({ ...subFormData, periode: e.target.value })
+                        }
+                      >
+                        {periodeList.map((p) => (
+                          <option key={p.id} value={p.id}>{p.namaPeriode}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <div className="flex justify-end gap-2">
                     {editingSubId && (
@@ -410,7 +460,7 @@ export default function TrilogiMainriangPage() {
                         type="button"
                         onClick={() => {
                           setEditingSubId(null);
-                          setSubFormData({ jenjangKelas: "", habit: "", deskripsi: "" });
+                          setSubFormData({ jenjangKelas: "", habit: "", deskripsi: "", periode: selectedPeriode });
                         }}
                         className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
                       >
@@ -437,19 +487,20 @@ export default function TrilogiMainriangPage() {
                       <th className="p-3 w-32">Jenjang</th>
                       <th className="p-3 w-48">Habit</th>
                       <th className="p-3">Deskripsi</th>
+                      <th className="p-3 w-40">Semester</th>
                       <th className="p-3 w-24 text-center">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {loadingSubs ? (
                       <tr>
-                        <td colSpan={4} className="p-6 text-center">
+                        <td colSpan={6} className="p-6 text-center">
                           <Loader2 className="w-5 h-5 animate-spin mx-auto text-[#581c87]" />
                         </td>
                       </tr>
                     ) : subTrilogiList.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="p-6 text-center text-gray-500">
+                        <td colSpan={6} className="p-6 text-center text-gray-500">
                           Belum ada sub trilogi.
                         </td>
                       </tr>
@@ -464,6 +515,7 @@ export default function TrilogiMainriangPage() {
                               {item.habit} {habitDetail?.deskripsi ? `(${habitDetail.deskripsi})` : ""}
                             </td>
                             <td className="p-3">{item.deskripsi}</td>
+                            <td className="p-3">{periodeMap.get(item.periode) || 'N/A'}</td>
                             <td className="p-3 flex justify-center gap-2">
                               <button
                                 onClick={() => handleEditSub(item)}

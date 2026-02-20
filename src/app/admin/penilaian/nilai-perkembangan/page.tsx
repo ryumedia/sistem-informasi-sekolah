@@ -63,6 +63,7 @@ interface TahapPerkembangan {
   id: string;
   deskripsi: string;
   kelompokUsiaId: string; // Sesuai field di Firebase
+  periode?: string;
 }
 
 interface KelompokUsia {
@@ -310,11 +311,13 @@ export default function NilaiPerkembanganPage() {
       const usiaMatch = usiaList.find(u => u.id === selectedSiswa.jenjangUsia || u.usia === selectedSiswa.jenjangUsia);
       const targetUsiaId = usiaMatch ? usiaMatch.id : selectedSiswa.jenjangUsia;
 
-      const filtered = tahapList.filter((t) => t.kelompokUsiaId === targetUsiaId);
+      const filtered = tahapList.filter((t) =>
+        t.kelompokUsiaId === targetUsiaId && t.periode === form.semesterId
+      );
       setFilteredTahapList(filtered);
     } else {
-      // Fallback jika tidak ada kelompok usia, tampilkan semua atau kosongkan (opsional)
-      setFilteredTahapList(tahapList); 
+      // Fallback jika tidak ada kelompok usia, filter hanya berdasarkan semester
+      setFilteredTahapList(tahapList.filter(t => t.periode === form.semesterId));
     }
   };
 
@@ -325,8 +328,25 @@ export default function NilaiPerkembanganPage() {
     setForm((prev) => ({
       ...prev,
       semesterId: selectedId,
-      namaSemester: selectedSem?.namaPeriode || ""
+      namaSemester: selectedSem?.namaPeriode || "",
+      tahapId: "", namaTahap: ""
     }));
+
+    // Re-filter Tahap List based on the NEW semester, considering if a siswa is already selected
+    const selectedSiswa = siswaList.find(s => s.id === form.siswaId);
+    if (selectedSiswa && selectedSiswa.jenjangUsia) {
+      const usiaMatch = usiaList.find(u => u.id === selectedSiswa.jenjangUsia || u.usia === selectedSiswa.jenjangUsia);
+      const targetUsiaId = usiaMatch ? usiaMatch.id : selectedSiswa.jenjangUsia;
+      
+      const filtered = tahapList.filter((t) =>
+        t.kelompokUsiaId === targetUsiaId && t.periode === selectedId
+      );
+      setFilteredTahapList(filtered);
+    } else {
+      // If no student is selected yet, just filter by semester
+      const filtered = tahapList.filter(t => t.periode === selectedId);
+      setFilteredTahapList(filtered);
+    }
   };
 
   // 5. Handle Tahap Change
@@ -476,6 +496,11 @@ export default function NilaiPerkembanganPage() {
       tahapId: "", namaTahap: "",
       nilai: 0,
     });
+
+    // Pre-filter tahap list based on default semester
+    const defaultSemesterId = defaultSem?.id || "";
+    setFilteredTahapList(tahapList.filter(t => t.periode === defaultSemesterId));
+
     setIsEditing(false);
     setIsModalOpen(true);
   };
@@ -514,9 +539,12 @@ export default function NilaiPerkembanganPage() {
       if (currentSiswa && currentSiswa.jenjangUsia) {
         const usiaMatch = usiaList.find(u => u.id === currentSiswa.jenjangUsia || u.usia === currentSiswa.jenjangUsia);
         const targetUsiaId = usiaMatch ? usiaMatch.id : currentSiswa.jenjangUsia;
-        setFilteredTahapList(tahapList.filter(t => t.kelompokUsiaId === targetUsiaId));
+        setFilteredTahapList(tahapList.filter(t =>
+          t.kelompokUsiaId === targetUsiaId && t.periode === item.semesterId
+        ));
       } else {
-        setFilteredTahapList(tahapList);
+        // Fallback jika siswa tidak punya jenjang usia
+        setFilteredTahapList(tahapList.filter(t => t.periode === item.semesterId));
       }
     }
 

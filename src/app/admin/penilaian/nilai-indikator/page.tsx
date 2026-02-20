@@ -70,6 +70,7 @@ interface SubIndikator {
   deskripsi: string;
   groupId: string;
   kode?: string;
+  periode?: string;
 }
 
 interface KriteriaNilai {
@@ -91,6 +92,7 @@ export default function NilaiIndikatorPage() {
   const [semesterList, setSemesterList] = useState<Semester[]>([]);
   const [indikatorList, setIndikatorList] = useState<Indikator[]>([]);
   const [subIndikatorList, setSubIndikatorList] = useState<SubIndikator[]>([]); // Filtered by Indikator
+  const [masterSubIndikatorList, setMasterSubIndikatorList] = useState<SubIndikator[]>([]); // All Sub Indikators
   const [kriteriaOptions, setKriteriaOptions] = useState<KriteriaNilai[]>([]);
   const [subIndikatorMap, setSubIndikatorMap] = useState<Record<string, string>>({});
 
@@ -162,11 +164,14 @@ export default function NilaiIndikatorPage() {
         // Fetch All Sub Indikators for Map (to show kode in table)
         const snapSubAll = await getDocs(collection(db, "sub_indikators"));
         const subMap: Record<string, string> = {};
+        const allSubs: SubIndikator[] = [];
         snapSubAll.forEach((doc) => {
           const d = doc.data();
           subMap[doc.id] = d.kode || "";
+          allSubs.push({ id: doc.id, ...d } as unknown as SubIndikator);
         });
         setSubIndikatorMap(subMap);
+        setMasterSubIndikatorList(allSubs);
 
         // 5. Fetch Kriteria Nilai (Kategori: Nilai Indikator)
         const qKat = query(collection(db, "kategori_penilaian"), where("nama", "==", "Nilai Indikator"));
@@ -315,12 +320,20 @@ export default function NilaiIndikatorPage() {
     setForm((prev) => ({
       ...prev,
       semesterId: selectedId,
-      namaSemester: selectedSem?.namaPeriode || ""
+      namaSemester: selectedSem?.namaPeriode || "",
+      subIndikatorId: "", namaSubIndikator: ""
     }));
+
+    if (form.indikatorId) {
+      const filtered = masterSubIndikatorList.filter(s => 
+        s.groupId === form.indikatorId && s.periode === selectedId
+      );
+      setSubIndikatorList(filtered);
+    }
   };
 
   // 5. Handle Indikator Change -> Fetch Sub Indikator
-  const handleIndikatorChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleIndikatorChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedId = e.target.value;
     const selectedIndikator = indikatorList.find((i) => i.id === selectedId);
 
@@ -332,9 +345,10 @@ export default function NilaiIndikatorPage() {
     }));
 
     if (selectedId) {
-      const qSub = query(collection(db, "sub_indikators"), where("groupId", "==", selectedId));
-      const snapSub = await getDocs(qSub);
-      setSubIndikatorList(snapSub.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as SubIndikator[]);
+      const filtered = masterSubIndikatorList.filter(s => 
+        s.groupId === selectedId && s.periode === form.semesterId
+      );
+      setSubIndikatorList(filtered);
     } else {
       setSubIndikatorList([]);
     }
@@ -522,9 +536,10 @@ export default function NilaiIndikatorPage() {
       setSiswaList(snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[]);
     }
     if (item.indikatorId) {
-      const qSub = query(collection(db, "sub_indikators"), where("groupId", "==", item.indikatorId));
-      const snapSub = await getDocs(qSub);
-      setSubIndikatorList(snapSub.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as SubIndikator[]);
+      const filtered = masterSubIndikatorList.filter(s => 
+        s.groupId === item.indikatorId && s.periode === item.semesterId
+      );
+      setSubIndikatorList(filtered);
     }
 
     setCurrentId(item.id);

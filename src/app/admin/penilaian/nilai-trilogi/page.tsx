@@ -72,6 +72,7 @@ interface SubTrilogi {
   groupId: string;
   jenjangKelas: string;
   habit: string;
+  periode?: string;
 }
 
 interface KriteriaNilai {
@@ -93,6 +94,7 @@ export default function NilaiTrilogiPage() {
   const [semesterList, setSemesterList] = useState<Semester[]>([]);
   const [trilogiList, setTrilogiList] = useState<Trilogi[]>([]);
   const [subTrilogiList, setSubTrilogiList] = useState<SubTrilogi[]>([]); // Filtered by Trilogi
+  const [masterSubTrilogiList, setMasterSubTrilogiList] = useState<SubTrilogi[]>([]);
   const [kriteriaOptions, setKriteriaOptions] = useState<KriteriaNilai[]>([]);
 
   // --- Filter State ---
@@ -159,6 +161,11 @@ export default function NilaiTrilogiPage() {
         // 4. Fetch Master Trilogi
         const snapTrilogi = await getDocs(collection(db, "trilogi_groups"));
         setTrilogiList(snapTrilogi.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Trilogi[]);
+
+        // Fetch all Sub Trilogi
+        const snapSubTrilogi = await getDocs(collection(db, "sub_trilogi"));
+        const allSubs = snapSubTrilogi.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as SubTrilogi[];
+        setMasterSubTrilogiList(allSubs);
 
         // 5. Fetch Kriteria Nilai (Kategori: Nilai Trilogi)
         const qKat = query(collection(db, "kategori_penilaian"), where("nama", "==", "Nilai Trilogi"));
@@ -258,16 +265,6 @@ export default function NilaiTrilogiPage() {
       const qKelas = query(collection(db, "kelas"), where("cabang", "==", selectedCabang.nama));
       const snapKelas = await getDocs(qKelas);
       setKelasList(snapKelas.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Kelas[]);
-      
-      // Reset Sub Trilogi list as well since class list changed
-      setSubTrilogiList([]);
-      setForm((prev) => ({
-        ...prev,
-        trilogiId: "",
-        namaTrilogi: "",
-        subTrilogiId: "",
-        namaSubTrilogi: ""
-      }));
     } else {
       setKelasList([]);
     }
@@ -298,14 +295,13 @@ export default function NilaiTrilogiPage() {
       const snapSiswa = await getDocs(qSiswa);
       setSiswaList(snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[]);
 
-      // Fetch Sub Trilogi based on Jenjang Kelas
+      // Filter Sub Trilogi based on Jenjang Kelas and Semester
       if (selectedKelas.jenjangKelas) {
-        const qSub = query(collection(db, "sub_trilogi"), where("jenjangKelas", "==", selectedKelas.jenjangKelas));
-        const snapSub = await getDocs(qSub);
-        const subs = snapSub.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as SubTrilogi[];
-        // Sort by Habit
-        subs.sort((a, b) => (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true }));
-        setSubTrilogiList(subs);
+        const filteredSubs = masterSubTrilogiList.filter(s => 
+          s.jenjangKelas === selectedKelas.jenjangKelas && s.periode === form.semesterId
+        );
+        filteredSubs.sort((a, b) => (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true }));
+        setSubTrilogiList(filteredSubs);
       } else {
         setSubTrilogiList([]);
       }
@@ -334,8 +330,23 @@ export default function NilaiTrilogiPage() {
     setForm((prev) => ({
       ...prev,
       semesterId: selectedId,
-      namaSemester: selectedSem?.namaPeriode || ""
+      namaSemester: selectedSem?.namaPeriode || "",
+      // Reset sub trilogi selection
+      subTrilogiId: "",
+      namaSubTrilogi: "",
+      trilogiId: "",
+      namaTrilogi: ""
     }));
+
+    // Re-filter sub trilogi list if a class is already selected
+    const selectedKelas = kelasList.find(k => k.id === form.kelasId);
+    if (selectedKelas && selectedKelas.jenjangKelas) {
+        const filteredSubs = masterSubTrilogiList.filter(s => 
+          s.jenjangKelas === selectedKelas.jenjangKelas && s.periode === selectedId
+        );
+        filteredSubs.sort((a, b) => (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true }));
+        setSubTrilogiList(filteredSubs);
+    }
   };
 
   // 5. Handle Sub Trilogi Change (Auto set Trilogi Group)
@@ -477,13 +488,12 @@ export default function NilaiTrilogiPage() {
          const snapSiswa = await getDocs(qSiswa);
          setSiswaList(snapSiswa.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Siswa[]);
 
-         // Fetch Sub Trilogi if class has jenjang
+         // Filter Sub Trilogi if class has jenjang
          if (foundKelas?.jenjangKelas) {
-            const qSub = query(collection(db, "sub_trilogi"), where("jenjangKelas", "==", foundKelas.jenjangKelas));
-            const snapSub = await getDocs(qSub);
-            const subs = snapSub.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as SubTrilogi[];
-            subs.sort((a, b) => (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true }));
-            setSubTrilogiList(subs);
+            const defaultSemesterId = defaultSem?.id || "";
+            const filteredSubs = masterSubTrilogiList.filter(s => s.jenjangKelas === foundKelas.jenjangKelas && s.periode === defaultSemesterId);
+            filteredSubs.sort((a, b) => (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true }));
+            setSubTrilogiList(filteredSubs);
          }
        }
     } else {
@@ -501,7 +511,6 @@ export default function NilaiTrilogiPage() {
       subTrilogiId: "", namaSubTrilogi: "",
       nilai: 0,
     });
-    setSubTrilogiList([]);
     setIsEditing(false);
     setIsModalOpen(true);
   };
@@ -526,14 +535,14 @@ export default function NilaiTrilogiPage() {
       const classes = snapKelas.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as Kelas[];
       setKelasList(classes);
 
-      // Fetch Sub Trilogi based on the Class's Jenjang
+      // Filter Sub Trilogi based on the Class's Jenjang and the item's semester
       const currentClass = classes.find(c => c.id === item.kelasId);
       if (currentClass?.jenjangKelas) {
-        const qSub = query(collection(db, "sub_trilogi"), where("jenjangKelas", "==", currentClass.jenjangKelas));
-        const snapSub = await getDocs(qSub);
-        const subs = snapSub.docs.map((d) => ({ id: d.id, ...d.data() })) as unknown as SubTrilogi[];
-        subs.sort((a, b) => (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true }));
-        setSubTrilogiList(subs);
+        const filteredSubs = masterSubTrilogiList.filter(s => 
+          s.jenjangKelas === currentClass.jenjangKelas && s.periode === item.semesterId
+        );
+        filteredSubs.sort((a, b) => (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true }));
+        setSubTrilogiList(filteredSubs);
       }
     }
     if (item.namaKelas) {

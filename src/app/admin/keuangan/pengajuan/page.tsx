@@ -248,6 +248,12 @@ export default function PengajuanPage() {
 
   // 7. Logic Edit
   const openEditModal = (item: Pengajuan) => {
+    const userRoles = currentUser?.role || [];
+    if (item.status === 'Disetujui' && !userRoles.includes('Direktur')) {
+      alert("Hanya Direktur yang dapat mengubah pengajuan yang sudah disetujui.");
+      return;
+    }
+
     setEditItem(item);
     setEditFormData({
       tanggal: item.tanggal,

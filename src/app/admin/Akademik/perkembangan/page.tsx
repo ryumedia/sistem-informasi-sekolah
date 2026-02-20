@@ -25,6 +25,13 @@ interface TahapPerkembangan {
   kelompokUsiaId: string;
   lingkup: string;
   deskripsi: string;
+  periode: string;
+}
+
+interface Periode {
+  id: string;
+  namaPeriode: string;
+  isDefault?: boolean;
 }
 
 export default function TahapPerkembanganPage() {
@@ -41,9 +48,35 @@ export default function TahapPerkembanganPage() {
   const [details, setDetails] = useState<TahapPerkembangan[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [detailFormData, setDetailFormData] = useState({ lingkup: "", deskripsi: "" });
+  const [detailFormData, setDetailFormData] = useState({ lingkup: "", deskripsi: "", periode: "" });
   const [editingDetailId, setEditingDetailId] = useState<string | null>(null);
   const [isSubmittingDetail, setIsSubmittingDetail] = useState(false);
+
+  // State untuk Periode KPI
+  const [periodeList, setPeriodeList] = useState<Periode[]>([]);
+  const [selectedPeriode, setSelectedPeriode] =useState<string>('');
+  const [periodeMap, setPeriodeMap] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    const fetchPeriode = async () => {
+      try {
+        const q = query(collection(db, 'kpi_periode'), orderBy('isDefault', 'desc'));
+        const querySnapshot = await getDocs(q);
+        const periods = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Periode));
+        const newPeriodeMap = new Map(periods.map(p => [p.id, p.namaPeriode]));
+        
+        setPeriodeList(periods);
+        setPeriodeMap(newPeriodeMap);
+
+        const defaultId = periods.length > 0 ? periods[0].id : '';
+        setSelectedPeriode(defaultId);
+
+      } catch (error) {
+        console.error("Error fetching kpi_periode: ", error);
+      }
+    };
+    fetchPeriode();
+  }, []);
 
   // --- Functions untuk Kelompok Usia ---
 
@@ -123,7 +156,7 @@ export default function TahapPerkembanganPage() {
   const openDetailModal = async (ageGroup: KelompokUsia) => {
     setSelectedAgeGroup(ageGroup);
     setIsDetailModalOpen(true);
-    setDetailFormData({ lingkup: "", deskripsi: "" });
+    setDetailFormData({ lingkup: "", deskripsi: "", periode: selectedPeriode });
     setEditingDetailId(null);
     await fetchDetails(ageGroup.id);
   };
@@ -167,7 +200,7 @@ export default function TahapPerkembanganPage() {
         });
         alert("Detail perkembangan berhasil ditambahkan!");
       }
-      setDetailFormData({ lingkup: "", deskripsi: "" });
+      setDetailFormData({ lingkup: "", deskripsi: "", periode: selectedPeriode });
       setEditingDetailId(null);
       fetchDetails(selectedAgeGroup.id);
     } catch (error) {
@@ -180,7 +213,7 @@ export default function TahapPerkembanganPage() {
 
   const handleEditDetail = (item: TahapPerkembangan) => {
     setEditingDetailId(item.id);
-    setDetailFormData({ lingkup: item.lingkup, deskripsi: item.deskripsi });
+    setDetailFormData({ lingkup: item.lingkup, deskripsi: item.deskripsi, periode: item.periode || selectedPeriode });
   };
 
   const handleDeleteDetail = async (id: string) => {
@@ -367,13 +400,30 @@ export default function TahapPerkembanganPage() {
                       />
                     </div>
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Semester
+                    </label>
+                    <select
+                      required
+                      className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                      value={detailFormData.periode}
+                      onChange={(e) =>
+                        setDetailFormData({ ...detailFormData, periode: e.target.value })
+                      }
+                    >
+                      {periodeList.map((p) => (
+                        <option key={p.id} value={p.id}>{p.namaPeriode}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="flex justify-end gap-2">
                     {editingDetailId && (
                       <button
                         type="button"
                         onClick={() => {
                           setEditingDetailId(null);
-                          setDetailFormData({ lingkup: "", deskripsi: "" });
+                          setDetailFormData({ lingkup: "", deskripsi: "", periode: selectedPeriode });
                         }}
                         className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
                       >
@@ -399,19 +449,20 @@ export default function TahapPerkembanganPage() {
                       <th className="p-3 w-12 text-center">No</th>
                       <th className="p-3 w-40">Lingkup</th>
                       <th className="p-3">Deskripsi</th>
+                      <th className="p-3 w-40">Semester</th>
                       <th className="p-3 w-24 text-center">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {loadingDetails ? (
                       <tr>
-                        <td colSpan={4} className="p-6 text-center">
+                        <td colSpan={5} className="p-6 text-center">
                           <Loader2 className="w-5 h-5 animate-spin mx-auto text-[#581c87]" />
                         </td>
                       </tr>
                     ) : details.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="p-6 text-center text-gray-500">
+                        <td colSpan={5} className="p-6 text-center text-gray-500">
                           Belum ada item perkembangan untuk usia ini.
                         </td>
                       </tr>
@@ -437,6 +488,7 @@ export default function TahapPerkembanganPage() {
                           <td className="p-3 text-center">{index + 1}</td>
                           <td className="p-3 font-medium">{item.lingkup}</td>
                           <td className="p-3">{item.deskripsi}</td>
+                          <td className="p-3">{periodeMap.get(item.periode) || 'N/A'}</td>
                           <td className="p-3 flex justify-center gap-2">
                             <button
                               onClick={() => handleEditDetail(item)}

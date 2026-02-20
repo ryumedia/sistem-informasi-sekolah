@@ -25,6 +25,13 @@ interface SubIndikator {
   groupId: string;
   kode: string;
   deskripsi: string;
+  periode: string;
+}
+
+interface Periode {
+  id: string;
+  namaPeriode: string;
+  isDefault?: boolean;
 }
 
 export default function IndikatorPage() {
@@ -41,9 +48,35 @@ export default function IndikatorPage() {
   const [subIndikators, setSubIndikators] = useState<SubIndikator[]>([]);
   const [loadingSubs, setLoadingSubs] = useState(false);
   const [isSubModalOpen, setIsSubModalOpen] = useState(false);
-  const [subFormData, setSubFormData] = useState({ kode: "", deskripsi: "" });
+  const [subFormData, setSubFormData] = useState({ kode: "", deskripsi: "", periode: "" });
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [isSubmittingSub, setIsSubmittingSub] = useState(false);
+
+  // State untuk Periode KPI
+  const [periodeList, setPeriodeList] = useState<Periode[]>([]);
+  const [selectedPeriode, setSelectedPeriode] = useState<string>('');
+  const [periodeMap, setPeriodeMap] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    const fetchPeriode = async () => {
+      try {
+        const q = query(collection(db, 'kpi_periode'), orderBy('isDefault', 'desc'));
+        const querySnapshot = await getDocs(q);
+        const periods = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Periode));
+        const newPeriodeMap = new Map(periods.map(p => [p.id, p.namaPeriode]));
+        
+        setPeriodeList(periods);
+        setPeriodeMap(newPeriodeMap);
+
+        const defaultId = periods.length > 0 ? periods[0].id : '';
+        setSelectedPeriode(defaultId);
+
+      } catch (error) {
+        console.error("Error fetching kpi_periode: ", error);
+      }
+    };
+    fetchPeriode();
+  }, []);
 
   // --- Functions untuk Parent ---
 
@@ -122,7 +155,7 @@ export default function IndikatorPage() {
   const openSubModal = async (group: IndikatorGroup) => {
     setSelectedGroup(group);
     setIsSubModalOpen(true);
-    setSubFormData({ kode: "", deskripsi: "" });
+    setSubFormData({ kode: "", deskripsi: "", periode: selectedPeriode });
     setEditingSubId(null);
     await fetchSubIndikators(group.id);
   };
@@ -168,7 +201,7 @@ export default function IndikatorPage() {
         });
         alert("Sub Indikator berhasil ditambahkan!");
       }
-      setSubFormData({ kode: "", deskripsi: "" });
+      setSubFormData({ kode: "", deskripsi: "", periode: selectedPeriode });
       setEditingSubId(null);
       fetchSubIndikators(selectedGroup.id);
     } catch (error) {
@@ -181,7 +214,7 @@ export default function IndikatorPage() {
 
   const handleEditSub = (item: SubIndikator) => {
     setEditingSubId(item.id);
-    setSubFormData({ kode: item.kode, deskripsi: item.deskripsi });
+    setSubFormData({ kode: item.kode, deskripsi: item.deskripsi, periode: item.periode || selectedPeriode });
   };
 
   const handleDeleteSub = async (id: string) => {
@@ -363,13 +396,30 @@ export default function IndikatorPage() {
                       />
                     </div>
                   </div>
+                  <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Semester
+                      </label>
+                      <select
+                        required
+                        className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900 bg-white"
+                        value={subFormData.periode}
+                        onChange={(e) =>
+                          setSubFormData({ ...subFormData, periode: e.target.value })
+                        }
+                      >
+                        {periodeList.map((p) => (
+                          <option key={p.id} value={p.id}>{p.namaPeriode}</option>
+                        ))}
+                      </select>
+                    </div>
                   <div className="flex justify-end gap-2">
                     {editingSubId && (
                       <button
                         type="button"
                         onClick={() => {
                           setEditingSubId(null);
-                          setSubFormData({ kode: "", deskripsi: "" });
+                          setSubFormData({ kode: "", deskripsi: "", periode: selectedPeriode });
                         }}
                         className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
                       >
@@ -395,19 +445,20 @@ export default function IndikatorPage() {
                       <th className="p-3 w-12 text-center">No</th>
                       <th className="p-3 w-24">Kode</th>
                       <th className="p-3">Deskripsi</th>
+                      <th className="p-3">Semester</th>
                       <th className="p-3 w-24 text-center">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {loadingSubs ? (
                       <tr>
-                        <td colSpan={4} className="p-6 text-center">
+                        <td colSpan={5} className="p-6 text-center">
                           <Loader2 className="w-5 h-5 animate-spin mx-auto text-[#581c87]" />
                         </td>
                       </tr>
                     ) : subIndikators.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="p-6 text-center text-gray-500">
+                        <td colSpan={5} className="p-6 text-center text-gray-500">
                           Belum ada sub indikator.
                         </td>
                       </tr>
@@ -417,6 +468,7 @@ export default function IndikatorPage() {
                           <td className="p-3 text-center">{index + 1}</td>
                           <td className="p-3 font-medium">{item.kode}</td>
                           <td className="p-3">{item.deskripsi}</td>
+                          <td className="p-3">{periodeMap.get(item.periode) || 'N/A'}</td>
                           <td className="p-3 flex justify-center gap-2">
                             <button
                               onClick={() => handleEditSub(item)}
