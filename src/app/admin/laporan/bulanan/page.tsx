@@ -165,7 +165,7 @@ export default function LaporanBulananPage() {
             headStyles: { fillColor: [88, 28, 135] },
             columnStyles: { 0: { cellWidth: 50 } }
         });
-        finalY = (doc as any).lastAutoTable.finalY + 20;
+        finalY = (doc as any).lastAutoTable.finalY + 15;
 
         // B. Capaian OKR
         if (finalY > 250) { doc.addPage(); finalY = 20; }
@@ -189,7 +189,7 @@ export default function LaporanBulananPage() {
             headStyles: { fillColor: [88, 28, 135] },
             columnStyles: { 0: { cellWidth: 50 } }
         });
-        finalY = (doc as any).lastAutoTable.finalY + 50;
+        finalY = (doc as any).lastAutoTable.finalY + 15;
 
         // C. Capaian PPDB
         if (finalY > 250) { doc.addPage(); finalY = 20; }
@@ -220,7 +220,7 @@ export default function LaporanBulananPage() {
             headStyles: { fillColor: [88, 28, 135] },
             footStyles: { fillColor: [241, 245, 249], textColor: 20, fontStyle: 'bold' }
         });
-        finalY = (doc as any).lastAutoTable.finalY + 10;
+        finalY = (doc as any).lastAutoTable.finalY + 15;
 
         // D. Keuangan Singkat
         if (finalY > 250) { doc.addPage(); finalY = 20; }
@@ -239,7 +239,7 @@ export default function LaporanBulananPage() {
             theme: 'striped',
             headStyles: { fillColor: [88, 28, 135] }
         });
-        finalY = (doc as any).lastAutoTable.finalY + 10;
+        finalY = (doc as any).lastAutoTable.finalY + 15;
 
         // E. Jumlah Siswa
         if (finalY > 250) { doc.addPage(); finalY = 20; }
@@ -258,7 +258,7 @@ export default function LaporanBulananPage() {
             theme: 'striped',
             headStyles: { fillColor: [88, 28, 135] }
         });
-        finalY = (doc as any).lastAutoTable.finalY + 10;
+        finalY = (doc as any).lastAutoTable.finalY + 15;
 
         // F. Isu Strategis
         if (finalY > 230) { doc.addPage(); finalY = 20; }
@@ -274,7 +274,7 @@ export default function LaporanBulananPage() {
             styles: { fontSize: 10, cellPadding: { top: 2, right: 0, bottom: 2, left: 0 } },
             columnStyles: { 0: { cellWidth: 180 } }
         });
-        finalY = (doc as any).lastAutoTable.finalY + 10;
+        finalY = (doc as any).lastAutoTable.finalY + 15;
 
         // G. Rekomendasi Kegiatan
         if (finalY > 230) { doc.addPage(); finalY = 20; }
@@ -290,7 +290,7 @@ export default function LaporanBulananPage() {
             styles: { fontSize: 10, cellPadding: { top: 2, right: 0, bottom: 2, left: 0 } },
             columnStyles: { 0: { cellWidth: 180 } }
         });
-        finalY = (doc as any).lastAutoTable.finalY + 10;
+        finalY = (doc as any).lastAutoTable.finalY + 15;
 
         // H. Rencana Agenda
         if (finalY > 230) { doc.addPage(); finalY = 20; }
@@ -324,7 +324,7 @@ export default function LaporanBulananPage() {
             theme: 'striped',
             headStyles: { fillColor: [88, 28, 135] }
         });
-        finalY = (doc as any).lastAutoTable.finalY + 10;
+        finalY = (doc as any).lastAutoTable.finalY + 15;
 
         // I. Dokumentasi
         if (data.dokumentasi && data.dokumentasi.length > 0) {
