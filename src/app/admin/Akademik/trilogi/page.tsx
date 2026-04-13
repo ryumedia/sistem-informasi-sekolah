@@ -511,9 +511,7 @@ export default function TrilogiMainriangPage() {
                           <tr key={item.id} className="hover:bg-gray-50">
                             <td className="p-3 text-center">{index + 1}</td>
                             <td className="p-3 font-medium">{item.jenjangKelas}</td>
-                            <td className="p-3 text-gray-600 text-xs">
-                              {item.habit} {habitDetail?.deskripsi ? `(${habitDetail.deskripsi})` : ""}
-                            </td>
+                            <td className="p-3 text-gray-600 text-xs">{item.habit}</td>
                             <td className="p-3">{item.deskripsi}</td>
                             <td className="p-3">{periodeMap.get(item.periode) || 'N/A'}</td>
                             <td className="p-3 flex justify-center gap-2">

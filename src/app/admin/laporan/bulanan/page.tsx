@@ -143,6 +143,7 @@ export default function LaporanBulananPage() {
         let finalY = 72;
 
         // A. Ringkasan Eksekutif
+        doc.setFont("helvetica", "bold");
         doc.setFontSize(14);
         doc.text("A. Ringkasan Eksekutif", 14, finalY);
         finalY += 5;
@@ -160,6 +161,7 @@ export default function LaporanBulananPage() {
             head: [['Aspek', 'Uraian']],
             body: ringkasanData,
             theme: 'grid',
+            didParseCell: (data) => { if (data.section === 'head') doc.setFont("helvetica", "bold"); },
             headStyles: { fillColor: [88, 28, 135] },
             columnStyles: { 0: { cellWidth: 50 } }
         });
@@ -167,6 +169,7 @@ export default function LaporanBulananPage() {
 
         // B. Capaian OKR
         if (finalY > 250) { doc.addPage(); finalY = 20; }
+        doc.setFont("helvetica", "bold");
         doc.text("B. Capaian OKR", 14, finalY);
         finalY += 5;
 
@@ -190,6 +193,7 @@ export default function LaporanBulananPage() {
 
         // C. Capaian PPDB
         if (finalY > 250) { doc.addPage(); finalY = 20; }
+        doc.setFont("helvetica", "bold");
         doc.text("C. Capaian PPDB", 14, finalY);
         finalY += 5;
 
@@ -220,6 +224,7 @@ export default function LaporanBulananPage() {
 
         // D. Keuangan Singkat
         if (finalY > 250) { doc.addPage(); finalY = 20; }
+        doc.setFont("helvetica", "bold");
         doc.text("D. Keuangan Singkat", 14, finalY);
         finalY += 5;
 
@@ -238,6 +243,7 @@ export default function LaporanBulananPage() {
 
         // E. Jumlah Siswa
         if (finalY > 250) { doc.addPage(); finalY = 20; }
+        doc.setFont("helvetica", "bold");
         doc.text("E. Jumlah Siswa", 14, finalY);
         finalY += 5;
 
@@ -256,38 +262,56 @@ export default function LaporanBulananPage() {
 
         // F. Isu Strategis
         if (finalY > 230) { doc.addPage(); finalY = 20; }
+        doc.setLineHeightFactor(1.5);
+        doc.setFont("helvetica", "bold");
         doc.text("F. Isu Strategis", 14, finalY);
-        finalY += 7;
-        doc.setFontSize(10);
-        doc.setLineHeightFactor(2);
-        const isuText = doc.splitTextToSize(data.isuStrategis || "-", 180);
-        doc.text(isuText, 14, finalY);
-        finalY += (isuText.length * 6) + 10;
-        doc.setLineHeightFactor(2);
-        doc.setFontSize(12);
+        finalY += 2;
+        
+        autoTable(doc, {
+            startY: finalY,
+            body: [[data.isuStrategis || "-"]],
+            theme: 'plain',
+            styles: { fontSize: 10, cellPadding: { top: 2, right: 0, bottom: 2, left: 0 } },
+            columnStyles: { 0: { cellWidth: 180 } }
+        });
+        finalY = (doc as any).lastAutoTable.finalY + 10;
 
         // G. Rekomendasi Kegiatan
         if (finalY > 230) { doc.addPage(); finalY = 20; }
+        doc.setLineHeightFactor(1.5);
+        doc.setFont("helvetica", "bold");
         doc.text("G. Rekomendasi Kegiatan", 14, finalY);
-        finalY += 7;
-        doc.setFontSize(10);
-        doc.setLineHeightFactor(2);
-        const rekText = doc.splitTextToSize(data.rekomendasiKegiatan || "-", 180);
-        doc.text(rekText, 14, finalY);
-        finalY += (rekText.length * 6) + 5;
-        doc.setLineHeightFactor(2);
-        doc.setFontSize(12);
+        finalY += 2;
+
+        autoTable(doc, {
+            startY: finalY,
+            body: [[data.rekomendasiKegiatan || "-"]],
+            theme: 'plain',
+            styles: { fontSize: 10, cellPadding: { top: 2, right: 0, bottom: 2, left: 0 } },
+            columnStyles: { 0: { cellWidth: 180 } }
+        });
+        finalY = (doc as any).lastAutoTable.finalY + 10;
 
         // H. Rencana Agenda
         if (finalY > 230) { doc.addPage(); finalY = 20; }
+        doc.setLineHeightFactor(1.5);
+        doc.setFont("helvetica", "bold");
         doc.text("H. Rencana Agenda", 14, finalY);
         finalY += 7;
         doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
         doc.text(`Tema: ${data.rencanaAgenda?.tema || "-"}`, 14, finalY);
-        finalY += 5;
-        const deskText = doc.splitTextToSize(`Deskripsi: ${data.rencanaAgenda?.deskripsi || "-"}`, 180);
-        doc.text(deskText, 14, finalY);
-        finalY += (deskText.length * 5) + 5;
+        finalY += 6; // Beri jarak yang cukup sebelum memulai blok deskripsi
+
+        // Gunakan autoTable untuk Deskripsi agar dinamis mengikuti panjang teks dan handle page break otomatis
+        autoTable(doc, {
+            startY: finalY,
+            body: [[`Deskripsi: ${data.rencanaAgenda?.deskripsi || "-"}`]],
+            theme: 'plain',
+            styles: { fontSize: 10, cellPadding: { top: 0, right: 0, bottom: 2, left: 0 }, overflow: 'linebreak' },
+            columnStyles: { 0: { cellWidth: 180 } }
+        });
+        finalY = (doc as any).lastAutoTable.finalY + 5;
 
         const agendaBody = (data.rencanaAgenda?.detail || []).map((item: any) => [
             item.tanggal, item.kegiatan
@@ -307,6 +331,7 @@ export default function LaporanBulananPage() {
             doc.addPage();
             finalY = 20;
             doc.setFontSize(14);
+            doc.setFont("helvetica", "bold");
             doc.text("I. Dokumentasi Kegiatan", 14, finalY);
             finalY += 10;
 

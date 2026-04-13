@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, getDocs, orderBy, collectionGroup } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, collectionGroup, getCountFromServer } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Building, Users, UserSquare, Star, ArrowDown, ArrowUp, Scale, Loader2 } from 'lucide-react';
 
@@ -12,6 +12,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [kelasStatsList, setKelasStatsList] = useState<any[]>([]);
   const [userRole, setUserRole] = useState<string>("");
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   const [stats, setStats] = useState({
     kelas: 0,
@@ -29,34 +30,30 @@ export default function AdminDashboard() {
   // Fetch Cabang List for Filter
   useEffect(() => {
     const fetchCabang = async () => {
-      try {
-        const q = query(collection(db, "cabang"), orderBy("nama", "asc"));
-        const snap = await getDocs(q);
-        setCabangList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      } catch (error) {
-        console.error("Error fetching cabang:", error);
-      }
+      const q = query(collection(db, "cabang"), orderBy("nama", "asc"));
+      const snap = await getDocs(q);
+      setCabangList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     };
-    fetchCabang();
-  }, []);
 
-  // Cek Role User (Kepala Sekolah hanya bisa lihat cabangnya sendiri)
-  useEffect(() => {
+    // Satukan pengecekan Auth dan fetching Cabang agar lebih efisien
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         try {
-          const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
-          const querySnapshot = await getDocs(q);
-          if (!querySnapshot.empty) {
-            const userData = querySnapshot.docs[0].data();
+          await fetchCabang();
+          const qUser = query(collection(db, "guru"), where("email", "==", currentUser.email));
+          const userSnap = await getDocs(qUser);
+          if (!userSnap.empty) {
+            const userData = userSnap.docs[0].data();
             setUserRole(userData.role);
-            if (userData.role === "Kepala Sekolah") {
-              setSelectedCabang(userData.cabang);
-            }
+            if (userData.role === "Kepala Sekolah") setSelectedCabang(userData.cabang);
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
+        } finally {
+          setIsAuthReady(true);
         }
+      } else {
+        setIsAuthReady(true);
       }
     });
     return () => unsubscribe();
@@ -64,19 +61,32 @@ export default function AdminDashboard() {
 
   // Fetch Dashboard Data based on Filter
   useEffect(() => {
+    if (!isAuthReady) return; // Jangan fetch data sebelum role/cabang user dipastikan
+
     const fetchData = async () => {
       setLoading(true);
-
-      // Base queries
       const baseQuery = (col: string) => selectedCabang ? query(collection(db, col), where("cabang", "==", selectedCabang)) : collection(db, col);
 
       try {
-        // 1. Get Counts
-        const [kelasSnap, siswaSnap, guruSnap] = await Promise.all([
+        // JALANKAN SEMUA QUERY SECARA PARALEL (Optimization 1)
+        const [kelasSnap, siswaSnap, guruCountSnap, keuanganSnap] = await Promise.all([
           getDocs(baseQuery("kelas")),
           getDocs(baseQuery("siswa")),
-          getDocs(baseQuery("guru")),
+          getCountFromServer(baseQuery("guru")), // Gunakan getCountFromServer lebih cepat (Optimization 2)
+          getDocs(baseQuery("arus_kas")),
         ]);
+
+        // Ambil data performance secara terpisah agar tidak memblokir yang lain jika index error
+        let performanceSize = 0;
+        let totalScore = 0;
+        try {
+          const pQuery = selectedCabang 
+            ? query(collectionGroup(db, 'kpi_guru'), where('cabang', '==', selectedCabang))
+            : collectionGroup(db, 'kpi_guru');
+          const pSnap = await getDocs(pQuery);
+          performanceSize = pSnap.size;
+          pSnap.forEach(doc => totalScore += doc.data().persentase || 0);
+        } catch (e) { console.warn("Performance data failed", e); }
 
         // --- Process Class Stats (Table Data) ---
         const classes = kelasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -112,46 +122,21 @@ export default function AdminDashboard() {
         });
         setKelasStatsList(processedKelasStats);
 
-        // 2. Get Keuangan (Dipindah ke atas agar tidak terblokir error Performance)
-        const keuanganQuery = baseQuery("arus_kas");
-        const keuanganSnap = await getDocs(keuanganQuery);
         let pemasukan = 0;
         let pengeluaran = 0;
         keuanganSnap.forEach(doc => {
           const data = doc.data();
-          if (data.jenis === 'Masuk') {
-            pemasukan += Number(data.nominal) || 0;
-          } else if (data.jenis === 'Keluar') {
-            pengeluaran += Number(data.nominal) || 0;
-          }
+          if (data.jenis === 'Masuk') pemasukan += Number(data.nominal) || 0;
+          else if (data.jenis === 'Keluar') pengeluaran += Number(data.nominal) || 0;
         });
 
-        setKeuangan({
-          pemasukan,
-          pengeluaran,
-          saldo: pemasukan - pengeluaran,
-        });
+        const avgPerformance = performanceSize > 0 ? totalScore / performanceSize : 0;
 
-        // 3. Get Performance (Dibungkus try-catch agar aman jika index belum siap)
-        let avgPerformance = 0;
-        try {
-            const performanceQuery = selectedCabang
-              ? query(collectionGroup(db, 'kpi_guru'), where('cabang', '==', selectedCabang))
-              : collectionGroup(db, 'kpi_guru');
-            const performanceSnap = await getDocs(performanceQuery);
-            let totalScore = 0;
-            performanceSnap.forEach(doc => {
-                totalScore += doc.data().persentase || 0;
-            });
-            avgPerformance = performanceSnap.size > 0 ? totalScore / performanceSnap.size : 0;
-        } catch (err) {
-            console.warn("Performance query failed (waiting for index?):", err);
-        }
-
+        setKeuangan({ pemasukan, pengeluaran, saldo: pemasukan - pengeluaran });
         setStats({
           kelas: kelasSnap.size,
           siswa: siswaSnap.size,
-          guru: guruSnap.size,
+          guru: guruCountSnap.data().count,
           performance: parseFloat(avgPerformance.toFixed(2)),
         });
 
@@ -163,7 +148,7 @@ export default function AdminDashboard() {
     };
 
     fetchData();
-  }, [selectedCabang]);
+  }, [selectedCabang, isAuthReady]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
