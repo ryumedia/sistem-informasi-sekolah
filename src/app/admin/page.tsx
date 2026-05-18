@@ -82,28 +82,49 @@ export default function AdminDashboard() {
       const getBaseQuery = (col: string) => selectedCabang ? query(collection(db, col), where("cabang", "==", selectedCabang)) : collection(db, col);
 
       try {
-        const pQuery = selectedCabang 
+        const pQuery = selectedCabang
             ? query(collectionGroup(db, 'kpi_guru'), where('cabang', '==', selectedCabang))
             : collectionGroup(db, 'kpi_guru');
 
         const qPemasukan = query(collection(db, "arus_kas"), ...(selectedCabang ? [where("cabang", "==", selectedCabang)] : []), where("jenis", "==", "Masuk"));
         const qPengeluaran = query(collection(db, "arus_kas"), ...(selectedCabang ? [where("cabang", "==", selectedCabang)] : []), where("jenis", "==", "Keluar"));
 
-        // JALANKAN SEMUA QUERY SECARA PARALEL (Server-side Aggregation)
+        // PHASE 1: JALANKAN QUERY AGREGASI (SANGAT CEPAT)
         const [
-          kelasSnap, 
-          siswaSnap, 
-          guruCountSnap, 
-          pemasukanAgg, 
-          pengeluaranAgg, 
+          kelasCountSnap,
+          siswaCountSnap,
+          guruCountSnap,
+          pemasukanAgg,
+          pengeluaranAgg,
           perfAgg
         ] = await Promise.all([
-          getDocs(getBaseQuery("kelas")),
-          getDocs(getBaseQuery("siswa")),
+          getCountFromServer(getBaseQuery("kelas")),
+          getCountFromServer(getBaseQuery("siswa")),
           getCountFromServer(getBaseQuery("guru")),
           getAggregateFromServer(qPemasukan, { total: sum("nominal") }),
           getAggregateFromServer(qPengeluaran, { total: sum("nominal") }),
           getAggregateFromServer(pQuery, { avg: average('persentase') })
+        ]);
+
+        const pemasukan = pemasukanAgg.data().total || 0;
+        const pengeluaran = pengeluaranAgg.data().total || 0;
+        const avgPerformance = perfAgg.data().avg || 0;
+
+        setKeuangan({ pemasukan, pengeluaran, saldo: pemasukan - pengeluaran });
+        setStats({
+          kelas: kelasCountSnap.data().count,
+          siswa: siswaCountSnap.data().count,
+          guru: guruCountSnap.data().count,
+          performance: parseFloat(avgPerformance.toFixed(2)),
+        });
+
+        // Sembunyikan loading utama agar Card dan Keuangan segera muncul
+        setLoading(false);
+
+        // PHASE 2: AMBIL DATA DETAIL UNTUK TABEL (DI LATAR BELAKANG)
+        const [kelasSnap, siswaSnap] = await Promise.all([
+          getDocs(getBaseQuery("kelas")),
+          getDocs(getBaseQuery("siswa"))
         ]);
 
         // --- Process Class Stats (Table Data) ---
@@ -139,18 +160,6 @@ export default function AdminDashboard() {
              return a.namaKelas.localeCompare(b.namaKelas);
         });
         setKelasStatsList(processedKelasStats);
-
-        const pemasukan = pemasukanAgg.data().total || 0;
-        const pengeluaran = pengeluaranAgg.data().total || 0;
-        const avgPerformance = perfAgg.data().avg || 0;
-
-        setKeuangan({ pemasukan, pengeluaran, saldo: pemasukan - pengeluaran });
-        setStats({
-          kelas: kelasSnap.size,
-          siswa: siswaSnap.size,
-          guru: guruCountSnap.data().count,
-          performance: parseFloat(avgPerformance.toFixed(2)),
-        });
 
       } catch (error) {
         console.error("Error fetching dashboard data:", error);

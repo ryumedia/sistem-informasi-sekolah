@@ -164,6 +164,7 @@ export default function UserHome() {
               <div className="text-center">
                 <h1 className="text-xl font-bold">Halo, {userData?.nama?.split(" ")[0] || "User"}!</h1>
                 <p className="text-purple-200 text-sm">Selamat datang di SIS Main Riang</p>
+                {userData?.cabang && <p className="text-xs text-purple-100 mt-1 font-medium">{userData.cabang}</p>}
               </div>
             </header>
 
