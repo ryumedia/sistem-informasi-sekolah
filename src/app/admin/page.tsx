@@ -2,7 +2,18 @@
 
 import { useState, useEffect } from 'react';
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, getDocs, orderBy, collectionGroup, getCountFromServer } from 'firebase/firestore';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  orderBy, 
+  collectionGroup, 
+  getCountFromServer,
+  getAggregateFromServer,
+  sum,
+  average 
+} from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Building, Users, UserSquare, Star, ArrowDown, ArrowUp, Scale, Loader2 } from 'lucide-react';
 
@@ -39,13 +50,16 @@ export default function AdminDashboard() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         try {
-          await fetchCabang();
           const qUser = query(collection(db, "guru"), where("email", "==", currentUser.email));
-          const userSnap = await getDocs(qUser);
+          const [_, userSnap] = await Promise.all([
+            fetchCabang(),
+            getDocs(qUser)
+          ]);
+
           if (!userSnap.empty) {
             const userData = userSnap.docs[0].data();
             setUserRole(userData.role);
-            if (userData.role === "Kepala Sekolah") setSelectedCabang(userData.cabang);
+            if (userData.role === "Kepala Sekolah" || userData.role === "Guru") setSelectedCabang(userData.cabang);
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
@@ -65,28 +79,32 @@ export default function AdminDashboard() {
 
     const fetchData = async () => {
       setLoading(true);
-      const baseQuery = (col: string) => selectedCabang ? query(collection(db, col), where("cabang", "==", selectedCabang)) : collection(db, col);
+      const getBaseQuery = (col: string) => selectedCabang ? query(collection(db, col), where("cabang", "==", selectedCabang)) : collection(db, col);
 
       try {
-        // JALANKAN SEMUA QUERY SECARA PARALEL (Optimization 1)
-        const [kelasSnap, siswaSnap, guruCountSnap, keuanganSnap] = await Promise.all([
-          getDocs(baseQuery("kelas")),
-          getDocs(baseQuery("siswa")),
-          getCountFromServer(baseQuery("guru")), // Gunakan getCountFromServer lebih cepat (Optimization 2)
-          getDocs(baseQuery("arus_kas")),
-        ]);
-
-        // Ambil data performance secara terpisah agar tidak memblokir yang lain jika index error
-        let performanceSize = 0;
-        let totalScore = 0;
-        try {
-          const pQuery = selectedCabang 
+        const pQuery = selectedCabang 
             ? query(collectionGroup(db, 'kpi_guru'), where('cabang', '==', selectedCabang))
             : collectionGroup(db, 'kpi_guru');
-          const pSnap = await getDocs(pQuery);
-          performanceSize = pSnap.size;
-          pSnap.forEach(doc => totalScore += doc.data().persentase || 0);
-        } catch (e) { console.warn("Performance data failed", e); }
+
+        const qPemasukan = query(collection(db, "arus_kas"), ...(selectedCabang ? [where("cabang", "==", selectedCabang)] : []), where("jenis", "==", "Masuk"));
+        const qPengeluaran = query(collection(db, "arus_kas"), ...(selectedCabang ? [where("cabang", "==", selectedCabang)] : []), where("jenis", "==", "Keluar"));
+
+        // JALANKAN SEMUA QUERY SECARA PARALEL (Server-side Aggregation)
+        const [
+          kelasSnap, 
+          siswaSnap, 
+          guruCountSnap, 
+          pemasukanAgg, 
+          pengeluaranAgg, 
+          perfAgg
+        ] = await Promise.all([
+          getDocs(getBaseQuery("kelas")),
+          getDocs(getBaseQuery("siswa")),
+          getCountFromServer(getBaseQuery("guru")),
+          getAggregateFromServer(qPemasukan, { total: sum("nominal") }),
+          getAggregateFromServer(qPengeluaran, { total: sum("nominal") }),
+          getAggregateFromServer(pQuery, { avg: average('persentase') })
+        ]);
 
         // --- Process Class Stats (Table Data) ---
         const classes = kelasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -122,15 +140,9 @@ export default function AdminDashboard() {
         });
         setKelasStatsList(processedKelasStats);
 
-        let pemasukan = 0;
-        let pengeluaran = 0;
-        keuanganSnap.forEach(doc => {
-          const data = doc.data();
-          if (data.jenis === 'Masuk') pemasukan += Number(data.nominal) || 0;
-          else if (data.jenis === 'Keluar') pengeluaran += Number(data.nominal) || 0;
-        });
-
-        const avgPerformance = performanceSize > 0 ? totalScore / performanceSize : 0;
+        const pemasukan = pemasukanAgg.data().total || 0;
+        const pengeluaran = pengeluaranAgg.data().total || 0;
+        const avgPerformance = perfAgg.data().avg || 0;
 
         setKeuangan({ pemasukan, pengeluaran, saldo: pemasukan - pengeluaran });
         setStats({
