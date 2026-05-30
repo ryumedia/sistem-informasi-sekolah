@@ -66,19 +66,18 @@ export default function PengajuanPage() {
           let userDoc: any = null;
           let defaultRole = "User";
 
-          const guruQuery = query(collection(db, "guru"), where("email", "==", user.email));
-          const guruSnap = await getDocs(guruQuery);
-          
+          // Percepat pengecekan role dengan menjalankan query secara paralel (Concurrent)
+          const [guruSnap, caregiverSnap] = await Promise.all([
+            getDocs(query(collection(db, "guru"), where("email", "==", user.email))),
+            getDocs(query(collection(db, "caregivers"), where("email", "==", user.email)))
+          ]);
+
           if (!guruSnap.empty) {
             userDoc = guruSnap.docs[0];
             defaultRole = 'Guru';
-          } else {
-            const caregiverQuery = query(collection(db, "caregivers"), where("email", "==", user.email));
-            const caregiverSnap = await getDocs(caregiverQuery);
-            if (!caregiverSnap.empty) {
-              userDoc = caregiverSnap.docs[0];
-              defaultRole = 'Caregiver';
-            }
+          } else if (!caregiverSnap.empty) {
+            userDoc = caregiverSnap.docs[0];
+            defaultRole = 'Caregiver';
           }
 
           if (userDoc) {
@@ -145,14 +144,22 @@ export default function PengajuanPage() {
     try {
       let q;
       const pengajuanCollection = collection(db, "pengajuan");
-      const userRoles = currentUser.role || [];
+      const role = currentUser.role || "";
 
-      if (userRoles.includes('Guru') || userRoles.includes('Caregiver')) {
-        q = query(pengajuanCollection, where("userId", "==", currentUser.uid || currentUser.id), orderBy("createdAt", "desc"));
-      } else if (userRoles.includes('Kepala Sekolah') && currentUser.cabang) {
-        q = query(pengajuanCollection, where("cabang", "==", currentUser.cabang), orderBy("createdAt", "desc"));
+      // Optimasi Server-Side Filtering: Filter tanggal langsung di Query Firestore.
+      // Tanpa ini, sistem akan mengunduh SELURUH data historis yang membuat loading lambat.
+      const constraints = [
+        where("tanggal", ">=", startDate),
+        where("tanggal", "<=", endDate),
+        orderBy("tanggal", "desc")
+      ];
+
+      if (role === 'Guru' || role === 'Caregiver') {
+        q = query(pengajuanCollection, where("userId", "==", currentUser.uid || currentUser.id), ...constraints);
+      } else if (role === 'Kepala Sekolah' && currentUser.cabang) {
+        q = query(pengajuanCollection, where("cabang", "==", currentUser.cabang), ...constraints);
       } else {
-        q = query(pengajuanCollection, orderBy("createdAt", "desc"));
+        q = query(pengajuanCollection, ...constraints);
       }
       
       const querySnapshot = await getDocs(q);
@@ -173,17 +180,16 @@ export default function PengajuanPage() {
     if (currentUser) {
       fetchData();
     }
-  }, [currentUser]);
+  }, [currentUser, startDate, endDate]);
 
   // 4. Logic Filter Client-Side
   const filteredData = dataList.filter((item) => {
-    const matchDate = (!startDate || item.tanggal >= startDate) && (!endDate || item.tanggal <= endDate);
     const matchCabang = filterCabang ? item.cabang === filterCabang : true;
     const matchNama = filterNama ? (item.pengaju || "").toLowerCase().includes(filterNama.toLowerCase()) : true;
     const matchStatus = filterStatus ? item.status === filterStatus : true;
     const matchNomenklatur = filterNomenklatur ? item.nomenklatur === filterNomenklatur : true;
 
-    return matchDate && matchCabang && matchStatus && matchNama && matchNomenklatur;
+    return matchCabang && matchStatus && matchNama && matchNomenklatur;
   });
 
   // Pagination Logic

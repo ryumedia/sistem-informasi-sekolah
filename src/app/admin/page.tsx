@@ -21,6 +21,7 @@ export default function AdminDashboard() {
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [selectedCabang, setSelectedCabang] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [loadingTable, setLoadingTable] = useState(false);
   const [kelasStatsList, setKelasStatsList] = useState<any[]>([]);
   const [userRole, setUserRole] = useState<string>("");
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -49,12 +50,12 @@ export default function AdminDashboard() {
     // Satukan pengecekan Auth dan fetching Cabang agar lebih efisien
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
+        setIsAuthReady(true); // Dashboard diizinkan render SEGERA
+        fetchCabang();
+
         try {
           const qUser = query(collection(db, "guru"), where("email", "==", currentUser.email));
-          const [_, userSnap] = await Promise.all([
-            fetchCabang(),
-            getDocs(qUser)
-          ]);
+          const userSnap = await getDocs(qUser);
 
           if (!userSnap.empty) {
             const userData = userSnap.docs[0].data();
@@ -63,8 +64,6 @@ export default function AdminDashboard() {
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
-        } finally {
-          setIsAuthReady(true);
         }
       } else {
         setIsAuthReady(true);
@@ -79,6 +78,7 @@ export default function AdminDashboard() {
 
     const fetchData = async () => {
       setLoading(true);
+      setLoadingTable(true);
       const getBaseQuery = (col: string) => selectedCabang ? query(collection(db, col), where("cabang", "==", selectedCabang)) : collection(db, col);
 
       try {
@@ -122,37 +122,49 @@ export default function AdminDashboard() {
         setLoading(false);
 
         // PHASE 2: AMBIL DATA DETAIL UNTUK TABEL (DI LATAR BELAKANG)
-        const [kelasSnap, siswaSnap] = await Promise.all([
-          getDocs(getBaseQuery("kelas")),
-          getDocs(getBaseQuery("siswa"))
-        ]);
+        const kelasSnap = await getDocs(getBaseQuery("kelas"));
+        const classes = kelasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
 
-        // --- Process Class Stats (Table Data) ---
-        const classes = kelasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const students = siswaSnap.docs.map(doc => doc.data());
+        let processedKelasStats: any[] = [];
 
-        const studentCounts: Record<string, { L: number, P: number }> = {};
-        students.forEach((s: any) => {
-            // Key: Cabang-Kelas (asumsi kombinasi unik untuk mapping)
-            const key = `${s.cabang}-${s.kelas}`;
-            if (!studentCounts[key]) studentCounts[key] = { L: 0, P: 0 };
-            
-            if (s.jenisKelamin === 'Laki-laki') studentCounts[key].L++;
-            else if (s.jenisKelamin === 'Perempuan') studentCounts[key].P++;
-        });
+        if (selectedCabang) {
+          // Strategi 1: Jika cabang spesifik dipilih, ambil semua siswa di cabang itu dan agregasi di memori.
+          // Ini efisien jika jumlah siswa per cabang tidak terlalu besar.
+          const siswaSnap = await getDocs(getBaseQuery("siswa")); // getBaseQuery sudah memfilter berdasarkan cabang
+          const allSiswaInCabang = siswaSnap.docs.map(doc => doc.data());
 
-        const processedKelasStats = classes.map((cls: any) => {
-            const key = `${cls.cabang}-${cls.namaKelas}`;
-            const counts = studentCounts[key] || { L: 0, P: 0 };
+          processedKelasStats = classes.map((cls) => {
+            const siswaDiKelas = allSiswaInCabang.filter(s =>
+              s.kelas === cls.namaKelas // Cabang sudah difilter oleh allSiswaInCabang
+            );
+
+            const laki = siswaDiKelas.filter(s => s.jenisKelamin === 'Laki-laki').length;
+            const perempuan = siswaDiKelas.filter(s => s.jenisKelamin === 'Perempuan').length;
+
             return {
-                id: cls.id,
-                namaKelas: cls.namaKelas,
-                cabang: cls.cabang,
-                laki: counts.L,
-                perempuan: counts.P,
-                jumlah: counts.L + counts.P
+              id: cls.id,
+              namaKelas: cls.namaKelas,
+              cabang: cls.cabang,
+              laki,
+              perempuan,
+              jumlah: laki + perempuan
             };
-        });
+          });
+        } else {
+          // Strategi 2: Jika "Semua Cabang" dipilih, gunakan getCountFromServer untuk setiap kelas.
+          // Ini menghindari pengunduhan semua siswa dari semua cabang, yang akan sangat lambat.
+          const kelasStatsPromises = classes.map(async (cls) => {
+            const baseSiswaQuery = [
+                where("cabang", "==", cls.cabang),
+                where("kelas", "==", cls.namaKelas)
+            ];
+            const qLaki = query(collection(db, "siswa"), ...baseSiswaQuery, where("jenisKelamin", "==", 'Laki-laki'));
+            const qPerempuan = query(collection(db, "siswa"), ...baseSiswaQuery, where("jenisKelamin", "==", 'Perempuan'));
+            const [lakiSnap, perempuanSnap] = await Promise.all([getCountFromServer(qLaki), getCountFromServer(qPerempuan)]);
+            return { id: cls.id, namaKelas: cls.namaKelas, cabang: cls.cabang, laki: lakiSnap.data().count, perempuan: perempuanSnap.data().count, jumlah: lakiSnap.data().count + perempuanSnap.data().count };
+          });
+          processedKelasStats = await Promise.all(kelasStatsPromises);
+        }
 
         // Sort: Cabang ASC, then Nama Kelas ASC
         processedKelasStats.sort((a: any, b: any) => {
@@ -165,6 +177,7 @@ export default function AdminDashboard() {
         console.error("Error fetching dashboard data:", error);
       } finally {
         setLoading(false);
+        setLoadingTable(false);
       }
     };
 
@@ -234,7 +247,9 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {kelasStatsList.length === 0 ? (
+                  {loadingTable ? (
+                    <tr><td colSpan={6} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" /></td></tr>
+                  ) : kelasStatsList.length === 0 ? (
                     <tr><td colSpan={6} className="p-4 text-center text-gray-500">Tidak ada data kelas.</td></tr>
                   ) : (
                     kelasStatsList.map((item, idx) => (

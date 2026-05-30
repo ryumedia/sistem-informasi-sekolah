@@ -25,6 +25,13 @@ export default function AdminLayout({
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
+        // Set data minimal dari Auth object secara INSTAN
+        setUserData({ 
+          nama: currentUser.displayName || currentUser.email?.split('@')[0] || "User", 
+          email: currentUser.email,
+          role: "" // Role akan diupdate kemudian setelah query DB selesai
+        });
+
         // Ambil data detail user dari Firestore
         try {
           const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
@@ -32,8 +39,6 @@ export default function AdminLayout({
           
           if (!querySnapshot.empty) {
             setUserData(querySnapshot.docs[0].data());
-          } else {
-            setUserData({ nama: currentUser.displayName || "Admin", email: currentUser.email });
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
@@ -166,12 +171,12 @@ export default function AdminLayout({
 
   // Filter menu items based on user's role
   const menuItems = allMenuItems
-    .filter(item => item.roles && userData?.role && item.roles.includes(userData.role))
+    .filter(item => !userData || userData.role === "" ? true : (item.roles && item.roles.includes(userData.role)))
     .map(item => {
       if (item.submenu) {
         return {
           ...item,
-          submenu: item.submenu.filter(subItem => subItem.roles && userData?.role && subItem.roles.includes(userData.role))
+          submenu: item.submenu.filter(subItem => !userData || userData.role === "" ? true : (subItem.roles && subItem.roles.includes(userData.role)))
         };
       }
       return item;
