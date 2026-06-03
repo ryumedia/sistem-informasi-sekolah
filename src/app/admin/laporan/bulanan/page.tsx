@@ -9,13 +9,44 @@ import { onAuthStateChanged } from 'firebase/auth';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+// Type Definitions (Expanded for full report data)
 interface Laporan {
   id: string;
   informasiDasar: {
+    semesterId: string;
     semester: string;
     bulan: string;
+    cabangId: string;
     cabang: string;
+    disusunOleh: string;
   };
+  ringkasanEksekutif?: {
+    capaianPembelajaran?: string;
+    kinerjaSDM?: string;
+    keuangan?: string;
+    ppdb?: string;
+    isuStrategis?: string;
+  };
+  capaianOKR?: {
+    pembelajaran?: string;
+    budayaKerja?: string;
+    kebersihan?: string;
+    operasional?: string;
+    branding?: string;
+  };
+  capaianPPDB?: {
+    [key: string]: {
+      target?: string | number;
+      capaian?: string | number;
+    };
+  };
+  keuanganSingkat?: { pos?: string; pengajuan?: string; realisasi?: string; catatan?: string }[];
+  jumlahSiswa?: { [key: string]: { jumlah?: number; keterangan?: string } };
+  isuStrategis?: string;
+  rekomendasiKegiatan?: string;
+  rencanaAgenda?: { tema?: string; deskripsi?: string; detail?: { tanggal?: string; kegiatan?: string }[] };
+  dokumentasi?: { url: string; description: string }[]; // Updated type
+  createdAt?: Date;
 }
 
 // Helper untuk memuat gambar dari URL agar bisa masuk ke PDF
@@ -39,6 +70,7 @@ export default function LaporanBulananPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedLaporan, setSelectedLaporan] = useState<Laporan | null>(null);
   const [loading, setLoading] = useState(true);
+  const [downloadStatus, setDownloadStatus] = useState<Record<string, 'idle' | 'downloading' | 'finished'>>({});
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -114,12 +146,15 @@ export default function LaporanBulananPage() {
   };
 
   const handleDownloadPDF = async (laporan: Laporan) => {
+    if (downloadStatus[laporan.id] === 'downloading') return;
+
     try {
+      setDownloadStatus(prev => ({ ...prev, [laporan.id]: 'downloading' }));
       const docRef = doc(db, "laporan_bulanan", laporan.id);
       const docSnap = await getDoc(docRef);
       
       if (docSnap.exists()) {
-        const data = docSnap.data();
+        const data = docSnap.data() as Laporan; // Cast to Laporan interface
         const doc = new jsPDF();
         
         // Header with Logo
@@ -203,13 +238,15 @@ export default function LaporanBulananPage() {
         const totalSisa = totalTarget - totalCapaian;
         const totalProsentase = totalTarget > 0 ? ((totalCapaian / totalTarget) * 100).toFixed(1) : '0.0';
 
-        const ppdbBody = Object.entries(capaianPPDB).map(([kelas, val]: any) => {
-            const target = Number(val.target || 0);
-            const capaian = Number(val.capaian || 0);
-            const sisa = target - capaian;
-            const prosentase = target > 0 ? ((capaian / target) * 100).toFixed(1) : '0.0';
-            return [kelas, target, capaian, sisa, `${prosentase}%`];
-        });
+        const ppdbBody = Object.entries(capaianPPDB)
+            .sort(([a], [b]) => a.localeCompare(b)) // Urutkan alfabetis berdasarkan nama kelas
+            .map(([kelas, val]: any) => {
+                const target = Number(val.target || 0);
+                const capaian = Number(val.capaian || 0);
+                const sisa = target - capaian;
+                const prosentase = target > 0 ? ((capaian / target) * 100).toFixed(1) : '0.0';
+                return [kelas, target, capaian, sisa, `${prosentase}%`];
+            });
         
         autoTable(doc, {
             startY: finalY,
@@ -247,9 +284,11 @@ export default function LaporanBulananPage() {
         doc.text("E. Jumlah Siswa", 14, finalY);
         finalY += 5;
 
-        const siswaBody = Object.entries(data.jumlahSiswa || {}).map(([kelas, val]: any) => [
-            kelas, val.jumlah, val.keterangan
-        ]);
+        const siswaBody = Object.entries(data.jumlahSiswa || {})
+            .sort(([a], [b]) => a.localeCompare(b)) // Urutkan alfabetis berdasarkan nama kelas
+            .map(([kelas, val]: any) => [
+                kelas, val.jumlah, val.keterangan
+            ]);
 
         autoTable(doc, {
             startY: finalY,
@@ -336,12 +375,13 @@ export default function LaporanBulananPage() {
             finalY += 10;
 
             let xPos = 14;
-            let yPos = finalY;
-            const imgWidth = 80;
-            const imgHeight = 60;
+            let yPos = finalY; // Adjusted for portrait
+            const imgWidth = 60; // Adjusted for portrait
+            const imgHeight = (16 / 9) * imgWidth; // Calculate height for 9:16 ratio
 
             for (let i = 0; i < data.dokumentasi.length; i++) {
-                const url = data.dokumentasi[i];
+                const item = data.dokumentasi[i]; // Now an object {url: string, description: string}
+                const url = item.url;
                 if (url) {
                     try {
                         const imgData = await loadImage(url);
@@ -357,6 +397,10 @@ export default function LaporanBulananPage() {
                         }
 
                         doc.addImage(imgData, 'JPEG', xPos, yPos, imgWidth, imgHeight);
+                        // Add description below image
+                        doc.setFontSize(8); // Smaller font for description
+                        doc.setFont("helvetica", "normal");
+                        doc.text(item.description, xPos + (imgWidth / 2), yPos + imgHeight + 7, { maxWidth: imgWidth, align: 'center' });
                         xPos += imgWidth + 10;
                     } catch (e) {
                         console.error("Failed to load image for PDF", e);
@@ -366,10 +410,17 @@ export default function LaporanBulananPage() {
         }
 
         doc.save(`Laporan_${data.informasiDasar.cabang}_${data.informasiDasar.bulan}.pdf`);
+        setDownloadStatus(prev => ({ ...prev, [laporan.id]: 'finished' }));
+
+        // Kembalikan ke ikon semula setelah 3 detik
+        setTimeout(() => {
+          setDownloadStatus(prev => ({ ...prev, [laporan.id]: 'idle' }));
+        }, 3000);
       }
     } catch (error) {
       console.error("Error generating PDF:", error);
       alert("Gagal mendownload PDF. Pastikan library jspdf terinstall.");
+      setDownloadStatus(prev => ({ ...prev, [laporan.id]: 'idle' }));
     }
   };
 
@@ -413,8 +464,19 @@ export default function LaporanBulananPage() {
                   <td className="p-4">{item.informasiDasar.bulan}</td>
                   <td className="p-4">{item.informasiDasar.cabang}</td>
                   <td className="p-4 flex gap-2">
-                    <button onClick={() => handleDownloadPDF(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Download PDF">
-                      <Printer className="w-4 h-4" />
+                    <button 
+                      onClick={() => handleDownloadPDF(item)} 
+                      disabled={downloadStatus[item.id] === 'downloading'}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition disabled:opacity-50 min-w-[40px] flex items-center justify-center" 
+                      title="Download PDF"
+                    >
+                      {downloadStatus[item.id] === 'downloading' ? (
+                        <span className="text-[10px] font-bold animate-pulse">PROSES...</span>
+                      ) : downloadStatus[item.id] === 'finished' ? (
+                        <span className="text-[10px] font-bold text-green-600">SELESAI</span>
+                      ) : (
+                        <Printer className="w-4 h-4" />
+                      )}
                     </button>
                     <Link href={`/admin/laporan/bulanan/buat?id=${item.id}`} className="p-2 text-[#581c87] hover:bg-[#581c87]/10 rounded-lg transition" title="Edit">
                       <Edit className="w-4 h-4" />

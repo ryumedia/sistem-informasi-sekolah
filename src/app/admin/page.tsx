@@ -41,19 +41,10 @@ export default function AdminDashboard() {
 
   // Fetch Cabang List for Filter
   useEffect(() => {
-    const fetchCabang = async () => {
-      const q = query(collection(db, "cabang"), orderBy("nama", "asc"));
-      const snap = await getDocs(q);
-      setCabangList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    };
-
-    // Satukan pengecekan Auth dan fetching Cabang agar lebih efisien
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        setIsAuthReady(true); // Dashboard diizinkan render SEGERA
-        fetchCabang();
-
         try {
+          // 1. Fetch data user secara PRIORITAS untuk menentukan hak akses
           const qUser = query(collection(db, "guru"), where("email", "==", currentUser.email));
           const userSnap = await getDocs(qUser);
 
@@ -62,8 +53,17 @@ export default function AdminDashboard() {
             setUserRole(userData.role);
             if (userData.role === "Kepala Sekolah" || userData.role === "Guru") setSelectedCabang(userData.cabang);
           }
+
+          // 2. Fetch list cabang untuk filter (berjalan di latar belakang)
+          const qCabang = query(collection(db, "cabang"), orderBy("nama", "asc"));
+          const snapCabang = await getDocs(qCabang);
+          setCabangList(snapCabang.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
         } catch (error) {
           console.error("Error fetching user data:", error);
+        } finally {
+          // Baru izinkan dashboard render setelah Role dipastikan
+          setIsAuthReady(true);
         }
       } else {
         setIsAuthReady(true);
@@ -75,6 +75,9 @@ export default function AdminDashboard() {
   // Fetch Dashboard Data based on Filter
   useEffect(() => {
     if (!isAuthReady) return; // Jangan fetch data sebelum role/cabang user dipastikan
+
+    // Cegah fetching data dashboard jika role adalah Guru atau Caregiver (karena akan diredirect)
+    if (["Guru", "Caregiver"].includes(userRole)) return;
 
     const fetchData = async () => {
       setLoading(true);
@@ -182,7 +185,7 @@ export default function AdminDashboard() {
     };
 
     fetchData();
-  }, [selectedCabang, isAuthReady]);
+  }, [selectedCabang, isAuthReady, userRole]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
@@ -206,7 +209,16 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {loading ? (
+      {/* 
+          Gunakan pengecekan isAuthReady dan userRole di sini. 
+          Jika role dilarang, tampilkan loader saja sambil menunggu redirect dari Layout.
+      */}
+      {!isAuthReady || ["Guru", "Caregiver"].includes(userRole) ? (
+        <div className="w-full text-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-[#581c87] mx-auto" />
+          <p className="text-sm text-gray-500 mt-2">Memeriksa hak akses...</p>
+        </div>
+      ) : loading ? (
         <div className="w-full text-center py-10">
           <Loader2 className="w-8 h-8 animate-spin text-[#581c87] mx-auto" />
           <p className="text-sm text-gray-500 mt-2">Memuat data...</p>

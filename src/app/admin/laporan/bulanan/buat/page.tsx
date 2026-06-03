@@ -56,6 +56,12 @@ interface RencanaAgenda {
     deskripsi: string;
     detail: RencanaAgendaDetail[];
 }
+// Updated interface for DokumentasiItem
+interface DokumentasiItem { 
+    file: File | null;
+    url: string | null; // For existing images (edit mode)
+    description: string;
+}
 interface RingkasanEksekutif {
     capaianPembelajaran: string;
     kinerjaSDM: string;
@@ -157,7 +163,12 @@ function FormContent() {
     });
 
     // Step 10 State
-    const [dokumentasi, setDokumentasi] = useState<(string | File | null)[]>([null, null, null, null]);
+    const [dokumentasi, setDokumentasi] = useState<DokumentasiItem[]>([
+        { file: null, url: null, description: '' },
+        { file: null, url: null, description: '' },
+        { file: null, url: null, description: '' },
+        { file: null, url: null, description: '' },
+    ]);
 
     useEffect(() => {
         if (editId) {
@@ -179,9 +190,14 @@ function FormContent() {
                         setIsuStrategis(data.isuStrategis);
                         setRekomendasiKegiatan(data.rekomendasiKegiatan);
                         setRencanaAgenda(data.rencanaAgenda);
+                        // Handle existing documentation with new structure
                         if (data.dokumentasi && Array.isArray(data.dokumentasi)) {
-                            const docs = [...data.dokumentasi];
-                            while (docs.length < 4) docs.push(null);
+                            const docs: DokumentasiItem[] = data.dokumentasi.map((item: { url: string, description: string }) => ({
+                                file: null, // No new file initially
+                                url: item.url || null,
+                                description: item.description || ''
+                            }));
+                            while (docs.length < 4) docs.push({ file: null, url: null, description: '' });
                             setDokumentasi(docs);
                         }
                     }
@@ -195,29 +211,13 @@ function FormContent() {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
                 const uid = user.uid.trim();
-                // Gunakan nama dari profil Auth sebagai default/fallback agar tidak stuck loading
                 if (user.displayName) setDisusunOleh(user.displayName);
 
                 try {
-                    // ================== TEMPORARY WORKAROUND ==================
-                    // The following code fetches all documents from the 'guru' collection and searches
-                    // on the client-side. This is inefficient and should be replaced with a direct
-                    // Firestore query. The direct query is likely failing due to a missing Firestore
-                    // index or a security rule.
-                    //
-                    // CORRECT QUERY (Enable after fixing Firestore config):
-                    // const q = query(collection(db, "guru"), where("uid", "array-contains", uid));
-                    // const querySnapshot = await getDocs(q);
-                    //
-                    // Check browser console for Firestore index creation links or review security rules.
-                    // ==========================================================
-                    const guruCollectionRef = collection(db, "guru");
-                    const querySnapshot = await getDocs(guruCollectionRef);
-                    const allGurus = querySnapshot.docs.map(d => d.data());
-
-                    const userDocData = allGurus.find(guru => 
-                        (Array.isArray(guru.uid) && guru.uid.includes(uid)) || guru.uid === uid
-                    );
+                    // Masalah 2: Gunakan query email yang lebih efisien daripada fetching all documents
+                    const qGuru = query(collection(db, "guru"), where("email", "==", user.email));
+                    const guruSnapshot = await getDocs(qGuru);
+                    const userDocData = !guruSnapshot.empty ? guruSnapshot.docs[0].data() : null;
 
                     if (userDocData) {
                         // Hanya set nama penyusun jika BUKAN mode edit
@@ -369,15 +369,26 @@ function FormContent() {
         // Upload Dokumentasi ke Firebase Storage
         const uploadedUrls = await Promise.all(
             dokumentasi.map(async (item, index) => {
-                if (!item) return null;
-                if (typeof item === 'string') return item; // Sudah berupa URL (dari edit)
-
-                const storageRef = ref(storage, `laporan_bulanan/${Date.now()}_${index}_${item.name}`);
-                await uploadBytes(storageRef, item);
-                return await getDownloadURL(storageRef);
+                if (item.file) {
+                    const storageRef = ref(storage, `laporan_bulanan/${Date.now()}_${index}_${item.file.name}`);
+                    await uploadBytes(storageRef, item.file);
+                    const url = await getDownloadURL(storageRef);
+                    return { url, description: item.description };
+                } else if (item.url) {
+                    // Existing URL, keep it with its description
+                    return { url: item.url, description: item.description };
+                }
+                return null; // No file and no existing URL
             })
         );
-        const finalDokumentasi = uploadedUrls.filter(url => url !== null);
+        const finalDokumentasi = uploadedUrls.filter(doc => doc !== null);
+
+        // Ensure all descriptions are strings, even if empty
+        finalDokumentasi.forEach(doc => {
+            if (doc && typeof doc.description !== 'string') {
+                doc.description = '';
+            }
+        });
 
         const fullReportData = {
             informasiDasar: { 
@@ -625,28 +636,41 @@ function FormContent() {
                 );
             case 10: // Dokumentasi
                 const handleFileChange = (index: number, file: File | null) => {
-                    const newFiles = [...dokumentasi];
-                    newFiles[index] = file;
-                    setDokumentasi(newFiles);
-                }
+                    setDokumentasi(prev => prev.map((item, i) => 
+                        i === index ? { ...item, file: file, url: file ? URL.createObjectURL(file) : null } : item
+                    ));
+                };
+
+                const handleDescriptionChange = (index: number, desc: string) => {
+                    setDokumentasi(prev => prev.map((item, i) => 
+                        i === index ? { ...item, description: desc } : item
+                    ));
+                };
+
                 const removeFile = (index: number) => {
-                    const newFiles = [...dokumentasi];
-                    newFiles[index] = null;
-                    setDokumentasi(newFiles);
-                }
+                    setDokumentasi(prev => prev.map((item, i) => 
+                        i === index ? { file: null, url: null, description: '' } : item
+                    ));
+                };
                 return (
                     <div className="space-y-4">
                         <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2"><Upload className="w-5 h-5" /> I. Dokumentasi Kegiatan</h3>
                          <p className="text-sm text-gray-500">Upload hingga 4 foto kegiatan.</p>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {dokumentasi.map((file, index) => {
-                                let previewUrl = null;
-                                if (file instanceof File) previewUrl = URL.createObjectURL(file);
-                                else if (typeof file === 'string') previewUrl = file;
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                            {dokumentasi.map((item, index) => {
+                                const previewUrl = item.file ? URL.createObjectURL(item.file) : item.url;
 
                                 return (
-                                <div key={index} className="w-full h-32 border-2 border-dashed rounded-lg flex items-center justify-center relative">
-                                    {!previewUrl && <input type="file" accept="image/*" onChange={(e: ChangeEvent<HTMLInputElement>) => handleFileChange(index, e.target.files ? e.target.files[0] : null)} className="absolute w-full h-full opacity-0 cursor-pointer z-10" />}
+                                <div key={index} className="flex flex-col items-center space-y-2">
+                                    <div className="w-36 h-64 border-2 border-dashed rounded-lg flex items-center justify-center relative overflow-hidden"> {/* Adjusted for 9:16 portrait */}
+                                    {!previewUrl && (
+                                        <input 
+                                            type="file" 
+                                            accept="image/*" 
+                                            onChange={(e: ChangeEvent<HTMLInputElement>) => handleFileChange(index, e.target.files ? e.target.files[0] : null)} 
+                                            className="absolute w-full h-full opacity-0 cursor-pointer z-10" 
+                                        />
+                                    )}
                                     {previewUrl ? (
                                         <div className="relative w-full h-full">
                                             <img src={previewUrl} alt={`Dokumentasi ${index + 1}`} className="w-full h-full object-cover rounded-lg" />
@@ -658,6 +682,14 @@ function FormContent() {
                                             <span className="text-xs">Upload</span>
                                         </div>
                                     )}
+                                    </div>
+                                    <textarea
+                                        rows={2}
+                                        placeholder="Deskripsi gambar..."
+                                        value={item.description}
+                                        onChange={(e) => handleDescriptionChange(index, e.target.value)}
+                                        className="w-full border rounded-lg p-2 text-sm resize-none"
+                                    />
                                 </div>
                                 );
                             })}
