@@ -41,31 +41,49 @@ export default function AdminDashboard() {
 
   // Fetch Cabang List for Filter
   useEffect(() => {
+    // 1. Cek Cache Lokal (LocalStorage) agar loading "Memeriksa hak akses" hilang dalam milidetik
+    const cachedRole = localStorage.getItem('user_role');
+    const cachedCabang = localStorage.getItem('user_cabang');
+    
+    if (cachedRole) {
+      setUserRole(cachedRole);
+      if (cachedCabang) setSelectedCabang(cachedCabang);
+      setIsAuthReady(true);
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         try {
-          // 1. Fetch data user secara PRIORITAS untuk menentukan hak akses
+          // Gunakan Firestore Cache jika tersedia
           const qUser = query(collection(db, "guru"), where("email", "==", currentUser.email));
-          const userSnap = await getDocs(qUser);
+          const qCabang = query(collection(db, "cabang"), orderBy("nama", "asc"));
+
+          const [userSnap, snapCabang] = await Promise.all([
+            getDocs(qUser),
+            getDocs(qCabang)
+          ]);
 
           if (!userSnap.empty) {
             const userData = userSnap.docs[0].data();
             setUserRole(userData.role);
-            if (userData.role === "Kepala Sekolah" || userData.role === "Guru") setSelectedCabang(userData.cabang);
+            // Simpan ke cache untuk kunjungan berikutnya
+            localStorage.setItem('user_role', userData.role);
+            if (userData.role === "Kepala Sekolah" || userData.role === "Guru") {
+              setSelectedCabang(userData.cabang);
+              localStorage.setItem('user_cabang', userData.cabang);
+            }
           }
 
-          // 2. Fetch list cabang untuk filter (berjalan di latar belakang)
-          const qCabang = query(collection(db, "cabang"), orderBy("nama", "asc"));
-          const snapCabang = await getDocs(qCabang);
           setCabangList(snapCabang.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
         } catch (error) {
           console.error("Error fetching user data:", error);
         } finally {
-          // Baru izinkan dashboard render setelah Role dipastikan
           setIsAuthReady(true);
         }
       } else {
+        // Jika logout, bersihkan cache
+        localStorage.removeItem('user_role');
+        localStorage.removeItem('user_cabang');
         setIsAuthReady(true);
       }
     });
@@ -154,19 +172,25 @@ export default function AdminDashboard() {
             };
           });
         } else {
-          // Strategi 2: Jika "Semua Cabang" dipilih, gunakan getCountFromServer untuk setiap kelas.
-          // Ini menghindari pengunduhan semua siswa dari semua cabang, yang akan sangat lambat.
-          const kelasStatsPromises = classes.map(async (cls) => {
-            const baseSiswaQuery = [
-                where("cabang", "==", cls.cabang),
-                where("kelas", "==", cls.namaKelas)
-            ];
-            const qLaki = query(collection(db, "siswa"), ...baseSiswaQuery, where("jenisKelamin", "==", 'Laki-laki'));
-            const qPerempuan = query(collection(db, "siswa"), ...baseSiswaQuery, where("jenisKelamin", "==", 'Perempuan'));
-            const [lakiSnap, perempuanSnap] = await Promise.all([getCountFromServer(qLaki), getCountFromServer(qPerempuan)]);
-            return { id: cls.id, namaKelas: cls.namaKelas, cabang: cls.cabang, laki: lakiSnap.data().count, perempuan: perempuanSnap.data().count, jumlah: lakiSnap.data().count + perempuanSnap.data().count };
+          // Optimasi Strategi 2: Ambil semua siswa sekali saja jika datanya tidak jutaan, 
+          // daripada melakukan ratusan request individual (N+1 query problem).
+          const siswaSnap = await getDocs(collection(db, "siswa"));
+          const allSiswa = siswaSnap.docs.map(doc => doc.data());
+
+          processedKelasStats = classes.map((cls) => {
+            const diKelas = allSiswa.filter(s => s.cabang === cls.cabang && s.kelas === cls.namaKelas);
+            const laki = diKelas.filter(s => s.jenisKelamin === 'Laki-laki').length;
+            const perempuan = diKelas.filter(s => s.jenisKelamin === 'Perempuan').length;
+            
+            return { 
+              id: cls.id, 
+              namaKelas: cls.namaKelas, 
+              cabang: cls.cabang, 
+              laki, 
+              perempuan, 
+              jumlah: laki + perempuan 
+            };
           });
-          processedKelasStats = await Promise.all(kelasStatsPromises);
         }
 
         // Sort: Cabang ASC, then Nama Kelas ASC

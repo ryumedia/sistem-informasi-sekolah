@@ -1,6 +1,10 @@
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager 
+} from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
@@ -18,7 +22,12 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 // Export service yang akan sering dipakai
-const db = getFirestore(app);
+// Konfigurasi Firestore dengan cache lokal agar data tersimpan di browser/HP
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+});
 const auth = getAuth(app);
 const storage = getStorage(app);
 

@@ -23,6 +23,12 @@ export default function AdminLayout({
   const [realisasiCount, setRealisasiCount] = useState(0);
 
   useEffect(() => {
+    // Ambil data user dari cache lokal segera
+    const cachedUser = localStorage.getItem('user_data');
+    if (cachedUser) {
+      setUserData(JSON.parse(cachedUser));
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         // Set data minimal dari Auth object secara INSTAN
@@ -38,11 +44,16 @@ export default function AdminLayout({
           const querySnapshot = await getDocs(q);
           
           if (!querySnapshot.empty) {
-            setUserData(querySnapshot.docs[0].data());
+            const data = querySnapshot.docs[0].data();
+            setUserData(data);
+            localStorage.setItem('user_data', JSON.stringify(data));
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
         }
+      } else {
+        setUserData(null);
+        localStorage.removeItem('user_data');
       }
     });
     return () => unsubscribe();
