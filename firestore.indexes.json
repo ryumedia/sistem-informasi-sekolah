@@ -1,0 +1,410 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "arus_kas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "cabang",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "jenis",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nominal",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "arus_kas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "jenis",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nominal",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "daycare_laporan_harian",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "siswaId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tanggal",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "daycare_sub_aktivitas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "aktivitasId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "deskripsi",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "daycare_sub_aktivitas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "aktivitasId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "urutan",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "guru",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "role",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nama",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "kelas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "jenjangKelas",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "namaKelas",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "kpi_guru",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "cabang",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "persentase",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "laporan_bulanan",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "informasiDasar.cabang",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "pengajuan",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "cabang",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "pengajuan",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "cabang",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tanggal",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "pengajuan",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "pengajuan",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tanggal",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "pertumbuhan_anak",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "siswaId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tanggal",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "siswa",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "cabang",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "jenjangKelas",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nama",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "siswa",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "jenjangKelas",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nama",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "siswa",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "kelas",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nama",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "tagihan_siswa",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "siswaId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tahun",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "kpi_guru",
+      "fieldPath": "cabang",
+      "ttl": false,
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "arrayConfig": "CONTAINS",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        },
+        {
+          "arrayConfig": "CONTAINS",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "kpi_guru",
+      "fieldPath": "persentase",
+      "ttl": false,
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "arrayConfig": "CONTAINS",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Izinkan siapapun (publik) untuk mengunggah file lamaran.
+    // Ini penting agar formulir publik bisa berfungsi.
+    match /rekrutmen_jawaban/{programId}/{fileName} {
+      allow write: if true;
+      // Izinkan juga public read agar getDownloadURL() bisa berhasil setelah upload.
+      allow read: if true;
+    }
+
+    // Aturan untuk cover program, hanya admin yang bisa akses.
+    match /rekrutmen_covers/{fileName} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Aturan umum lainnya: tolak semua akses jika tidak cocok dengan aturan di atas.
+    // Anda bisa menyesuaikan ini jika ada folder lain.
+    match /{allPaths=**} {
+       allow read, write: if request.auth != null;
+    }
+  }
+}

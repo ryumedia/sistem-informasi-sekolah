@@ -188,6 +188,15 @@ export default function AdminLayout({
         { name: "Pengaturan Semester", href: "/admin/pengaturan/performance", roles: ["Admin", "Yayasan"] }
       ]
     },
+    { 
+      name: "Rekrutmen", 
+      href: "#",
+      roles: ["Admin", "Direktur", "Yayasan"],
+      submenu: [
+        { name: "Program", href: "/admin/rekrutmen/program", roles: ["Admin", "Direktur", "Yayasan"] },
+        { name: "Pelamar", href: "/admin/rekrutmen/pelamar", roles: ["Admin", "Direktur", "Yayasan"] },
+      ]
+    },
   ];
 
   // Filter menu items based on user's role
