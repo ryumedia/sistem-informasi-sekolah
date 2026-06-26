@@ -167,6 +167,16 @@ export default function AdminLayout({
       ]
     },
     { 
+      name: "Biaya Sekolah", 
+      href: "#",
+      roles: ["Admin", "Direktur", "Yayasan"], // Sesuaikan dengan role yang berhak mengakses
+      submenu: [
+        { name: "Jenis Biaya", href: "/admin/biaya/jenis-biaya", roles: ["Admin", "Direktur", "Yayasan"] },
+        { name: "Penagihan", href: "/admin/biaya/penagihan", roles: ["Admin", "Direktur", "Yayasan"] },
+        { name: "Penerimaan", href: "/admin/biaya/penerimaan", roles: ["Admin", "Direktur", "Yayasan"] },
+      ]
+    },
+    { 
       name: "Pengaturan", 
       href: "#",
       roles: ["Admin", "Yayasan"],

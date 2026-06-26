@@ -1,19 +1,21 @@
 "use client";
 import { useState, useEffect } from 'react';
 import { db, auth } from "@/lib/firebase";
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy } from "firebase/firestore";
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, Timestamp } from "firebase/firestore";
 import { onAuthStateChanged } from 'firebase/auth';
-import { Plus, Pencil, Trash2, X } from 'lucide-react';
-
+import { Plus, Pencil, Trash2, X, Loader2 } from 'lucide-react';
+import { format } from 'date-fns';
 interface GrowthData {
   id: string;
-  tanggal: string;
+  tanggal: Timestamp;
   cabang: string;
   kelas: string;
   siswaId: string;
   lingkarKepala: number;
   tinggiBadan: number;
   beratBadan: number;
+  // For display
+  namaSiswa?: string;
 }
 
 interface Siswa {
@@ -27,6 +29,7 @@ interface Kelas {
   id: string;
   namaKelas: string;
   cabang: string;
+  guruKelas?: string[];
   jenjangKelas: string;
 }
 
@@ -46,6 +49,14 @@ const PertumbuhanAnakPage = () => {
   const [editId, setEditId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
+  // Filtered lists for dropdowns
+  const [filteredKelasList, setFilteredKelasList] = useState<Kelas[]>([]);
+  const [filteredSiswaList, setFilteredSiswaList] = useState<Siswa[]>([]);
+
+  // State for page filters
+  const [filterCabang, setFilterCabang] = useState<string>("");
+  const [filteredGrowthList, setFilteredGrowthList] = useState<GrowthData[]>([]);
+
   const [formData, setFormData] = useState({
     tanggal: '',
     cabang: '',
@@ -58,25 +69,22 @@ const PertumbuhanAnakPage = () => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        let role = "Admin";
-        let userData: any = { email: user.email, uid: user.uid };
-
+      if (user && user.email) {
+        let userData: any = null;
+        // Cek di koleksi 'guru' (termasuk Admin, Guru, KS, dll)
         const qGuru = query(collection(db, "guru"), where("email", "==", user.email));
-        const snapGuru = await getDocs(qGuru);
-        
+        const snapGuru = await getDocs(qGuru); // No changes here, just for context
         if (!snapGuru.empty) {
-            userData = { ...snapGuru.docs[0].data(), id: snapGuru.docs[0].id };
-            role = "Guru";
+          userData = { id: snapGuru.docs[0].id, ...snapGuru.docs[0].data() };
         } else {
-            const qCaregiver = query(collection(db, "caregivers"), where("email", "==", user.email));
-            const snapCaregiver = await getDocs(qCaregiver);
-            if (!snapCaregiver.empty) {
-                userData = { ...snapCaregiver.docs[0].data(), id: snapCaregiver.docs[0].id };
-                role = "Caregiver";
-            }
+          // Jika tidak ada di 'guru', cek di 'caregivers'
+          const qCaregiver = query(collection(db, "caregivers"), where("email", "==", user.email));
+          const snapCaregiver = await getDocs(qCaregiver);
+          if (!snapCaregiver.empty) {
+            userData = { id: snapCaregiver.docs[0].id, ...snapCaregiver.docs[0].data() };
+          }
         }
-        setCurrentUser({ ...userData, role });
+        setCurrentUser(userData);
       } else {
         setCurrentUser(null);
       }
@@ -92,58 +100,78 @@ const PertumbuhanAnakPage = () => {
         try {
             // Fetch Cabang
             const cabangSnapshot = await getDocs(query(collection(db, "cabang"), orderBy("nama", "asc")));
-            let allCabang = cabangSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabang));
+            let allCabang = cabangSnapshot.docs.map(doc => {
+                const { id, ...data } = { id: doc.id, ...doc.data() };
+                return { id, ...data } as Cabang;
+            });       
             if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
                 allCabang = allCabang.filter(c => c.nama === currentUser.cabang);
             }
             setCabangList(allCabang);
 
             // Fetch Kelas
-            let kelasQuery;
-            if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.nama) {
-                // Sesuai logika yang diminta, kita query berdasarkan guru saja untuk menghindari masalah composite index.
-                // Filter jenjang akan dilakukan di client.
-                kelasQuery = query(collection(db, "kelas"), where("guruKelas", "array-contains", currentUser.nama));
-            } else {
-                kelasQuery = query(collection(db, "kelas"), where("jenjangKelas", "==", "Daycare"), orderBy("namaKelas", "asc"));
-            }
+            const kelasQuery = (currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.nama
+                ? query(collection(db, "kelas"), where("guruKelas", "array-contains", currentUser.nama))
+                : query(collection(db, "kelas"), orderBy("namaKelas", "asc"));
+
             const kelasSnapshot = await getDocs(kelasQuery);
-            let allKelas = kelasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kelas));
-            // Lakukan filter jenjang Daycare dan cabang di sisi client untuk Caregiver/Guru
-            if ((currentUser.role === "Caregiver" || currentUser.role === "Guru")) {
-                allKelas = allKelas.filter(k => k.jenjangKelas === "Daycare");
-                if (currentUser.cabang) {
-                    allKelas = allKelas.filter(k => k.cabang === currentUser.cabang);
-                }
+            let allKelas = kelasSnapshot.docs.map(doc => {
+                const { id, ...data } = { id: doc.id, ...doc.data() };
+                return { id, ...data } as Kelas;
+            });
+            
+            // Filter kelas hanya untuk Daycare dan sesuai cabang user jika bukan admin
+            allKelas = allKelas.filter(k => k.jenjangKelas === "Daycare");
+            if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
+                allKelas = allKelas.filter(k => k.cabang === currentUser.cabang);
             }
+
             setKelasList(allKelas);
 
             // Fetch Siswa
             const allowedKelasNames = allKelas.map(k => k.namaKelas);
-            let allSiswa: Siswa[] = [];
+            let siswaQuery;
 
-            if (currentUser.role === "Admin") {
-                const siswaQuery = query(collection(db, "siswa"), where("jenjangKelas", "==", "Daycare"), orderBy("nama", "asc"));
-                const siswaSnapshot = await getDocs(siswaQuery);
-                allSiswa = siswaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Siswa));
+            if (currentUser.role === "Admin" || currentUser.role === "Direktur" || currentUser.role === "Yayasan") {
+                siswaQuery = query(collection(db, "siswa"), orderBy("nama", "asc"));
             } else {
-                // Untuk Caregiver/Guru, ambil siswa berdasarkan kelas yang diampu (lebih efisien)
-                if (allowedKelasNames.length > 0) {
-                    const siswaQuery = query(collection(db, "siswa"), where("kelas", "in", allowedKelasNames));
-                    const siswaSnapshot = await getDocs(siswaQuery);
-                    allSiswa = siswaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Siswa));
-                }
-                // Jika allowedKelasNames kosong, allSiswa akan tetap menjadi array kosong, dan itu benar.
+                siswaQuery = currentUser.cabang
+                    ? query(collection(db, "siswa"), where("cabang", "==", currentUser.cabang))
+                    : query(collection(db, "siswa"), orderBy("nama", "asc"));
             }
+
+            const siswaSnapshot = await getDocs(siswaQuery);
+            let allSiswa = siswaSnapshot.docs.map(doc => {
+                const { id, ...data } = { id: doc.id, ...doc.data() };
+                return { id, ...data } as Siswa;
+            });
+
+            if (currentUser.role !== "Admin" && currentUser.role !== "Direktur" && currentUser.role !== "Yayasan") {
+                allSiswa = allSiswa.filter(s => allowedKelasNames.includes(s.kelas));
+            }
+            // Filter lagi hanya siswa daycare
+            allSiswa = allSiswa.filter(s => {
+                const kelasSiswa = allKelas.find(k => k.namaKelas === s.kelas && k.cabang === s.cabang);
+                return kelasSiswa?.jenjangKelas === "Daycare";
+            });
+
             setSiswaList(allSiswa);
 
             // Fetch Growth Data
             const growthQuery = query(collection(db, "pertumbuhan_anak"), orderBy("tanggal", "desc"));
             const growthSnapshot = await getDocs(growthQuery);
-            const allGrowthData = growthSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as GrowthData);
+            const allGrowthData = growthSnapshot.docs.map(doc => {
+                const data = doc.data() as GrowthData;
+                const siswa = allSiswa.find(s => s.id === data.siswaId); // No change here, for context
+                return {
+                    ...data,
+                    id: doc.id,
+                    namaSiswa: siswa ? siswa.nama : 'Siswa Dihapus',
+                } as GrowthData
+            });
 
             // Filter growth data based on allowed students
-            if (currentUser.role !== "Admin") {
+            if (currentUser.role !== "Admin" && currentUser.role !== "Direktur" && currentUser.role !== "Yayasan") {
                 const allowedSiswaIds = new Set(allSiswa.map(s => s.id));
                 const filteredGrowthData = allGrowthData.filter(g => allowedSiswaIds.has(g.siswaId));
                 setGrowthList(filteredGrowthData);
@@ -153,6 +181,7 @@ const PertumbuhanAnakPage = () => {
 
         } catch (error) {
             console.error("Error fetching data:", error);
+            alert("Gagal memuat data. Silakan coba lagi.");
         } finally {
             setLoading(false);
         }
@@ -160,6 +189,42 @@ const PertumbuhanAnakPage = () => {
 
     fetchData();
   }, [currentUser]);
+
+  // Effect for cascading dropdowns in modal
+  useEffect(() => {
+    if (formData.cabang) {
+      setFilteredKelasList(kelasList.filter(k => k.cabang === formData.cabang));
+    } else {
+      setFilteredKelasList([]);
+    }
+    setFormData((prev) => ({ ...prev, kelas: '', siswaId: '' }));
+  }, [formData.cabang, kelasList]);
+
+  useEffect(() => {
+    if (formData.cabang && formData.kelas) {
+      setFilteredSiswaList(
+        siswaList.filter(s => s.cabang === formData.cabang && s.kelas === formData.kelas)
+      );
+    } else {
+      setFilteredSiswaList([]);
+    }
+    setFormData((prev) => ({ ...prev, siswaId: '' }));
+  }, [formData.cabang, formData.kelas, siswaList]);
+
+
+  // Effect for page-level filtering
+  useEffect(() => {
+    // Jika user bukan admin, set filter cabang sesuai data user dan disable
+    if (currentUser && (currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
+        const userCabang = cabangList.find(c => c.nama === currentUser.cabang);
+        if (userCabang) setFilterCabang(userCabang.nama);
+    }
+
+    const filtered = growthList.filter(laporan => {
+        return !filterCabang || laporan.cabang === filterCabang;
+    });
+    setFilteredGrowthList(filtered);
+  }, [filterCabang, growthList, currentUser, cabangList]);
 
   const closeModal = () => {
     setIsModalOpen(false);
@@ -177,7 +242,7 @@ const PertumbuhanAnakPage = () => {
 
   const handleEdit = (data: GrowthData) => {
     // Prevent editing if user doesn't have access
-    if (currentUser.role !== "Admin") {
+    if (currentUser.role !== "Admin" && currentUser.role !== "Direktur" && currentUser.role !== "Yayasan") {
         const siswa = siswaList.find(s => s.id === data.siswaId);
         if (!siswa) {
             alert("Anda tidak memiliki akses untuk mengedit data siswa ini.");
@@ -186,7 +251,7 @@ const PertumbuhanAnakPage = () => {
     }
     setEditId(data.id);
     setFormData({
-        tanggal: data.tanggal,
+        tanggal: format(data.tanggal.toDate(), 'yyyy-MM-dd'),
         cabang: data.cabang,
         kelas: data.kelas,
         siswaId: data.siswaId,
@@ -209,7 +274,7 @@ const PertumbuhanAnakPage = () => {
       beratBadan: '',
     };
 
-    if ((currentUser?.role === "Caregiver" || currentUser?.role === "Guru") && cabangList.length > 0) {
+    if ((currentUser?.role === "Caregiver" || currentUser?.role === "Guru") && cabangList.length === 1) {
         initial.cabang = cabangList[0].nama;
         if (kelasList.length === 1) initial.kelas = kelasList[0].namaKelas;
     }
@@ -235,16 +300,21 @@ const PertumbuhanAnakPage = () => {
     try {
       if (editId) {
         await updateDoc(doc(db, "pertumbuhan_anak", editId), dataToSave);
-        alert("Data pertumbuhan berhasil diperbarui!");
+        alert("Data pertumbuhan berhasil diperbarui.");
       } else {
         await addDoc(collection(db, "pertumbuhan_anak"), { ...dataToSave, createdAt: new Date() });
-        alert("Data pertumbuhan berhasil ditambahkan!");
+        alert("Data pertumbuhan berhasil ditambahkan.");
       }
       closeModal();
-      setCurrentUser({...currentUser}); // Re-trigger fetch
+      // Re-trigger fetch.
+      // This is a common pattern to force a useEffect with a dependency on an object to re-run.
+      if (currentUser) {
+        setCurrentUser((prev: any) => ({...prev}));
+      }
+
     } catch (error) {
       console.error("Error saving data:", error);
-      alert("Gagal menyimpan data.");
+      alert("Gagal menyimpan data. Pastikan semua field terisi dengan benar.");
     } finally {
       setSubmitting(false);
     }
@@ -255,7 +325,7 @@ const PertumbuhanAnakPage = () => {
       try {
         await deleteDoc(doc(db, "pertumbuhan_anak", id));
         alert("Data berhasil dihapus.");
-        setGrowthList(prev => prev.filter(item => item.id !== id));
+         setGrowthList((prev) => prev.filter(item => item.id !== id));
       } catch (error) {
         console.error("Error deleting data:", error);
         alert("Gagal menghapus data.");
@@ -263,14 +333,6 @@ const PertumbuhanAnakPage = () => {
     }
   };
   
-  const getSiswaName = (siswaId: string) => {
-      const siswa = siswaList.find(s => s.id === siswaId);
-      return siswa ? siswa.nama : 'Siswa tidak ditemukan';
-  }
-
-  const filteredKelas = formData.cabang ? kelasList.filter(k => k.cabang === formData.cabang) : [];
-  const filteredSiswa = formData.kelas ? siswaList.filter(s => s.kelas === formData.kelas) : [];
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -283,35 +345,54 @@ const PertumbuhanAnakPage = () => {
         </button>
       </div>
 
+      {/* Filters */}
+      <div className="flex items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+          <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Filter Cabang</label>
+              <select 
+                name="filterCabang" 
+                value={filterCabang} 
+                onChange={(e) => setFilterCabang(e.target.value)} 
+                className={`w-full max-w-xs border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm ${(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan") ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                disabled={(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan")}
+              >
+                  <option value="">Semua Cabang</option>
+                  {cabangList.map(c => <option key={c.id} value={c.nama}>{c.nama}</option>)}
+              </select>
+          </div>
+      </div>
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-gray-600 min-w-[1200px]">
+          <table className="w-full text-left text-sm text-gray-600">
             <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
               <tr>
-                <th className="p-4 w-16">No</th>
+                <th className="p-4 w-16 text-center">No</th>
                 <th className="p-4">Tanggal Update</th>
                 <th className="p-4">Nama Anak</th>
+                <th className="p-4">Cabang</th>
                 <th className="p-4">Lingkar Kepala</th>
                 <th className="p-4">Tinggi Badan</th>
                 <th className="p-4">Berat Badan</th>
-                <th className="p-4">Aksi</th>
+                <th className="p-4 w-32 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={7} className="p-8 text-center">Memuat data...</td></tr>
-              ) : growthList.length === 0 ? (
-                <tr><td colSpan={7} className="p-8 text-center">Belum ada data pertumbuhan.</td></tr>
+                <tr><td colSpan={8} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
+              ) : filteredGrowthList.length === 0 ? (
+                <tr><td colSpan={8} className="p-8 text-center">Belum ada data pertumbuhan.</td></tr>
               ) : (
-                growthList.map((data, index) => (
+                filteredGrowthList.map((data, index) => (
                   <tr key={data.id} className="hover:bg-gray-50">
                     <td className="p-4 text-center">{index + 1}</td>
-                    <td className="p-4 font-medium text-gray-900">{data.tanggal}</td>
-                    <td className="p-4">{getSiswaName(data.siswaId)}</td>
+                    <td className="p-4 font-medium text-gray-900">{format(data.tanggal.toDate(), 'dd MMMM yyyy')}</td>
+                    <td className="p-4">{data.namaSiswa}</td>
+                    <td className="p-4">{data.cabang}</td>
                     <td className="p-4">{data.lingkarKepala} cm</td>
                     <td className="p-4">{data.tinggiBadan} cm</td>
                     <td className="p-4">{data.beratBadan} kg</td>
-                    <td className="p-4 flex gap-2">
+                    <td className="p-4 flex justify-center gap-2">
                        <button onClick={() => handleEdit(data)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition" title="Edit">
                         <Pencil className="w-4 h-4" />
                       </button>
@@ -347,8 +428,8 @@ const PertumbuhanAnakPage = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Cabang</label>
                   <select required value={formData.cabang} 
                     onChange={(e) => setFormData({...formData, cabang: e.target.value, kelas: '', siswaId: ''})} 
-                    className={`w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900 ${(currentUser?.role === "Caregiver" || currentUser?.role === "Guru") ? "bg-gray-100 cursor-not-allowed" : ""}`}
-                    disabled={currentUser?.role === "Caregiver" || currentUser?.role === "Guru"}
+                    className={`w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900 ${(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan") ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                    disabled={(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan")}
                   >
                     <option value="">Pilih Cabang</option>
                     {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
@@ -360,10 +441,10 @@ const PertumbuhanAnakPage = () => {
                     disabled={!formData.cabang || ((currentUser?.role === "Caregiver" || currentUser?.role === "Guru") && kelasList.length === 1)} 
                     value={formData.kelas} 
                     onChange={(e) => setFormData({...formData, kelas: e.target.value, siswaId: ''})} 
-                    className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900 disabled:bg-gray-100"
+                    className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900 disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
                     <option value="">Pilih Kelas</option>
-                    {filteredKelas.map((k) => <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>)}
+                    {filteredKelasList.map((k) => <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>)}
                   </select>
                 </div>
                 <div>
@@ -376,7 +457,7 @@ const PertumbuhanAnakPage = () => {
                     className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900 disabled:bg-gray-100"
                   >
                     <option value="">Pilih Siswa</option>
-                    {filteredSiswa.map((s) => <option key={s.id} value={s.id}>{s.nama}</option>)}
+                    {filteredSiswaList.map((s) => <option key={s.id} value={s.id}>{s.nama}</option>)}
                   </select>
                 </div>
                 <div>
@@ -393,7 +474,7 @@ const PertumbuhanAnakPage = () => {
                 </div>
               </div>
 
-              <button disabled={submitting} type="submit" className="w-full bg-[#581c87] text-white py-2 rounded-lg hover:bg-[#45156b] transition font-medium mt-2">
+              <button disabled={submitting} type="submit" className="w-full bg-[#581c87] text-white py-2 rounded-lg hover:bg-[#45156b] transition font-medium mt-2 disabled:opacity-50">
                 {submitting ? "Menyimpan..." : (editId ? "Simpan Perubahan" : "Simpan Data")}
               </button>
             </form>

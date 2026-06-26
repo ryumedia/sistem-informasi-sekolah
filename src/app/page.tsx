@@ -8,7 +8,7 @@ import Image from "next/image";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { collection, query, where, getDocs, doc, getDoc, addDoc, orderBy, limit } from "firebase/firestore";
-import { BookOpen, Calendar, Bell, User, LogOut, Shield, Home, KeyRound, Activity, FileText, FilePlus } from "lucide-react";
+import { BookOpen, Calendar, Bell, User, LogOut, Shield, Home, KeyRound, Activity, FileText, FilePlus, CreditCard } from "lucide-react";
 import { formatDate } from "@/lib/dateUtils";
 
 import ChangePasswordModal from "../components/dashboard/changePasswordModal";
@@ -20,6 +20,7 @@ import KegiatanView from "../components/dashboard/KegiatanView";
 import PengumumanView from "../components/dashboard/PengumumanView";
 import PengajuanModal from "../components/dashboard/PengajuanModal";
 import PengumumanDetailModal from "../components/dashboard/PengumumanDetailModal";
+import PembayaranView from "../components/dashboard/PembayaranView";
 
 export default function UserHome() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function UserHome() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get("tab");
-    if (tabParam && ["home", "jadwal", "akademik", "report", "kegiatan", "pengumuman", "akun"].includes(tabParam)) {
+    if (tabParam && ["home", "jadwal", "akademik", "pembayaran", "report", "kegiatan", "pengumuman", "akun"].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, []);
@@ -218,6 +219,10 @@ export default function UserHome() {
           <JadwalView user={user} userData={userData} onBack={() => setActiveTab("home")} />
         )}
 
+        {activeTab === "pembayaran" && (
+          <PembayaranView user={user} userData={userData} onBack={() => setActiveTab("home")} />
+        )}
+
         {/* KONTEN: AKADEMIK & REPORT */}
         {activeTab === "akademik" && (
           <AkademikView user={user} userData={userData} onBack={() => setActiveTab("home")} />
@@ -248,15 +253,34 @@ export default function UserHome() {
             
             <div className="p-6 space-y-6">
               <div className="bg-white p-6 rounded-2xl shadow-sm flex items-center gap-4">
-                <div className="w-16 h-16 bg-[#581c87]/10 rounded-full flex items-center justify-center text-[#581c87]">
-                  <User className="w-8 h-8" />
-                </div>
+                {/* --- LOGIKA FOTO PROFIL DIPERBAIKI --- */}
+                {(userData?.role === 'Siswa' && userData?.foto) || (userData?.role !== 'Siswa' && userData?.fotoUrl) ? (
+                  <Image 
+                    src={userData.role === 'Siswa' ? userData.foto : userData.fotoUrl} 
+                    alt="Foto Profil" width={64} height={64} className="w-16 h-16 rounded-full object-cover bg-gray-100" />
+                ) : (
+                  <div className="w-16 h-16 bg-[#581c87]/10 rounded-full flex items-center justify-center text-[#581c87]">
+                    <User className="w-8 h-8" />
+                  </div>
+                )}
                 <div>
                   <h2 className="font-bold text-gray-800 text-lg">{userData?.nama || "User"}</h2>
                   <p className="text-gray-500 text-sm">{user?.email}</p>
-                  <span className="inline-block mt-2 px-3 py-1 bg-[#581c87]/10 text-[#581c87] text-xs font-medium rounded-full">
-                    {userData?.role || "Siswa"}
-                  </span>
+                  <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+                    {userData?.role === 'Siswa' ? (
+                      <>
+                        <span>NISN: {userData?.nisn || '-'}</span>
+                        <span className="text-gray-300">|</span>
+                        <span>Kelas: {userData?.kelas || '-'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>NIY: {userData?.niy || '-'}</span>
+                        <span className="text-gray-300">|</span>
+                        <span>Jabatan: {userData?.role || 'User'}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -339,6 +363,17 @@ export default function UserHome() {
              >
                <BookOpen className="w-6 h-6 mb-1" />
                <span className="text-[10px]">Akademik</span>
+             </button>
+           )}
+
+           {/* Menu Pembayaran: Untuk Siswa */}
+           {userData?.role === "Siswa" && (
+             <button 
+               onClick={() => setActiveTab("pembayaran")}
+               className={`flex flex-col items-center ${activeTab === "pembayaran" ? "text-[#581c87]" : "text-gray-400"}`}
+             >
+               <CreditCard className="w-6 h-6 mb-1" />
+               <span className="text-[10px]">Pembayaran</span>
              </button>
            )}
 

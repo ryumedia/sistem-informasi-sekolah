@@ -90,30 +90,29 @@ export default function AktivitasHarianPage() {
   const [formData, setFormData] = useState<any>(initialFormData);
   const [currentUser, setCurrentUser] = useState<any>(null); // State for logged-in user
 
+  // State for page filters
+  const [filterCabang, setFilterCabang] = useState<string>("");
+  const [filteredLaporanList, setFilteredLaporanList] = useState<LaporanHarian[]>([]);
+
   // 1. Auth Check & Get User Data
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        let role = "Admin";
-        let userData: any = { email: user.email, uid: user.uid };
-
-        // Cek apakah Guru
+      if (user && user.email) {
+        let userData: any = null;
+        // Cek di koleksi 'guru' (termasuk Admin, Guru, KS, dll)
         const qGuru = query(collection(db, "guru"), where("email", "==", user.email));
         const snapGuru = await getDocs(qGuru);
-        
         if (!snapGuru.empty) {
-            userData = { ...snapGuru.docs[0].data(), id: snapGuru.docs[0].id };
-            role = "Guru";
+          userData = { ...snapGuru.docs[0].data(), id: snapGuru.docs[0].id };
         } else {
-            // Cek apakah Caregiver
-            const qCaregiver = query(collection(db, "caregivers"), where("email", "==", user.email));
-            const snapCaregiver = await getDocs(qCaregiver);
-            if (!snapCaregiver.empty) {
-                userData = { ...snapCaregiver.docs[0].data(), id: snapCaregiver.docs[0].id };
-                role = "Caregiver";
-            }
+          // Jika tidak ada di 'guru', cek di 'caregivers'
+          const qCaregiver = query(collection(db, "caregivers"), where("email", "==", user.email));
+          const snapCaregiver = await getDocs(qCaregiver);
+          if (!snapCaregiver.empty) {
+            userData = { ...snapCaregiver.docs[0].data(), id: snapCaregiver.docs[0].id };
+          }
         }
-        setCurrentUser({ ...userData, role });
+        setCurrentUser(userData);
       } else {
         setCurrentUser(null);
       }
@@ -234,6 +233,20 @@ export default function AktivitasHarianPage() {
     };
     fetchData();
   }, [currentUser]);
+
+  // Effect for page-level filtering
+  useEffect(() => {
+    // Jika user bukan admin, set filter cabang sesuai data user dan disable
+    if (currentUser && (currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
+        const userCabang = cabangList.find(c => c.nama === currentUser.cabang);
+        if (userCabang) setFilterCabang(userCabang.id);
+    }
+
+    const filtered = laporanList.filter(laporan => {
+        return !filterCabang || laporan.cabangId === filterCabang;
+    });
+    setFilteredLaporanList(filtered);
+  }, [filterCabang, laporanList, currentUser, cabangList]);
 
   // Effect for cascading dropdowns
   // UPDATED: Now filters by name, not ID
@@ -459,6 +472,23 @@ export default function AktivitasHarianPage() {
         </button>
       </div>
 
+      {/* Filters */}
+      <div className="flex items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+          <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Filter Cabang</label>
+              <select 
+                name="filterCabang" 
+                value={filterCabang} 
+                onChange={(e) => setFilterCabang(e.target.value)} 
+                className={`w-full max-w-xs border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm ${(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan") ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                disabled={(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan")}
+              >
+                  <option value="">Semua Cabang</option>
+                  {cabangList.map(c => <option key={c.id} value={c.id}>{c.nama}</option>)}
+              </select>
+          </div>
+      </div>
+
       {/* Data Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
@@ -476,10 +506,10 @@ export default function AktivitasHarianPage() {
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr><td colSpan={6} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
-              ) : laporanList.length === 0 ? (
+              ) : filteredLaporanList.length === 0 ? (
                 <tr><td colSpan={6} className="p-8 text-center text-gray-500">Belum ada laporan.</td></tr>
               ) : (
-                laporanList.map((l, i) => (
+                filteredLaporanList.map((l, i) => (
                   <tr key={l.id} className="hover:bg-gray-50">
                     <td className="p-4 text-center">{i + 1}</td>
                     <td className="p-4">{format(l.tanggal.toDate(), 'dd MMMM yyyy')}</td>
@@ -519,9 +549,9 @@ export default function AktivitasHarianPage() {
                                 name="cabangId" 
                                 value={formData.cabangId} 
                                 onChange={handleInputChange} 
-                                className={`w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none ${(currentUser?.role === "Caregiver" || currentUser?.role === "Guru") ? "bg-gray-100 cursor-not-allowed" : ""}`} 
+                                className={`w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none ${(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan") ? "bg-gray-100 cursor-not-allowed" : ""}`} 
                                 required
-                                disabled={currentUser?.role === "Caregiver" || currentUser?.role === "Guru"}
+                                disabled={(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan")}
                               >
                                   <option value="">Pilih Cabang</option>
                                   {cabangList.map(c => <option key={c.id} value={c.id}>{c.nama}</option>)}
