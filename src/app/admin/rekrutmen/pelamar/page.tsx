@@ -7,9 +7,11 @@ import {
   query,
   orderBy,
   getDocs,
+  deleteDoc,
+  doc,
   Timestamp,
 } from "firebase/firestore";
-import { Loader2, Eye } from 'lucide-react';
+import { Loader2, Eye, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import Link from 'next/link';
@@ -47,6 +49,20 @@ export default function PelamarPage() {
     fetchData();
   }, []);
 
+  const handleDelete = async (pelamar: Pelamar) => {
+    if (!confirm(`Yakin ingin menghapus data pelamar "${pelamar.nama}"? Tindakan ini tidak dapat diurungkan.`)) return;
+
+    try {
+      await deleteDoc(doc(db, "pelamar", pelamar.id));
+      setPelamarList(prev => prev.filter(p => p.id !== pelamar.id));
+      alert("Data pelamar berhasil dihapus.");
+      // Note: This does not delete associated files from Storage.
+      // A more robust solution would involve a Cloud Function to handle cascading deletes.
+    } catch (error) {
+      console.error("Error deleting applicant: ", error);
+      alert("Gagal menghapus data pelamar.");
+    }
+  };
   const getStatusBadgeColor = (status: Pelamar['status']) => {
     switch (status) {
       case 'Baru': return 'bg-blue-100 text-blue-800';
@@ -91,6 +107,7 @@ export default function PelamarPage() {
                     </td>
                     <td className="p-4 flex justify-center items-center gap-2">
                       <Link href={`/admin/rekrutmen/pelamar/${item.id}`} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition" title="Lihat Detail"><Eye className="w-4 h-4" /></Link>
+                      <button onClick={() => handleDelete(item)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus"><Trash2 className="w-4 h-4" /></button>
                     </td>
                   </tr>
                 ))

@@ -1,7 +1,7 @@
 // src/app/admin/keuangan/pengajuan/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, query, orderBy, doc, updateDoc, where, deleteDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
@@ -56,6 +56,7 @@ export default function PengajuanPage() {
   });
 
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const itemsPerPage = 10;
 
   // 1. Cek Role User yang Login
@@ -291,6 +292,31 @@ export default function PengajuanPage() {
     }
   };
 
+  // 8. Logic Checkbox
+  const handleSelectItem = (id: string) => {
+    setSelectedItems(prev =>
+      prev.includes(id) ? prev.filter(itemId => itemId !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      const allItemIdsOnPage = currentItems.map(item => item.id);
+      // Add only items from the current page that are not already selected
+      setSelectedItems(prev => [...new Set([...prev, ...allItemIdsOnPage])]);
+    } else {
+      // Deselect all items on the current page
+      const allItemIdsOnPage = currentItems.map(item => item.id);
+      setSelectedItems(prev => prev.filter(id => !allItemIdsOnPage.includes(id)));
+    }
+  };
+
+  const totalPengajuanTerpilih = useMemo(() => {
+    return filteredData
+      .filter(item => selectedItems.includes(item.id))
+      .reduce((sum, item) => sum + item.total, 0);
+  }, [selectedItems, filteredData]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
@@ -349,12 +375,31 @@ export default function PengajuanPage() {
         </div>
       </div>
 
+      {/* Info Total Terpilih */}
+      {selectedItems.length > 0 && (
+        <div className="bg-purple-50 border border-purple-200 text-purple-800 rounded-lg p-4 flex justify-between items-center">
+          <div>
+            <p className="font-medium text-sm">{selectedItems.length} item terpilih</p>
+            <p className="text-2xl font-bold">Rp {totalPengajuanTerpilih.toLocaleString("id-ID")}</p>
+          </div>
+          <button onClick={() => setSelectedItems([])} className="text-sm font-medium text-purple-600 hover:text-purple-800">Bersihkan Pilihan</button>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-gray-600 min-w-[900px]">
           <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
             <tr>
-              <th className="p-4">No</th>
+              <th className="p-4 w-12 text-center">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-gray-300 text-[#581c87] focus:ring-[#581c87]"
+                  onChange={handleSelectAll}
+                  checked={currentItems.length > 0 && currentItems.every(item => selectedItems.includes(item.id))}
+                  title="Pilih semua di halaman ini"
+                />
+              </th>
               <th className="p-4">Tanggal</th>
               <th className="p-4">Nama Pengaju</th>
               <th className="p-4">Cabang</th>
@@ -371,7 +416,14 @@ export default function PengajuanPage() {
             ) : (
               currentItems.map((item, index) => (
                 <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="p-4">{indexOfFirstItem + index + 1}</td>
+                  <td className="p-4 text-center">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 text-[#581c87] focus:ring-[#581c87]"
+                      checked={selectedItems.includes(item.id)}
+                      onChange={() => handleSelectItem(item.id)}
+                    />
+                  </td>
                   <td className="p-4">{item.tanggal}</td>
                   <td className="p-4 font-medium text-gray-900">{item.pengaju}</td>
                   <td className="p-4">{item.cabang}</td>
