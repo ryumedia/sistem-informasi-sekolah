@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -11,7 +11,7 @@ import {
   doc,
   Timestamp,
 } from "firebase/firestore";
-import { Loader2, Eye, Trash2 } from 'lucide-react';
+import { Loader2, Eye, Trash2, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import Link from 'next/link';
@@ -21,14 +21,22 @@ interface Pelamar {
   id: string;
   nama: string;
   programNama: string;
+  pilihanCabang: string;
   status: 'Baru' | 'Ditinjau' | 'Diterima' | 'Ditolak';
   tanggalMelamar: Timestamp;
+  jawaban?: {
+    [key: string]: any;
+  }
 }
 
 export default function PelamarPage() {
   // --- STATE MANAGEMENT ---
   const [pelamarList, setPelamarList] = useState<Pelamar[]>([]);
   const [loading, setLoading] = useState(true);
+  const [programList, setProgramList] = useState<any[]>([]);
+  const [cabangList, setCabangList] = useState<any[]>([]);
+  const [filterProgram, setFilterProgram] = useState('');
+  const [filterCabang, setFilterCabang] = useState('');
 
   // --- DATA FETCHING ---
   useEffect(() => {
@@ -37,7 +45,15 @@ export default function PelamarPage() {
       try {
         const q = query(collection(db, "pelamar"), orderBy("tanggalMelamar", "desc"));
         const snapshot = await getDocs(q);
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Pelamar));
+        const list = snapshot.docs.map(doc => {
+          const data = doc.data();
+          const jawaban = data.jawaban || {};
+          return {
+            ...data,
+            id: doc.id,
+            pilihanCabang: jawaban['zqHSfMv8cHCRo3zksoVn'] || '', // Mengambil data cabang dari field jawaban
+          } as Pelamar;
+        });
         setPelamarList(list);
       } catch (error) {
         console.error("Error fetching applicants: ", error);
@@ -48,6 +64,32 @@ export default function PelamarPage() {
     };
     fetchData();
   }, []);
+
+  // Fetch data for filters
+  useEffect(() => {
+    const fetchFiltersData = async () => {
+      try {
+        // Fetch Programs
+        const programQuery = query(collection(db, "program_rekrutmen"), orderBy("nama", "asc"));
+        const programSnapshot = await getDocs(programQuery);
+        const programs = programSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setProgramList(programs);
+
+        // Fetch Cabang
+        const cabangQuery = query(collection(db, "cabang"), orderBy("nama", "asc"));
+        const cabangSnapshot = await getDocs(cabangQuery);
+        const cabangs = cabangSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setCabangList(cabangs);
+      } catch (error) {
+        console.error("Error fetching filter data: ", error);
+      }
+    };
+    fetchFiltersData();
+  }, []);
+
+  const filteredPelamar = useMemo(() => {
+    return pelamarList.filter(p => (filterProgram ? p.programNama === filterProgram : true) && (filterCabang ? p.pilihanCabang === filterCabang : true));
+  }, [pelamarList, filterProgram, filterCabang]);
 
   const handleDelete = async (pelamar: Pelamar) => {
     if (!confirm(`Yakin ingin menghapus data pelamar "${pelamar.nama}"? Tindakan ini tidak dapat diurungkan.`)) return;
@@ -76,7 +118,37 @@ export default function PelamarPage() {
   // --- RENDER ---
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-800">Daftar Pelamar</h1>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-2xl font-bold text-gray-800">Daftar Pelamar</h1>
+        {/* Filter Area */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Filter className="w-4 h-4 text-gray-500" />
+          <select
+            value={filterProgram}
+            onChange={(e) => setFilterProgram(e.target.value)}
+            className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900"
+          >
+            <option value="">Semua Program</option>
+            {programList.map((p) => <option key={p.id} value={p.nama}>{p.nama}</option>)}
+          </select>
+          <select
+            value={filterCabang}
+            onChange={(e) => setFilterCabang(e.target.value)}
+            className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900"
+          >
+            <option value="">Semua Cabang</option>
+            {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Info Jumlah Pelamar */}
+      <div className="bg-purple-50 border border-purple-200 text-purple-800 rounded-lg p-3 text-sm">
+        Menampilkan <span className="font-bold">{filteredPelamar.length}</span> dari total <span className="font-bold">{pelamarList.length}</span> pelamar.
+        {(filterProgram || filterCabang) && (
+          <button onClick={() => { setFilterProgram(''); setFilterCabang(''); }} className="ml-3 text-purple-600 hover:text-purple-800 font-medium">Reset Filter</button>
+        )}
+      </div>
 
       {/* Data Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -87,21 +159,23 @@ export default function PelamarPage() {
                 <th className="p-4 w-16 text-center">No.</th>
                 <th className="p-4">Nama</th>
                 <th className="p-4">Program</th>
+                <th className="p-4">Pilihan Cabang</th>
                 <th className="p-4 text-center">Status</th>
                 <th className="p-4 w-32 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={5} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
-              ) : pelamarList.length === 0 ? (
-                <tr><td colSpan={5} className="p-8 text-center text-gray-500">Belum ada data pelamar yang masuk.</td></tr>
+                <tr><td colSpan={6} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
+              ) : filteredPelamar.length === 0 ? (
+                <tr><td colSpan={6} className="p-8 text-center text-gray-500">Tidak ada data pelamar yang cocok dengan filter.</td></tr>
               ) : (
-                pelamarList.map((item, index) => (
+                filteredPelamar.map((item, index) => (
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="p-4 text-center">{index + 1}</td>
                     <td className="p-4 font-medium text-gray-900">{item.nama}</td>
                     <td className="p-4">{item.programNama}</td>
+                    <td className="p-4">{item.pilihanCabang || '-'}</td>
                     <td className="p-4 text-center">
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusBadgeColor(item.status)}`}>{item.status}</span>
                     </td>

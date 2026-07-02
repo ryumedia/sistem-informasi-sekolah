@@ -8,8 +8,9 @@ import Image from "next/image";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { collection, query, where, getDocs, doc, getDoc, addDoc, orderBy, limit } from "firebase/firestore";
-import { BookOpen, Calendar, Bell, User, LogOut, Shield, Home, KeyRound, Activity, FileText, FilePlus, CreditCard } from "lucide-react";
+import { BookOpen, Calendar, Bell, User, LogOut, Shield, Home, KeyRound, Activity, FileText, FilePlus, CreditCard, Ticket, QrCode, X } from "lucide-react";
 import { formatDate } from "@/lib/dateUtils";
+import { QRCodeSVG } from "qrcode.react"; // Ganti impor ke QRCodeSVG
 
 import ChangePasswordModal from "../components/dashboard/changePasswordModal";
 import AkademikView from "../components/dashboard/AkademikView";
@@ -33,6 +34,7 @@ export default function UserHome() {
   const [isPengajuanModalOpen, setPengajuanModalOpen] = useState(false);
   const [latestPengumuman, setLatestPengumuman] = useState<any[]>([]);
   const [selectedPengumuman, setSelectedPengumuman] = useState<any>(null);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -176,10 +178,10 @@ export default function UserHome() {
                   {[
                     { name: "Jadwal", icon: <Calendar className="w-6 h-6 text-[#581c87]"/>, color: "bg-[#581c87]/10", action: () => setActiveTab("jadwal") },
                     { name: "Kegiatan", icon: <Activity className="w-6 h-6 text-green-600"/>, color: "bg-green-50", action: () => setActiveTab("kegiatan") },
-                    { name: "Pengumuman", icon: <Bell className="w-6 h-6 text-[#ff984e]"/>, color: "bg-[#ff984e]/10", action: () => setActiveTab("pengumuman") },
-                    { name: "Dokumen", icon: <FileText className="w-6 h-6 text-[#581c87]"/>, color: "bg-[#581c87]/10", action: () => router.push("/guru/dokumen") },
+                    { name: "Acara", icon: <Ticket className="w-6 h-6 text-blue-600"/>, color: "bg-blue-50", action: () => alert("Fitur Acara akan segera hadir!") },
+                    { name: "Pengumuman", icon: <Bell className="w-6 h-6 text-[#ff984e]"/>, color: "bg-[#ff984e]/10", action: () => setActiveTab("pengumuman") }
                   ].map((item, idx) => (
-                    <div key={idx} onClick={item.action} className="flex flex-col items-center gap-2 cursor-pointer">
+                    <div key={idx} onClick={item.action} className="flex flex-col items-center justify-start gap-2 cursor-pointer text-center">
                       <div className={`p-4 rounded-2xl ${item.color} shadow-sm`}>
                         {item.icon}
                       </div>
@@ -309,6 +311,29 @@ export default function UserHome() {
                   </button>
                 )}
 
+                {/* Hilangkan menu Dokumen jika role adalah Siswa */}
+                {userData?.role !== "Siswa" && (
+                  <button onClick={() => router.push('/guru/dokumen')} className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition text-left">
+                    <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-medium text-gray-800">Dokumen Sekolah</h3>
+                      <p className="text-xs text-gray-500">Lihat arsip dan panduan</p>
+                    </div>
+                  </button>
+                )}
+
+                <button onClick={() => setIsQrModalOpen(true)} className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition text-left">
+                  <div className="bg-purple-100 p-2 rounded-lg text-purple-600">
+                    <QrCode className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-medium text-gray-800">Tampilkan QR Code</h3>
+                    <p className="text-xs text-gray-500">Untuk presensi atau identifikasi</p>
+                  </div>
+                </button>
+                
                 <button onClick={() => setPasswordModalOpen(true)} className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition text-left">
                   <div className="bg-gray-100 p-2 rounded-lg text-gray-600">
                     <KeyRound className="w-5 h-5" />
@@ -344,6 +369,25 @@ export default function UserHome() {
 
         {selectedPengumuman && (
           <PengumumanDetailModal data={selectedPengumuman} onClose={() => setSelectedPengumuman(null)} />
+        )}
+
+        {isQrModalOpen && (
+          <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs text-center p-6 relative">
+              <button onClick={() => setIsQrModalOpen(false)} className="absolute top-3 right-3 p-2 rounded-full hover:bg-gray-100">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+              <h3 className="text-lg font-bold text-gray-800 mb-1">QR Code Anda</h3>
+              <p className="text-sm text-gray-500 mb-5">Gunakan untuk presensi acara.</p>
+              <div className="bg-gray-50 p-4 rounded-lg inline-block">
+                {/* Generate QR Code dari ID unik user */}
+                <QRCodeSVG value={userData?.id || user?.uid || "no-id"} size={200} />
+              </div>
+              <p className="text-xs text-gray-400 mt-4">
+                ID: {userData?.id || user?.uid || "no-id"}
+              </p>
+            </div>
+          </div>
         )}
 
         <nav className="border-t p-4 flex justify-around text-gray-400 bg-white sticky bottom-0">

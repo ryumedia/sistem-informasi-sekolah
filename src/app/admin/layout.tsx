@@ -97,7 +97,7 @@ export default function AdminLayout({
 
   const allMenuItems = [
     { name: "Dashboard", href: "/admin", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
-    { name: "Data Siswa", href: "/admin/siswa", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
+    { name: "Data Siswa", href: "/admin/siswa", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"] },
     { name: "Data Guru", href: "/admin/guru", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
     { name: "Performance", href: "/admin/performance", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"] },
     { 
@@ -143,6 +143,7 @@ export default function AdminLayout({
       submenu: [
         { name: "Jadwal", href: "/admin/informasi/jadwal", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan", "Caregiver"] },
         { name: "Kegiatan", href: "/admin/informasi/kegiatan", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan", "Caregiver"] },
+        { name: "Acara", href: "/admin/informasi/acara", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan", "Caregiver"] },
         { name: "Pengumuman", href: "/admin/informasi/pengumuman", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan", "Caregiver"] },
         { name: "Dokumen", href: "/admin/informasi/dokumen", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
       ]
