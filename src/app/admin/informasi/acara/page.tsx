@@ -434,6 +434,9 @@ function ScannerModal({ acaraNama, onClose, onScan }: ScannerModalProps) {
           <Scanner
             onScan={onScan}
             onError={(error: any) => console.log(error?.message)}
+            constraints={{
+              facingMode: 'environment'
+            }}
             styles={{
               container: { paddingTop: '100%' },
               video: { objectFit: 'cover' },
