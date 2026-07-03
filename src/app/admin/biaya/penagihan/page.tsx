@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db, auth } from "@/lib/firebase";
 import {
   collection,
   query,
   orderBy,
   getDocs,
+  doc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { onAuthStateChanged } from 'firebase/auth';
 import Link from 'next/link';
-import { Eye, Send, Loader2 } from 'lucide-react';
+import { Eye, Send, Loader2, Plus, X } from 'lucide-react';
 
 // --- INTERFACES ---
 interface Siswa {
@@ -40,6 +42,15 @@ interface Kelas {
   cabang: string;
 }
 
+interface JenisBiaya {
+  id: string;
+  nama: string;
+  nominal: number;
+  penerapan: 'semua' | 'cabang_tertentu' | 'kelas_tertentu';
+  cabangIds?: string[];
+  kelasIds?: string[];
+}
+
 interface SiswaWithStatus extends Siswa {
   statusPembayaran: 'Lunas' | 'Belum Lunas';
 }
@@ -54,6 +65,7 @@ export default function PenagihanPage() {
   const [tagihanList, setTagihanList] = useState<Tagihan[]>([]);
   const [cabangList, setCabangList] = useState<Cabang[]>([]);
   const [kelasList, setKelasList] = useState<Kelas[]>([]);
+  const [jenisBiayaList, setJenisBiayaList] = useState<JenisBiaya[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -64,6 +76,9 @@ export default function PenagihanPage() {
   const [filterKelas, setFilterKelas] = useState<string>("");
   const [filteredSiswaList, setFilteredSiswaList] = useState<SiswaWithStatus[]>([]);
   const [kelasOptions, setKelasOptions] = useState<Kelas[]>([]);
+
+  // Bulk Add Modal State
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
 
   // --- DATA FETCHING & AUTH ---
   useEffect(() => {
@@ -79,22 +94,25 @@ export default function PenagihanPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [cabangSnap, kelasSnap, siswaSnap, tagihanSnap] = await Promise.all([
+        const [cabangSnap, kelasSnap, siswaSnap, tagihanSnap, jenisBiayaSnap] = await Promise.all([
           getDocs(query(collection(db, "cabang"), orderBy("nama", "asc"))),
           getDocs(query(collection(db, "kelas"), orderBy("namaKelas", "asc"))),
           getDocs(query(collection(db, "siswa"), orderBy("nama", "asc"))),
-          getDocs(collection(db, "tagihan_siswa")) // Ambil semua data tagihan
+          getDocs(collection(db, "tagihan_siswa")), // Ambil semua data tagihan
+          getDocs(query(collection(db, "jenis_biaya"), orderBy("nama", "asc"))),
         ]);
 
         const cabangData = cabangSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabang));
         const kelasData = kelasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kelas));
         const siswaData = siswaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Siswa));
         const tagihanData = tagihanSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tagihan));
+        const jenisBiayaData = jenisBiayaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as JenisBiaya));
         
         setTagihanList(tagihanData);
         setCabangList(cabangData);
         setKelasList(kelasData);
         setSiswaList(siswaData);
+        setJenisBiayaList(jenisBiayaData);
 
       } catch (error) {
         console.error("Error fetching data: ", error);
@@ -161,6 +179,12 @@ export default function PenagihanPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-800">Penagihan Biaya Sekolah</h1>
+        <button
+          onClick={() => setIsBulkModalOpen(true)}
+          className="bg-[#581c87] text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-[#45156b] transition"
+        >
+          <Plus className="w-4 h-4" /> Tambah Penagihan Massal
+        </button>
       </div>
 
       {/* Filters */}
@@ -251,6 +275,149 @@ export default function PenagihanPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {isBulkModalOpen && (
+        <BulkTagihanModal
+          cabangList={cabangList}
+          kelasList={kelasList}
+          jenisBiayaList={jenisBiayaList}
+          siswaList={siswaList}
+          onClose={() => setIsBulkModalOpen(false)}
+          onSuccess={() => {
+            setIsBulkModalOpen(false);
+            // Optionally re-fetch data
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// --- BULK ADD MODAL COMPONENT ---
+interface BulkModalProps {
+  cabangList: Cabang[];
+  kelasList: Kelas[];
+  jenisBiayaList: JenisBiaya[];
+  siswaList: Siswa[];
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function BulkTagihanModal({ cabangList, kelasList, jenisBiayaList, siswaList, onClose, onSuccess }: BulkModalProps) {
+  const [formData, setFormData] = useState({
+    cabangId: "",
+    kelasId: "",
+    jenisBiayaId: "",
+    nominal: 0,
+    bulan: months[new Date().getMonth()],
+    tahun: currentYear.toString(),
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const filteredKelas = useMemo(() => {
+    if (!formData.cabangId) return [];
+    const selectedCabang = cabangList.find(c => c.id === formData.cabangId);
+    return kelasList.filter(k => k.cabang === selectedCabang?.nama);
+  }, [formData.cabangId, cabangList, kelasList]);
+
+  const filteredJenisBiaya = useMemo(() => {
+    if (!formData.cabangId || !formData.kelasId) return [];
+    return jenisBiayaList.filter(jb => {
+      if (jb.penerapan === 'semua') return true;
+      if (jb.penerapan === 'cabang_tertentu' && jb.cabangIds?.includes(formData.cabangId)) return true;
+      if (jb.penerapan === 'kelas_tertentu' && jb.kelasIds?.includes(formData.kelasId)) return true;
+      return false;
+    });
+  }, [formData.cabangId, formData.kelasId, jenisBiayaList]);
+
+  const handleJenisBiayaChange = (id: string) => {
+    const selected = jenisBiayaList.find(jb => jb.id === id);
+    setFormData(prev => ({
+      ...prev,
+      jenisBiayaId: id,
+      nominal: selected?.nominal || 0,
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.cabangId || !formData.kelasId || !formData.jenisBiayaId) {
+      alert("Harap lengkapi semua isian.");
+      return;
+    }
+    setIsSubmitting(true);
+
+    try {
+      const selectedCabang = cabangList.find(c => c.id === formData.cabangId);
+      const selectedKelas = kelasList.find(k => k.id === formData.kelasId);
+      const selectedJenisBiaya = jenisBiayaList.find(jb => jb.id === formData.jenisBiayaId);
+
+      if (!selectedCabang || !selectedKelas || !selectedJenisBiaya) {
+        throw new Error("Data tidak valid.");
+      }
+
+      const targetSiswa = siswaList.filter(s => s.cabang === selectedCabang.nama && s.kelas === selectedKelas.namaKelas);
+
+      if (targetSiswa.length === 0) {
+        alert("Tidak ada siswa ditemukan di kelas ini.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const batch = writeBatch(db);
+      targetSiswa.forEach(siswa => {
+        const newTagihanRef = doc(collection(db, "tagihan_siswa"));
+        batch.set(newTagihanRef, {
+          siswaId: siswa.id,
+          jenisBiayaId: selectedJenisBiaya.id,
+          jenisBiaya: selectedJenisBiaya.nama,
+          bulan: formData.bulan,
+          tahun: formData.tahun,
+          nominal: formData.nominal,
+          status: 'Belum Lunas',
+          dibayar: 0,
+          createdAt: new Date(),
+        });
+      });
+
+      await batch.commit();
+      alert(`Tagihan massal berhasil ditambahkan untuk ${targetSiswa.length} siswa.`);
+      onSuccess();
+    } catch (error) {
+      console.error("Error creating bulk bills:", error);
+      alert("Gagal membuat tagihan massal.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+        <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+          <h3 className="font-bold text-gray-800">Tambah Penagihan Massal</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Pilih Cabang</label><select required value={formData.cabangId} onChange={e => setFormData(prev => ({ ...prev, cabangId: e.target.value, kelasId: "" }))} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"><option value="">Pilih Cabang</option>{cabangList.map(c => <option key={c.id} value={c.id}>{c.nama}</option>)}</select></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Pilih Kelas</label><select required value={formData.kelasId} onChange={e => setFormData(prev => ({ ...prev, kelasId: e.target.value }))} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" disabled={!formData.cabangId}><option value="">Pilih Kelas</option>{filteredKelas.map(k => <option key={k.id} value={k.id}>{k.namaKelas}</option>)}</select></div>
+          </div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1">Jenis Biaya</label><select required value={formData.jenisBiayaId} onChange={e => handleJenisBiayaChange(e.target.value)} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" disabled={!formData.kelasId}><option value="">Pilih Jenis Biaya</option>{filteredJenisBiaya.map(jb => <option key={jb.id} value={jb.id}>{jb.nama}</option>)}</select></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1">Nominal</label><input type="text" readOnly value={`Rp ${formData.nominal.toLocaleString('id-ID')}`} className="w-full border rounded-lg p-2 bg-gray-100" /></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Bulan</label><select required value={formData.bulan} onChange={e => setFormData(prev => ({ ...prev, bulan: e.target.value }))} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none">{months.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Tahun</label><select required value={formData.tahun} onChange={e => setFormData(prev => ({ ...prev, tahun: e.target.value }))} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none">{years.map(y => <option key={y} value={y}>{y}</option>)}</select></div>
+          </div>
+          <div className="pt-4 flex justify-end gap-3">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-200">Batal</button>
+            <button type="submit" disabled={isSubmitting} className="bg-[#581c87] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#45156b] transition disabled:opacity-50 flex items-center gap-2">
+              {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isSubmitting ? 'Memproses...' : 'Tambahkan Tagihan'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

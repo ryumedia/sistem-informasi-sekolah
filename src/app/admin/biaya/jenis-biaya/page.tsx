@@ -20,12 +20,12 @@ import { Plus, Pencil, Trash2, X, Loader2 } from 'lucide-react';
 interface JenisBiaya {
   id: string;
   nama: string;
-  cabangId: string;
-  kelasId: string;
   nominal: number;
+  // Struktur baru untuk penerapan
+  penerapan: 'semua' | 'cabang_tertentu' | 'kelas_tertentu';
+  cabangIds?: string[];
+  kelasIds?: string[];
   // For display
-  namaCabang?: string;
-  namaKelas?: string;
 }
 
 interface Cabang {
@@ -41,9 +41,10 @@ interface Kelas {
 
 const initialFormData = {
   nama: "",
-  cabangId: "",
-  kelasId: "",
   nominal: 0,
+  penerapan: 'semua' as 'semua' | 'cabang_tertentu' | 'kelas_tertentu',
+  cabangIds: [] as string[],
+  kelasIds: [] as string[],
 };
 
 export default function JenisBiayaPage() {
@@ -100,16 +101,12 @@ export default function JenisBiayaPage() {
         
         setCabangList(cabangData);
         setKelasList(kelasData);
-
+        
         const jenisBiayaData = jenisBiayaSnap.docs.map(doc => {
           const data = doc.data() as JenisBiaya;
-          const cabang = cabangData.find(c => c.id === data.cabangId);
-          const kelas = kelasData.find(k => k.id === data.kelasId);
           return {
             ...data,
             id: doc.id,
-            namaCabang: cabang?.nama || "N/A",
-            namaKelas: kelas?.namaKelas || "N/A",
           };
         });
 
@@ -130,27 +127,37 @@ export default function JenisBiayaPage() {
   useEffect(() => {
     let filtered = jenisBiayaList;
     if (filterCabang) {
-      filtered = filtered.filter(item => item.cabangId === filterCabang);
+      // Filter jika item berlaku untuk 'semua' atau jika ID cabang ada di dalam array cabangIds
+      filtered = filtered.filter(item => item.penerapan === 'semua' || (item.cabangIds && item.cabangIds.includes(filterCabang)));
     }
     setFilteredJenisBiayaList(filtered);
   }, [filterCabang, jenisBiayaList]);
 
   useEffect(() => {
-    if (formData.cabangId) {
-      const selectedCabang = cabangList.find(c => c.id === formData.cabangId);
-      setFilteredKelasList(kelasList.filter(k => k.cabang === selectedCabang?.nama));
+    // Jika penerapan adalah 'kelas_tertentu' dan ada cabang yang dipilih, filter kelasnya
+    if (formData.penerapan === 'kelas_tertentu' && formData.cabangIds && formData.cabangIds.length > 0) {
+      const selectedCabangNames = cabangList
+        .filter(c => formData.cabangIds.includes(c.id))
+        .map(c => c.nama);
+      setFilteredKelasList(kelasList.filter(k => selectedCabangNames.includes(k.cabang)));
     } else {
       setFilteredKelasList([]);
     }
-    // Hanya reset kelasId jika sedang dalam mode 'Tambah' (editingId null)
-    if (!editingId) {
-      setFormData(prev => ({ ...prev, kelasId: '' }));
-    }
-  }, [formData.cabangId, kelasList, cabangList, editingId]); // Tambahkan editingId sebagai dependency
+  }, [formData.penerapan, formData.cabangIds, kelasList, cabangList]);
 
   // --- HANDLER FUNCTIONS ---
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    if (name === 'penerapan') {
+      // Reset pilihan saat mode penerapan diubah
+      setFormData(prev => ({
+        ...prev,
+        penerapan: value as any,
+        cabangIds: [],
+        kelasIds: [],
+      }));
+      return;
+    }
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -160,17 +167,20 @@ export default function JenisBiayaPage() {
     setFormData(prev => ({ ...prev, nominal: numericValue }));
   };
 
+  const handleMultiSelectChange = (e: React.ChangeEvent<HTMLSelectElement>, field: 'cabangIds' | 'kelasIds') => {
+    const options = Array.from(e.target.selectedOptions, option => option.value);
+    setFormData(prev => ({ ...prev, [field]: options }));
+  };
+
   const openModal = (item: JenisBiaya | null = null) => {
     if (item) {
-      // Saat edit, langsung filter kelas berdasarkan cabang yang ada
-      const selectedCabang = cabangList.find(c => c.id === item.cabangId);
-      setFilteredKelasList(kelasList.filter(k => k.cabang === selectedCabang?.nama));
       setEditingId(item.id);
       setFormData({
         nama: item.nama,
-        cabangId: item.cabangId,
-        kelasId: item.kelasId,
         nominal: item.nominal,
+        penerapan: item.penerapan,
+        cabangIds: item.cabangIds || [],
+        kelasIds: item.kelasIds || [],
       });
     } else {
       setEditingId(null);
@@ -188,12 +198,26 @@ export default function JenisBiayaPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+
+    // Siapkan data untuk disimpan, hapus field yang tidak perlu sesuai mode penerapan
+    const dataToSave: any = {
+      nama: formData.nama,
+      nominal: formData.nominal,
+      penerapan: formData.penerapan,
+    };
+    if (formData.penerapan === 'cabang_tertentu') {
+      dataToSave.cabangIds = formData.cabangIds;
+    } else if (formData.penerapan === 'kelas_tertentu') {
+      dataToSave.cabangIds = formData.cabangIds; // Simpan juga info cabangnya
+      dataToSave.kelasIds = formData.kelasIds;
+    }
+
     try {
       if (editingId) {
-        await updateDoc(doc(db, "jenis_biaya", editingId), formData);
+        await updateDoc(doc(db, "jenis_biaya", editingId), dataToSave);
         alert("Jenis biaya berhasil diperbarui.");
       } else {
-        await addDoc(collection(db, "jenis_biaya"), formData);
+        await addDoc(collection(db, "jenis_biaya"), dataToSave);
         alert("Jenis biaya berhasil ditambahkan.");
       }
       // Re-fetch data to show changes
@@ -243,7 +267,6 @@ export default function JenisBiayaPage() {
         <div className="flex-1">
           <label className="block text-sm font-medium text-gray-700 mb-1">Filter Cabang</label>
           <select
-            name="filterCabang"
             value={filterCabang}
             onChange={(e) => setFilterCabang(e.target.value)}
             className="w-full max-w-xs border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm"
@@ -262,8 +285,7 @@ export default function JenisBiayaPage() {
               <tr>
                 <th className="p-4 w-16 text-center">No.</th>
                 <th className="p-4">Jenis Biaya</th>
-                <th className="p-4">Cabang</th>
-                <th className="p-4">Kelas</th>
+                <th className="p-4">Berlaku Untuk</th>
                 <th className="p-4">Nominal</th>
                 <th className="p-4 w-32 text-center">Aksi</th>
               </tr>
@@ -278,8 +300,19 @@ export default function JenisBiayaPage() {
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="p-4 text-center">{i + 1}</td>
                     <td className="p-4 font-medium text-gray-900">{item.nama}</td>
-                    <td className="p-4">{item.namaCabang}</td>
-                    <td className="p-4">{item.namaKelas}</td>
+                    <td className="p-4">
+                      {item.penerapan === 'semua' && <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">Semua Cabang & Kelas</span>}
+                      {item.penerapan === 'cabang_tertentu' && (
+                        <div className="flex flex-wrap gap-1">
+                          {item.cabangIds?.map(id => <span key={id} className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-md">{cabangList.find(c=>c.id===id)?.nama}</span>)}
+                        </div>
+                      )}
+                      {item.penerapan === 'kelas_tertentu' && (
+                        <div className="flex flex-wrap gap-1">
+                          {item.kelasIds?.map(id => <span key={id} className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-md">{kelasList.find(k=>k.id===id)?.namaKelas}</span>)}
+                        </div>
+                      )}
+                    </td>
                     <td className="p-4">{formatCurrency(item.nominal)}</td>
                     <td className="p-4 flex justify-center gap-2">
                       <button onClick={() => openModal(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit"><Pencil className="w-4 h-4" /></button>
@@ -306,22 +339,44 @@ export default function JenisBiayaPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Jenis Biaya</label>
                 <input type="text" name="nama" value={formData.nama} onChange={handleInputChange} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" required />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Berlaku Untuk</label>
+                <select name="penerapan" value={formData.penerapan} onChange={handleInputChange} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" required>
+                  <option value="semua">Semua Cabang & Kelas</option>
+                  <option value="cabang_tertentu">Cabang Tertentu</option>
+                  <option value="kelas_tertentu">Kelas Tertentu</option>
+                </select>
+              </div>
+
+              {/* Conditional Inputs */}
+              {formData.penerapan === 'cabang_tertentu' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Cabang</label>
-                  <select name="cabangId" value={formData.cabangId} onChange={handleInputChange} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" required>
-                    <option value="">Pilih Cabang</option>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Cabang (bisa lebih dari satu)</label>
+                  <select name="cabangIds" value={formData.cabangIds} onChange={(e) => handleMultiSelectChange(e, 'cabangIds')} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" multiple required>
                     {cabangList.map(c => <option key={c.id} value={c.id}>{c.nama}</option>)}
                   </select>
+                  <p className="text-xs text-gray-500 mt-1">Tahan Ctrl (atau Cmd di Mac) untuk memilih beberapa.</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Kelas</label>
-                  <select name="kelasId" value={formData.kelasId} onChange={handleInputChange} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" disabled={!formData.cabangId} required>
-                    <option value="">Pilih Kelas</option>
-                    {filteredKelasList.map(k => <option key={k.id} value={k.id}>{k.namaKelas}</option>)}
-                  </select>
-                </div>
-              </div>
+              )}
+
+              {formData.penerapan === 'kelas_tertentu' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Cabang (hanya satu)</label>
+                    <select name="cabangIds" value={formData.cabangIds[0] || ''} onChange={(e) => setFormData(prev => ({ ...prev, cabangIds: [e.target.value], kelasIds: [] }))} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" required>
+                      <option value="">Pilih Cabang Dulu</option>
+                      {cabangList.map(c => <option key={c.id} value={c.id}>{c.nama}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Kelas (bisa lebih dari satu)</label>
+                    <select name="kelasIds" value={formData.kelasIds} onChange={(e) => handleMultiSelectChange(e, 'kelasIds')} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" multiple required disabled={formData.cabangIds.length === 0}>
+                      {filteredKelasList.map(k => <option key={k.id} value={k.id}>{k.namaKelas}</option>)}
+                    </select>
+                  </div>
+                </>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nominal</label>
                 <input type="text" name="nominal" value={new Intl.NumberFormat('id-ID').format(formData.nominal)} onChange={handleNominalChange} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" required />

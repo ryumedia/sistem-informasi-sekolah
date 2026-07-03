@@ -53,8 +53,10 @@ interface JenisBiaya {
   id: string;
   nama: string;
   nominal: number;
-  cabangId: string;
-  kelasId: string;
+  // Struktur baru untuk penerapan
+  penerapan: 'semua' | 'cabang_tertentu' | 'kelas_tertentu';
+  cabangIds?: string[];
+  kelasIds?: string[];
 }
 
 const initialTagihanItem = {
@@ -125,10 +127,19 @@ export default function DetailPenagihanPage() {
         const siswaKelas = kelasData.find(k => k.namaKelas === siswaData.kelas && k.cabang === siswaData.cabang);
 
         if (siswaCabang && siswaKelas) {
-          const allJenisBiaya = jenisBiayaSnap.docs.map(d => ({ id: d.id, ...d.data() } as JenisBiaya));
-          const filteredJenisBiaya = allJenisBiaya.filter(jb => 
-            jb.cabangId === siswaCabang.id && jb.kelasId === siswaKelas.id
-          );
+          const allJenisBiaya = jenisBiayaSnap.docs.map(d => ({ id: d.id, ...d.data() } as JenisBiaya)) as JenisBiaya[];
+          
+          // --- LOGIKA FILTER DIPERBARUI ---
+          const filteredJenisBiaya = allJenisBiaya.filter(jb => {
+            // 1. Jika berlaku untuk semua, langsung tampilkan
+            if (jb.penerapan === 'semua') return true;
+            // 2. Jika berlaku untuk cabang tertentu, cek apakah cabang siswa termasuk
+            if (jb.penerapan === 'cabang_tertentu' && jb.cabangIds?.includes(siswaCabang.id)) return true;
+            // 3. Jika berlaku untuk kelas tertentu, cek apakah kelas siswa termasuk
+            if (jb.penerapan === 'kelas_tertentu' && jb.kelasIds?.includes(siswaKelas.id)) return true;
+            
+            return false;
+          });
           setAvailableJenisBiaya(filteredJenisBiaya);
         }
 

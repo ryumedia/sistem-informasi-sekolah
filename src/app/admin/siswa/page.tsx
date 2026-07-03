@@ -710,7 +710,7 @@ export default function DataSiswaPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Jenjang Usia</label>
-                  <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                  <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                     value={formData.jenjangUsia} onChange={(e) => setFormData({...formData, jenjangUsia: e.target.value})}>
                     <option value="">Pilih Jenjang Usia</option>
                     {usiaList.map((u) => <option key={u.id} value={u.usia}>{u.usia}</option>)}
@@ -771,7 +771,7 @@ export default function DataSiswaPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Kelas</label>
-                  <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                  <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                     value={formData.kelas} onChange={(e) => setFormData({...formData, kelas: e.target.value})}>
                     <option value="">Pilih Kelas</option>
                     {kelasList
