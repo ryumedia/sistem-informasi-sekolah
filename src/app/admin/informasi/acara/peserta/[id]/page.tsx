@@ -3,8 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, collection, query, orderBy, getDocs, Timestamp } from 'firebase/firestore';
-import { Loader2, ArrowLeft, Filter } from 'lucide-react';
+import { doc, getDoc, collection, query, orderBy, getDocs, Timestamp, deleteDoc } from 'firebase/firestore';
+import { Loader2, ArrowLeft, Filter, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface Acara {
@@ -18,6 +18,7 @@ interface Peserta {
   nama: string;
   email: string;
   role: string;
+  kelas: string;
   cabang: string;
   checkInTime: Timestamp;
 }
@@ -81,6 +82,20 @@ export default function PesertaAcaraPage() {
     return format(timestamp.toDate(), formatStr);
   };
 
+  const handleDelete = async (peserta: Peserta) => {
+    if (!confirm(`Yakin ingin menghapus peserta "${peserta.nama}" dari acara ini?`)) return;
+
+    try {
+      const pesertaRef = doc(db, 'acara', acaraId, 'peserta', peserta.id);
+      await deleteDoc(pesertaRef);
+      setPesertaList(prev => prev.filter(p => p.id !== peserta.id));
+      alert("Peserta berhasil dihapus.");
+    } catch (error) {
+      console.error("Error deleting participant:", error);
+      alert("Gagal menghapus peserta.");
+    }
+  };
+
   if (loading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 animate-spin text-[#581c87]" /></div>;
   }
@@ -125,24 +140,30 @@ export default function PesertaAcaraPage() {
               <tr>
                 <th className="p-4 w-12 text-center">No.</th>
                 <th className="p-4">Nama Peserta</th>
-                <th className="p-4">Email</th>
                 <th className="p-4">Cabang</th>
+                <th className="p-4">Kelas</th>
                 <th className="p-4">Role</th>
                 <th className="p-4">Waktu Check-in</th>
+                <th className="p-4 w-20 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredPeserta.length === 0 ? (
-                <tr><td colSpan={6} className="p-8 text-center text-gray-500">{pesertaList.length > 0 ? 'Tidak ada peserta yang cocok dengan filter.' : 'Belum ada peserta yang melakukan check-in.'}</td></tr>
+                <tr><td colSpan={7} className="p-8 text-center text-gray-500">{pesertaList.length > 0 ? 'Tidak ada peserta yang cocok dengan filter.' : 'Belum ada peserta yang melakukan check-in.'}</td></tr>
               ) : (
                 filteredPeserta.map((p, index) => (
                   <tr key={p.id} className="hover:bg-gray-50">
                     <td className="p-4 text-center">{index + 1}</td>
                     <td className="p-4 font-medium text-gray-900">{p.nama}</td>
-                    <td className="p-4">{p.email}</td>
                     <td className="p-4">{p.cabang || '-'}</td>
+                    <td className="p-4">{p.kelas || '-'}</td>
                     <td className="p-4">{p.role}</td>
                     <td className="p-4">{formatDate(p.checkInTime, 'HH:mm:ss')}</td>
+                    <td className="p-4 text-center">
+                      <button onClick={() => handleDelete(p)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus Peserta">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}

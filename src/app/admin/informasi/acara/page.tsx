@@ -4,7 +4,7 @@ import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import { db } from "@/lib/firebase";
 import { collection, query, orderBy, getDocs, deleteDoc, doc, Timestamp, addDoc, updateDoc, serverTimestamp, getDoc, setDoc } from "firebase/firestore";
-import { Loader2, PlusCircle, Users, QrCode, Edit, Trash2, X, Building, Calendar, Clock, MapPin } from 'lucide-react'; // Ganti impor ke Scanner dan tambahkan tipe
+import { Loader2, PlusCircle, Users, QrCode, Edit, Trash2, X, Building, Calendar, Clock, MapPin, Map } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Scanner } from '@yudiel/react-qr-scanner';
 
@@ -15,6 +15,7 @@ interface Acara {
   waktu: string;
   tempat: string;
   cabang: string[];
+  linkGMap?: string;
   createdAt?: Timestamp;
 }
 
@@ -145,6 +146,7 @@ export default function DaftarAcaraPage() {
         email: userDoc.email,
         role: userDoc.role,
         cabang: userDoc.cabang || 'Tidak ada',
+        kelas: userDoc.kelas || '-',
         checkInTime: serverTimestamp(),
       };
 
@@ -292,6 +294,7 @@ function AcaraModal({ acara, cabangList, onClose, onSubmit }: AcaraModalProps) {
     waktu: acara?.waktu || '',
     tempat: acara?.tempat || '',
     cabang: acara?.cabang || [],
+    linkGMap: acara?.linkGMap || '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -394,6 +397,12 @@ function AcaraModal({ acara, cabangList, onClose, onSubmit }: AcaraModalProps) {
             <label htmlFor="tempat" className="font-medium text-sm text-gray-700 flex items-center gap-2"><MapPin className="w-4 h-4" />Tempat</label>
             <input type="text" id="tempat" placeholder="cth: Aula Sekolah" value={formData.tempat} onChange={e => setFormData({...formData, tempat: e.target.value})} className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-[#581c87] outline-none" required />
           </div>
+
+          {/* --- LINK GOOGLE MAP --- */}
+          <div className="space-y-2">
+            <label htmlFor="linkGMap" className="font-medium text-sm text-gray-700 flex items-center gap-2"><Map className="w-4 h-4" />Link Google Map (Opsional)</label>
+            <input type="url" id="linkGMap" placeholder="https://maps.app.goo.gl/..." value={formData.linkGMap} onChange={e => setFormData({...formData, linkGMap: e.target.value})} className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-[#581c87] outline-none" />
+          </div>
         </form>
 
         <div className="p-5 border-t bg-gray-50 flex justify-end gap-3">
@@ -430,16 +439,21 @@ function ScannerModal({ acaraNama, onClose, onScan }: ScannerModalProps) {
             <X className="w-5 h-5 text-gray-600" />
           </button>
         </div>
-        <div className="p-1 bg-gray-900">
+        {/* PERBAIKAN: Menggunakan div dengan aspect-ratio untuk stabilitas render kamera */}
+        <div className="w-full bg-gray-900 aspect-square overflow-hidden relative">
           <Scanner
             onScan={onScan}
             onError={(error: any) => console.log(error?.message)}
             constraints={{
               facingMode: 'environment'
             }}
+            // PERBAIKAN: Styling video agar mengisi container secara absolut
             styles={{
-              container: { paddingTop: '100%' },
-              video: { objectFit: 'cover' },
+              video: { 
+                objectFit: 'cover',
+                width: '100%',
+                height: '100%',
+              },
             }} />
         </div>
         <p className="text-center text-sm text-gray-500 p-4 bg-gray-50">Arahkan kamera ke QR Code milik peserta.</p>

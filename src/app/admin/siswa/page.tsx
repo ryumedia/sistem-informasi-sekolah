@@ -138,12 +138,26 @@ export default function DataSiswaPage() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         try {
-          const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
-          const querySnapshot = await getDocs(q);
-          if (!querySnapshot.empty) {
-            const userData = querySnapshot.docs[0].data();
+          // Cek di koleksi guru dan caregivers secara bersamaan
+          const qGuru = query(collection(db, "guru"), where("email", "==", currentUser.email));
+          const qCaregiver = query(collection(db, "caregivers"), where("email", "==", currentUser.email));
+
+          const [guruSnapshot, caregiverSnapshot] = await Promise.all([
+            getDocs(qGuru),
+            getDocs(qCaregiver)
+          ]);
+
+          let userData: any = null;
+          if (!guruSnapshot.empty) {
+            userData = guruSnapshot.docs[0].data();
+          } else if (!caregiverSnapshot.empty) {
+            userData = caregiverSnapshot.docs[0].data();
+          }
+
+          if (userData) {
             setUserRole(userData.role);
-            if (userData.role === "Kepala Sekolah") {
+            // Otomatis set filter cabang untuk role tertentu
+            if (["Kepala Sekolah", "Guru", "Caregiver"].includes(userData.role)) {
               setFilterCabang(userData.cabang);
             }
           }

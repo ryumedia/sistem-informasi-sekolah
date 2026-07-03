@@ -11,10 +11,11 @@ import {
   doc,
   Timestamp,
 } from "firebase/firestore";
-import { Loader2, Eye, Trash2, Filter } from 'lucide-react';
+import { Loader2, Eye, Trash2, Filter, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import Link from 'next/link';
+import * as XLSX from 'xlsx';
 
 // --- INTERFACES ---
 interface Pelamar {
@@ -105,6 +106,37 @@ export default function PelamarPage() {
       alert("Gagal menghapus data pelamar.");
     }
   };
+
+  const handleExport = () => {
+    if (filteredPelamar.length === 0) {
+      alert("Tidak ada data untuk diekspor.");
+      return;
+    }
+
+    // 1. Siapkan data sesuai format yang diinginkan
+    const dataToExport = filteredPelamar.map(p => {
+      const jawaban = p.jawaban || {};
+      return {
+        "Nama Program": p.programNama,
+        "Nama": p.nama,
+        "Jenis Kelamin": jawaban['XvrXfaJsNB6fU1Vz7Gzd'] || '-',
+        "Alamat": jawaban['73gojtM9tQiTyu5AtMMf'] || '-',
+        "Nomor WA": jawaban['PNxUs3CTdcAXqBokOd44'] || '-',
+        "Pilihan Cabang": p.pilihanCabang || '-',
+        "Foto": jawaban['BM91Ad5mqf46bOLTwKts'] || '-',
+        "Dokumen": jawaban['LtIJ8fNSARelYwPMo3mI'] || '-',
+      };
+    });
+
+    // 2. Buat worksheet dan workbook
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Pelamar");
+
+    // 3. Memicu unduhan
+    XLSX.writeFile(workbook, `Daftar_Pelamar_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const getStatusBadgeColor = (status: Pelamar['status']) => {
     switch (status) {
       case 'Baru': return 'bg-blue-100 text-blue-800';
@@ -139,6 +171,10 @@ export default function PelamarPage() {
             <option value="">Semua Cabang</option>
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
+          <button onClick={handleExport} className="bg-green-600 text-white px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition text-sm">
+            <Download className="w-4 h-4" />
+            <span>Excel</span>
+          </button>
         </div>
       </div>
 

@@ -20,6 +20,7 @@ import JadwalView from "../components/dashboard/JadwalView";
 import KegiatanView from "../components/dashboard/KegiatanView";
 import PengumumanView from "../components/dashboard/PengumumanView";
 import PengajuanModal from "../components/dashboard/PengajuanModal";
+import AcaraView from "../components/dashboard/AcaraView";
 import PengumumanDetailModal from "../components/dashboard/PengumumanDetailModal";
 import PembayaranView from "../components/dashboard/PembayaranView";
 
@@ -39,7 +40,7 @@ export default function UserHome() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get("tab");
-    if (tabParam && ["home", "jadwal", "akademik", "pembayaran", "report", "kegiatan", "pengumuman", "akun"].includes(tabParam)) {
+    if (tabParam && ["home", "jadwal", "akademik", "pembayaran", "report", "kegiatan", "pengumuman", "acara", "akun"].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, []);
@@ -178,7 +179,7 @@ export default function UserHome() {
                   {[
                     { name: "Jadwal", icon: <Calendar className="w-6 h-6 text-[#581c87]"/>, color: "bg-[#581c87]/10", action: () => setActiveTab("jadwal") },
                     { name: "Kegiatan", icon: <Activity className="w-6 h-6 text-green-600"/>, color: "bg-green-50", action: () => setActiveTab("kegiatan") },
-                    { name: "Acara", icon: <Ticket className="w-6 h-6 text-blue-600"/>, color: "bg-blue-50", action: () => alert("Fitur Acara akan segera hadir!") },
+                    { name: "Acara", icon: <Ticket className="w-6 h-6 text-blue-600"/>, color: "bg-blue-50", action: () => setActiveTab("acara") },
                     { name: "Pengumuman", icon: <Bell className="w-6 h-6 text-[#ff984e]"/>, color: "bg-[#ff984e]/10", action: () => setActiveTab("pengumuman") }
                   ].map((item, idx) => (
                     <div key={idx} onClick={item.action} className="flex flex-col items-center justify-start gap-2 cursor-pointer text-center">
@@ -245,6 +246,10 @@ export default function UserHome() {
 
         {activeTab === "pengumuman" && (
           <PengumumanView user={user} userData={userData} onBack={() => setActiveTab("home")} onSelect={setSelectedPengumuman} />
+        )}
+
+        {activeTab === "acara" && (
+          <AcaraView userData={userData} onBack={() => setActiveTab("home")} />
         )}
 
         {activeTab === "akun" && (
