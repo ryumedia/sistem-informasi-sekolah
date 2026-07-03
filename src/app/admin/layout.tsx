@@ -192,10 +192,10 @@ export default function AdminLayout({
     { 
       name: "Rekrutmen", 
       href: "#",
-      roles: ["Admin", "Direktur", "Yayasan"],
+      roles: ["Admin", "Direktur", "Yayasan", "Kepala Sekolah"],
       submenu: [
         { name: "Program", href: "/admin/rekrutmen/program", roles: ["Admin", "Direktur", "Yayasan"] },
-        { name: "Pelamar", href: "/admin/rekrutmen/pelamar", roles: ["Admin", "Direktur", "Yayasan"] },
+        { name: "Pelamar", href: "/admin/rekrutmen/pelamar", roles: ["Admin", "Direktur", "Yayasan", "Kepala Sekolah"] },
       ]
     },
   ];
