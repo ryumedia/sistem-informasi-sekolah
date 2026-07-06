@@ -6,11 +6,14 @@ import {
   collection,
   query,
   orderBy,
+  addDoc,
   getDocs,
+  doc,
+  updateDoc,
   where,
   Timestamp,
 } from "firebase/firestore";
-import { Loader2 } from 'lucide-react';
+import { Loader2, PlusCircle, X } from 'lucide-react';
 import { format } from 'date-fns';
 
 // --- INTERFACES ---
@@ -21,6 +24,8 @@ interface Pembayaran {
   jumlahBayar: number;
   tanggalBayar: Timestamp;
   dicatatOleh: string;
+  sudahMasukArusKas?: boolean;
+  transactionId?: string; // ID dari Midtrans, opsional
 }
 
 interface Siswa {
@@ -49,6 +54,12 @@ interface LaporanPenerimaan extends Pembayaran {
   jenisBiaya: string;
 }
 
+const nomenklaturOptions = [
+  { code: '4-1100', title: 'Uang Pangkal & Pendaftaran', desc: 'Formulir, uang gedung, uang pangkal, seragam awal.' },
+  { code: '4-1200', title: 'SPP & Iuran Bulanan', desc: 'SPP bulanan (Daycare/TK/PG).' },
+  { code: '4-1300', title: 'Pendapatan Kegiatan Siswa', desc: 'Field trip, pentas seni, market day.' },
+];
+
 export default function PenerimaanPage() {
   // --- STATE MANAGEMENT ---
   const [laporanList, setLaporanList] = useState<LaporanPenerimaan[]>([]);
@@ -61,6 +72,12 @@ export default function PenerimaanPage() {
   const [filterTanggalSelesai, setFilterTanggalSelesai] = useState<string>("");
   const [filteredLaporanList, setFilteredLaporanList] = useState<LaporanPenerimaan[]>([]);
   const [totalPenerimaan, setTotalPenerimaan] = useState<number>(0);
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedPenerimaan, setSelectedPenerimaan] = useState<LaporanPenerimaan | null>(null);
+  const [selectedNomenklatur, setSelectedNomenklatur] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- DATA FETCHING ---
   useEffect(() => {
@@ -149,6 +166,69 @@ export default function PenerimaanPage() {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
   };
 
+  const openModal = (penerimaan: LaporanPenerimaan) => {
+    setSelectedPenerimaan(penerimaan);
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSelectedPenerimaan(null);
+    setSelectedNomenklatur("");
+    setIsSubmitting(false);
+  };
+
+  const handleTambahPemasukan = async () => {
+    if (!selectedPenerimaan || !selectedNomenklatur) {
+      alert("Silakan pilih nomenklatur terlebih dahulu.");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      // Temukan objek nomenklatur yang dipilih untuk mendapatkan detail lengkapnya
+      const nomenklaturDetail = nomenklaturOptions.find(n => n.code === selectedNomenklatur);
+      const nomenklaturLengkap = nomenklaturDetail 
+        ? `${nomenklaturDetail.code} - ${nomenklaturDetail.title}: ${nomenklaturDetail.desc}`
+        : selectedNomenklatur;
+
+      const arusKasCollection = collection(db, 'arus_kas');
+      await addDoc(arusKasCollection, {
+        tanggal: selectedPenerimaan.tanggalBayar,
+        jenis: 'Masuk', // Mengubah 'tipe' menjadi 'jenis' dan valuenya menjadi 'Masuk'
+        nominal: selectedPenerimaan.jumlahBayar,
+        keterangan: `${selectedPenerimaan.jenisBiaya}`,
+        nomenklatur: nomenklaturLengkap,
+        cabang: selectedPenerimaan.cabangSiswa,
+        refId: selectedPenerimaan.id, // Referensi ke dokumen pembayaran
+        dicatatOleh: 'Sistem (dari Laporan Penerimaan)',
+      });
+
+      // 1. Tandai bahwa pembayaran ini sudah masuk ke arus kas di database
+      const pembayaranRef = doc(db, "pembayaran", selectedPenerimaan.id);
+      await updateDoc(pembayaranRef, {
+        sudahMasukArusKas: true
+      });
+
+      // 2. Perbarui state lokal agar UI langsung berubah tanpa perlu refresh
+      setFilteredLaporanList(prevList => 
+        prevList.map(item => 
+          item.id === selectedPenerimaan.id 
+            ? { ...item, sudahMasukArusKas: true } 
+            : item
+        )
+      );
+
+      alert('Pemasukan berhasil ditambahkan ke Arus Kas!');
+      closeModal();
+
+    } catch (error) {
+      console.error("Error adding to cash flow: ", error);
+      alert("Gagal menambahkan pemasukan. Silakan coba lagi.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // --- RENDER ---
   return (
     <div className="space-y-6">
@@ -189,15 +269,17 @@ export default function PenerimaanPage() {
                 <th className="p-4">Cabang</th>
                 <th className="p-4">Kelas</th>
                 <th className="p-4">Jenis Biaya</th>
+                <th className="p-4">ID Transaksi</th>
                 <th className="p-4">Nominal Pembayaran</th>
                 <th className="p-4">Dicatat Oleh</th>
+                <th className="p-4 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={8} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
+                <tr><td colSpan={10} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
               ) : filteredLaporanList.length === 0 ? (
-                <tr><td colSpan={8} className="p-8 text-center text-gray-500">Tidak ada data penerimaan yang cocok.</td></tr>
+                <tr><td colSpan={10} className="p-8 text-center text-gray-500">Tidak ada data penerimaan yang cocok.</td></tr>
               ) : (
                 filteredLaporanList.map((item, i) => (
                   <tr key={item.id} className="hover:bg-gray-50">
@@ -207,8 +289,21 @@ export default function PenerimaanPage() {
                     <td className="p-4">{item.cabangSiswa}</td>
                     <td className="p-4">{item.kelasSiswa}</td>
                     <td className="p-4">{item.jenisBiaya}</td>
+                    <td className="p-4 text-xs text-gray-500 font-mono">
+                      {item.transactionId || '-'}
+                    </td>
                     <td className="p-4 font-semibold text-green-600">{formatCurrency(item.jumlahBayar)}</td>
                     <td className="p-4">{item.dicatatOleh}</td>
+                    <td className="p-4 text-center">
+                      <button 
+                        onClick={() => openModal(item)}
+                        disabled={item.sudahMasukArusKas}
+                        className="text-green-600 hover:text-green-800 disabled:text-gray-300 disabled:cursor-not-allowed"
+                        title="Tambahkan ke Arus Kas"
+                      >
+                        <PlusCircle className="w-5 h-5" />
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -216,6 +311,62 @@ export default function PenerimaanPage() {
           </table>
         </div>
       </div>
+
+      {/* Modal Tambah Pemasukan ke Arus Kas */}
+      {isModalOpen && selectedPenerimaan && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+            <div className="p-4 border-b flex justify-between items-center">
+              <h3 className="font-bold text-gray-800">Tambah Pemasukan ke Arus Kas</h3>
+              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Detail Transaksi */}
+              <div className="bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
+                <div className="flex justify-between"><span>Tanggal:</span><span className="font-medium text-right">{format(selectedPenerimaan.tanggalBayar.toDate(), 'dd MMMM yyyy')}</span></div>
+                <div className="flex justify-between"><span>Nama Siswa:</span><span className="font-medium text-right">{selectedPenerimaan.namaSiswa}</span></div>
+                <div className="flex justify-between"><span>Cabang:</span><span className="font-medium text-right">{selectedPenerimaan.cabangSiswa}</span></div>
+                <div className="flex justify-between"><span>Jenis Biaya:</span><span className="font-medium text-right">{selectedPenerimaan.jenisBiaya}</span></div>
+                <div className="flex justify-between text-base"><span>Nominal:</span><span className="font-bold text-green-600 text-right">{formatCurrency(selectedPenerimaan.jumlahBayar)}</span></div>
+              </div>
+
+              {/* Pilihan Nomenklatur */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Nomenklatur Pemasukan</label>
+                <div className="space-y-2">
+                  {nomenklaturOptions.map(n => (
+                    <label key={n.code} className={`flex items-start p-3 border rounded-lg cursor-pointer transition ${selectedNomenklatur === n.code ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400' : 'border-gray-200'}`}>
+                      <input 
+                        type="radio" 
+                        name="nomenklatur" 
+                        value={n.code} 
+                        checked={selectedNomenklatur === n.code}
+                        onChange={(e) => setSelectedNomenklatur(e.target.value)}
+                        className="mt-1 h-4 w-4 text-purple-600 border-gray-300 focus:ring-purple-500"
+                      />
+                      <div className="ml-3 text-sm">
+                        <p className="font-bold text-gray-900">{n.code} - {n.title}</p>
+                        <p className="text-gray-500">{n.desc}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+            <div className="p-4 bg-gray-50 border-t rounded-b-xl">
+              <button 
+                onClick={handleTambahPemasukan} 
+                disabled={isSubmitting || !selectedNomenklatur} 
+                className="w-full bg-[#581c87] text-white py-3 rounded-lg hover:bg-[#45156b] transition font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <PlusCircle className="w-5 h-5" />}
+                {isSubmitting ? 'Menyimpan...' : 'Tambah Pemasukan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

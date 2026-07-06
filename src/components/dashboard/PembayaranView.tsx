@@ -8,6 +8,9 @@ import {
   where,
   getDocs,
   orderBy,
+  doc,
+  updateDoc,
+  addDoc,
   Timestamp,
 } from "firebase/firestore";
 import { ArrowLeft, Loader2, CreditCard, X } from 'lucide-react';
@@ -39,6 +42,7 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
   // State untuk modal pembayaran
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedTagihan, setSelectedTagihan] = useState<Tagihan | null>(null);
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState(0);
 
 
@@ -75,6 +79,21 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
 
     fetchTagihan();
   }, [userData]);
+
+  // Efek untuk memuat script Midtrans Snap
+  useEffect(() => {
+    const clientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY;
+    const script = document.createElement('script');
+    script.src = "https://app.sandbox.midtrans.com/snap/snap.js"; // Ganti ke URL production jika sudah live
+    script.setAttribute('data-client-key', clientKey || '');
+    script.async = true;
+
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
 
   // Efek untuk memfilter data dan menghitung total sisa
   useEffect(() => {
@@ -123,10 +142,82 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
     setPaymentAmount(numericValue);
   };
 
-  const handleLanjutPembayaran = () => {
-    // Logika untuk integrasi payment gateway akan ditambahkan di sini
-    console.log(`Lanjut pembayaran untuk tagihan ${selectedTagihan?.id} sebesar ${formatCurrency(paymentAmount)}`);
-    alert("Fitur ini akan segera diintegrasikan dengan Payment Gateway.");
+  const handleLanjutPembayaran = async () => {
+    if (!selectedTagihan || !userData) return;
+    setIsSubmittingPayment(true);
+
+    try {
+      const response = await fetch('/api/midtrans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tagihanId: selectedTagihan.id,
+          amount: paymentAmount,
+          userDetails: {
+            nama: userData.nama,
+            email: userData.email || 'email@default.com', // Pastikan user punya email
+          },
+          itemDetails: {
+            name: `${selectedTagihan.jenisBiaya} ${selectedTagihan.bulan} ${selectedTagihan.tahun}`,
+          }
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      if (data.token) {
+        (window as any).snap.pay(data.token, {
+          onSuccess: async (result: any) => {
+            console.log('Payment Success:', result);
+            
+            // 1. Update status tagihan di Firestore
+            const tagihanRef = doc(db, "tagihan_siswa", selectedTagihan.id);
+            const currentDibayar = selectedTagihan.dibayar || 0;
+            const updateTagihanPromise = updateDoc(tagihanRef, {
+              dibayar: currentDibayar + paymentAmount,
+              status: (currentDibayar + paymentAmount) >= selectedTagihan.nominal ? 'Lunas' : 'Belum Lunas'
+            });
+
+            // 2. Buat catatan pembayaran baru di koleksi 'pembayaran'
+            const pembayaranCollectionRef = collection(db, "pembayaran");
+            const createPembayaranPromise = addDoc(pembayaranCollectionRef, {
+              tagihanId: selectedTagihan.id,
+              siswaId: userData.id,
+              jumlahBayar: paymentAmount,
+              tanggalBayar: Timestamp.now(),
+              dicatatOleh: "Midtrans Snap", // Otomatis dicatat oleh sistem
+              transactionId: result.order_id, // Simpan ID dari Midtrans
+            });
+
+            await Promise.all([updateTagihanPromise, createPembayaranPromise]);
+
+            closePaymentModal();
+            // Refresh data
+            window.location.reload();
+          },
+          onPending: (result: any) => {
+            console.log('Payment Pending:', result);
+            alert("Menunggu pembayaran Anda.");
+          },
+          onError: (result: any) => {
+            console.error('Payment Error:', result);
+            alert("Pembayaran gagal.");
+          },
+          onClose: () => {
+            console.log('customer closed the popup without finishing the payment');
+          }
+        });
+      }
+    } catch (error) {
+      console.error("Payment initiation failed:", error);
+      alert("Gagal memulai sesi pembayaran. Silakan coba lagi.");
+    } finally {
+      setIsSubmittingPayment(false);
+    }
   };
 
   return (
@@ -223,8 +314,8 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
                 </div>
               </div>
               <div className="pt-2">
-                <button onClick={handleLanjutPembayaran} className="w-full bg-[#581c87] text-white py-3 rounded-lg hover:bg-[#45156b] transition font-medium">
-                  Lanjut Pembayaran
+                <button onClick={handleLanjutPembayaran} disabled={isSubmittingPayment} className="w-full bg-[#581c87] text-white py-3 rounded-lg hover:bg-[#45156b] transition font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                  {isSubmittingPayment ? 'Memproses...' : 'Lanjut Pembayaran'}
                 </button>
               </div>
             </div>

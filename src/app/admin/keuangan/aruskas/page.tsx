@@ -3,13 +3,13 @@
 
 import { useState, useEffect } from "react";
 import { db, auth } from "@/lib/firebase";
-import { collection, getDocs, query, orderBy, addDoc, deleteDoc, doc, where } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, addDoc, deleteDoc, doc, where, onSnapshot, Timestamp } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { Plus, ArrowUpCircle, ArrowDownCircle, Filter, X, Trash2, Wallet, Download, FileSpreadsheet, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface ArusKas {
   id: string;
-  tanggal: string;
+  tanggal: Date; // Mengubah tipe dari string ke Date
   cabang: string;
   nomenklatur: string;
   keterangan: string; // Kegiatan
@@ -93,29 +93,46 @@ export default function ArusKasPage() {
     fetchMasterData();
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const q = query(collection(db, "arus_kas"), orderBy("tanggal", "asc"));
-      const querySnapshot = await getDocs(q);
-      const data = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as ArusKas[];
-      setDataList(data);
-    } catch (error) {
-      console.error("Error fetching arus kas:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchData();
+    setLoading(true);
+    const q = query(collection(db, "arus_kas"), orderBy("tanggal", "desc"));
+
+    // Menggunakan onSnapshot untuk pembaruan real-time
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const data: ArusKas[] = [];
+      querySnapshot.forEach((doc) => {
+        const docData = doc.data();
+        // Konversi Timestamp atau string ke objek Date
+        const tanggal = docData.tanggal instanceof Timestamp 
+          ? docData.tanggal.toDate() 
+          : new Date(docData.tanggal);
+
+        data.push({
+          id: doc.id,
+          ...docData,
+          tanggal: tanggal,
+        } as ArusKas);
+      });
+      setDataList(data);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching real-time data:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe(); // Berhenti mendengarkan saat komponen unmount
   }, []);
 
   const filteredData = dataList.filter((item) => {
-    const matchDate = (!startDate || item.tanggal >= startDate) && (!endDate || item.tanggal <= endDate);
+    // Konversi string tanggal dari filter menjadi objek Date untuk perbandingan yang akurat
+    const sDate = startDate ? new Date(startDate) : null;
+    const eDate = endDate ? new Date(endDate) : null;
+
+    // Set jam untuk memastikan perbandingan inklusif
+    if (sDate) sDate.setHours(0, 0, 0, 0);
+    if (eDate) eDate.setHours(23, 59, 59, 999);
+
+    const matchDate = (!sDate || item.tanggal >= sDate) && (!eDate || item.tanggal <= eDate);
     const matchCabang = filterCabang ? item.cabang === filterCabang : true;
     const matchNomenklatur = filterNomenklatur ? item.nomenklatur === filterNomenklatur : true;
 
@@ -123,7 +140,7 @@ export default function ArusKasPage() {
   });
 
   // Pagination Logic
-  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfLastItem = currentPage * itemsPerPage; 
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredData.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
@@ -159,13 +176,17 @@ export default function ArusKasPage() {
     setSubmitting(true);
     try {
       await addDoc(collection(db, "arus_kas"), {
-        ...formData,
+        cabang: formData.cabang,
+        nomenklatur: formData.nomenklatur,
+        keterangan: formData.keterangan,
+        nominal: formData.nominal,
         jenis: modalType,
+        tanggal: Timestamp.fromDate(new Date(formData.tanggal)), // Konversi string ke Timestamp
         createdAt: new Date(),
       });
       alert("Data berhasil disimpan!");
       setIsModalOpen(false);
-      fetchData();
+      // Tidak perlu fetchData() lagi karena onSnapshot sudah menangani pembaruan
     } catch (error) {
       console.error("Error saving arus kas:", error);
       alert("Gagal menyimpan data.");
@@ -178,7 +199,7 @@ export default function ArusKasPage() {
     if(confirm("Yakin ingin menghapus data ini?")) {
       try {
         await deleteDoc(doc(db, "arus_kas", id));
-        fetchData();
+        // Tidak perlu fetchData() lagi
       } catch (error) {
         console.error("Error deleting:", error);
       }
@@ -191,7 +212,7 @@ export default function ArusKasPage() {
       const XLSX = await import("xlsx");
 
       const dataToExport = filteredData.map(item => ({
-        Tanggal: item.tanggal,
+        Tanggal: formatDate(item.tanggal),
         Cabang: item.cabang,
         Keterangan: item.keterangan,
         Nomenklatur: item.nomenklatur,
@@ -231,7 +252,7 @@ export default function ArusKasPage() {
       // Table
       const tableColumn = ["Tanggal", "Cabang", "Keterangan", "Nomenklatur", "Jenis", "Nominal"];
       const tableRows = filteredData.map(item => [
-        item.tanggal,
+        formatDate(item.tanggal),
         item.cabang,
         item.keterangan,
         item.nomenklatur,
@@ -371,7 +392,7 @@ export default function ArusKasPage() {
             ) : (
               currentItems.map((item) => (
                 <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="p-4">{item.tanggal}</td>
+                  <td className="p-4">{formatDate(item.tanggal)}</td>
                   <td className="p-4">{item.cabang}</td>
                   <td className="p-4">
                     <div className="font-medium text-gray-900">{item.keterangan}</div>
