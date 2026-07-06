@@ -198,6 +198,16 @@ export default function AdminLayout({
         { name: "Pelamar", href: "/admin/rekrutmen/pelamar", roles: ["Admin", "Direktur", "Yayasan", "Kepala Sekolah"] },
       ]
     },
+    { 
+      name: "Pendaftaran", 
+      href: "#",
+      roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"],
+      submenu: [
+        { name: "Trial Class", href: "/admin/pendaftaran/trial-class", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
+        { name: "Siswa Baru", href: "/admin/pendaftaran/siswa-baru", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
+        { name: "Lokasi Program", href: "/admin/pendaftaran/lokasi-program", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
+      ]
+    },
   ];
 
   // Filter menu items based on user's role
