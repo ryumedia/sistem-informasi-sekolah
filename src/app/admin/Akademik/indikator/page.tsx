@@ -18,6 +18,7 @@ import { Plus, Pencil, Trash2, X, Loader2, ListPlus } from "lucide-react";
 interface IndikatorGroup {
   id: string;
   nama: string;
+  jenjang: string;
 }
 
 interface SubIndikator {
@@ -34,12 +35,17 @@ interface Periode {
   isDefault?: boolean;
 }
 
+interface Jenjang {
+  id: string;
+  nama: string;
+}
+
 export default function IndikatorPage() {
   // State untuk Parent (Indikator Group)
   const [groups, setGroups] = useState<IndikatorGroup[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
-  const [groupFormData, setGroupFormData] = useState({ nama: "" });
+  const [groupFormData, setGroupFormData] = useState({ nama: "", jenjang: "" });
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [isSubmittingGroup, setIsSubmittingGroup] = useState(false);
 
@@ -56,6 +62,9 @@ export default function IndikatorPage() {
   const [periodeList, setPeriodeList] = useState<Periode[]>([]);
   const [selectedPeriode, setSelectedPeriode] = useState<string>('');
   const [periodeMap, setPeriodeMap] = useState<Map<string, string>>(new Map());
+
+  // State untuk Jenjang
+  const [jenjangList, setJenjangList] = useState<Jenjang[]>([]);
 
   useEffect(() => {
     const fetchPeriode = async () => {
@@ -76,7 +85,20 @@ export default function IndikatorPage() {
       }
     };
     fetchPeriode();
+    fetchJenjang();
   }, []);
+
+  const fetchJenjang = async () => {
+    try {
+      const q = query(collection(db, "jenjang_kelas"), orderBy("nama", "asc"));
+      const querySnapshot = await getDocs(q);
+      const items: Jenjang[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Jenjang));
+      setJenjangList(items);
+    } catch (error) {
+      console.error("Error fetching jenjang:", error);
+    }
+  };
+
 
   // --- Functions untuk Parent ---
 
@@ -116,7 +138,7 @@ export default function IndikatorPage() {
         alert("Indikator berhasil ditambahkan!");
       }
       setIsGroupModalOpen(false);
-      setGroupFormData({ nama: "" });
+      setGroupFormData({ nama: "", jenjang: "" });
       setEditingGroupId(null);
       fetchGroups();
     } catch (error) {
@@ -142,10 +164,10 @@ export default function IndikatorPage() {
   const openGroupModal = (item?: IndikatorGroup) => {
     if (item) {
       setEditingGroupId(item.id);
-      setGroupFormData({ nama: item.nama });
+      setGroupFormData({ nama: item.nama, jenjang: item.jenjang });
     } else {
       setEditingGroupId(null);
-      setGroupFormData({ nama: "" });
+      setGroupFormData({ nama: "", jenjang: "" });
     }
     setIsGroupModalOpen(true);
   };
@@ -248,6 +270,7 @@ export default function IndikatorPage() {
               <tr>
                 <th className="p-4 w-16">No</th>
                 <th className="p-4">Indikator</th>
+                <th className="p-4">Jenjang</th>
                 <th className="p-4 w-48">Aksi</th>
               </tr>
             </thead>
@@ -260,7 +283,7 @@ export default function IndikatorPage() {
                 </tr>
               ) : groups.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="p-8 text-center">
+                  <td colSpan={4} className="p-8 text-center">
                     Belum ada data indikator.
                   </td>
                 </tr>
@@ -269,6 +292,7 @@ export default function IndikatorPage() {
                   <tr key={item.id} className="hover:bg-gray-50">
                     <td className="p-4 text-center">{index + 1}</td>
                     <td className="p-4 font-medium text-gray-900">{item.nama}</td>
+                    <td className="p-4">{item.jenjang}</td>
                     <td className="p-4 flex gap-2">
                       <button
                         onClick={() => openGroupModal(item)}
@@ -326,13 +350,27 @@ export default function IndikatorPage() {
                   className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   placeholder="Contoh: Nilai Agama dan Moral"
                   value={groupFormData.nama}
-                  onChange={(e) => setGroupFormData({ ...groupFormData, nama: e.target.value })}
+                  onChange={(e) => setGroupFormData(prev => ({ ...prev, nama: e.target.value }))}
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Jenjang
+                </label>
+                <select
+                  required
+                  className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900 bg-white"
+                  value={groupFormData.jenjang}
+                  onChange={(e) => setGroupFormData(prev => ({ ...prev, jenjang: e.target.value }))}
+                >
+                  <option value="">Pilih Jenjang</option>
+                  {jenjangList.map(j => <option key={j.id} value={j.nama}>{j.nama}</option>)}
+                </select>
               </div>
               <button
                 disabled={isSubmittingGroup}
                 type="submit"
-                className="w-full bg-[#581c87] text-white py-2 rounded-lg hover:bg-[#45156b] transition font-medium mt-2 disabled:opacity-50"
+                className="w-full bg-[#581c87] text-white py-2 rounded-lg hover:bg-[#45156b] transition font-medium disabled:opacity-50"
               >
                 {isSubmittingGroup ? "Menyimpan..." : "Simpan"}
               </button>
