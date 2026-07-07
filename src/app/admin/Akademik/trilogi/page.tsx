@@ -23,7 +23,7 @@ interface TrilogiGroup {
 interface SubTrilogi {
   id: string;
   groupId: string;
-  jenjangKelas: string;
+  kelompokUsia: string;
   habit: string;
   deskripsi: string;
   periode: string;
@@ -43,7 +43,7 @@ export default function TrilogiMainriangPage() {
   const [groupFormData, setGroupFormData] = useState({ nama: "" });
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [isSubmittingGroup, setIsSubmittingGroup] = useState(false);
-  const [jenjangList, setJenjangList] = useState<any[]>([]);
+  const [usiaList, setUsiaList] = useState<any[]>([]);
   const [habitList, setHabitList] = useState<any[]>([]);
 
   // State untuk Child (Sub Trilogi)
@@ -51,7 +51,7 @@ export default function TrilogiMainriangPage() {
   const [subTrilogiList, setSubTrilogiList] = useState<SubTrilogi[]>([]);
   const [loadingSubs, setLoadingSubs] = useState(false);
   const [isSubModalOpen, setIsSubModalOpen] = useState(false);
-  const [subFormData, setSubFormData] = useState({ jenjangKelas: "", habit: "", deskripsi: "", periode: "" });
+  const [subFormData, setSubFormData] = useState({ kelompokUsia: "", habit: "", deskripsi: "", periode: "" });
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [isSubmittingSub, setIsSubmittingSub] = useState(false);
 
@@ -107,10 +107,10 @@ export default function TrilogiMainriangPage() {
 
   const fetchMasterData = async () => {
     try {
-      // Fetch Jenjang Kelas
-      const qJenjang = query(collection(db, "jenjang_kelas"), orderBy("nama", "asc"));
-      const snapJenjang = await getDocs(qJenjang);
-      setJenjangList(snapJenjang.docs.map(d => ({ id: d.id, ...d.data() })));
+      // Fetch Kelompok Usia
+      const qUsia = query(collection(db, "kelompok_usia"), orderBy("usia", "asc"));
+      const snapUsia = await getDocs(qUsia);
+      setUsiaList(snapUsia.docs.map(d => ({ id: d.id, ...d.data() })));
 
       // Fetch 7 Habits
       const qHabits = query(collection(db, "seven_habits"), orderBy("nama", "asc"));
@@ -175,7 +175,7 @@ export default function TrilogiMainriangPage() {
   const openSubModal = async (group: TrilogiGroup) => {
     setSelectedGroup(group);
     setIsSubModalOpen(true);
-    setSubFormData({ jenjangKelas: "", habit: "", deskripsi: "", periode: selectedPeriode });
+    setSubFormData({ kelompokUsia: "", habit: "", deskripsi: "", periode: selectedPeriode });
     setEditingSubId(null);
     await fetchSubTrilogi(group.id);
   };
@@ -192,8 +192,8 @@ export default function TrilogiMainriangPage() {
       querySnapshot.forEach((doc) => {
         items.push({ id: doc.id, ...doc.data() } as SubTrilogi);
       });
-      // Sort manual by jenjangKelas
-      items.sort((a, b) => (a.jenjangKelas || "").localeCompare(b.jenjangKelas || ""));
+      // Sort manual by kelompokUsia
+      items.sort((a, b) => (a.kelompokUsia || "").localeCompare(b.kelompokUsia || ""));
       setSubTrilogiList(items);
     } catch (error) {
       console.error("Error fetching sub trilogi:", error);
@@ -221,7 +221,7 @@ export default function TrilogiMainriangPage() {
         });
         alert("Sub Trilogi berhasil ditambahkan!");
       }
-      setSubFormData({ jenjangKelas: "", habit: "", deskripsi: "", periode: selectedPeriode });
+      setSubFormData({ kelompokUsia: "", habit: "", deskripsi: "", periode: selectedPeriode });
       setEditingSubId(null);
       fetchSubTrilogi(selectedGroup.id);
     } catch (error) {
@@ -234,7 +234,7 @@ export default function TrilogiMainriangPage() {
 
   const handleEditSub = (item: SubTrilogi) => {
     setEditingSubId(item.id);
-    setSubFormData({ jenjangKelas: item.jenjangKelas, habit: item.habit, deskripsi: item.deskripsi, periode: item.periode || selectedPeriode });
+    setSubFormData({ kelompokUsia: item.kelompokUsia, habit: item.habit, deskripsi: item.deskripsi, periode: item.periode || selectedPeriode });
   };
 
   const handleDeleteSub = async (id: string) => {
@@ -387,19 +387,19 @@ export default function TrilogiMainriangPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Jenjang Kelas
+                        Kelompok Usia
                       </label>
                       <select
                         required
                         className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                        value={subFormData.jenjangKelas}
+                        value={subFormData.kelompokUsia}
                         onChange={(e) =>
-                          setSubFormData({ ...subFormData, jenjangKelas: e.target.value })
+                          setSubFormData({ ...subFormData, kelompokUsia: e.target.value })
                         }
                       >
-                        <option value="">Pilih Jenjang</option>
-                        {jenjangList.map((j) => (
-                          <option key={j.id} value={j.nama}>{j.nama}</option>
+                        <option value="">Pilih Usia</option>
+                        {usiaList.map((u) => (
+                          <option key={u.id} value={u.usia}>{u.usia}</option>
                         ))}
                       </select>
                     </div>
@@ -460,7 +460,7 @@ export default function TrilogiMainriangPage() {
                         type="button"
                         onClick={() => {
                           setEditingSubId(null);
-                          setSubFormData({ jenjangKelas: "", habit: "", deskripsi: "", periode: selectedPeriode });
+                          setSubFormData({ kelompokUsia: "", habit: "", deskripsi: "", periode: selectedPeriode });
                         }}
                         className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
                       >
@@ -484,7 +484,7 @@ export default function TrilogiMainriangPage() {
                   <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
                     <tr>
                       <th className="p-3 w-12 text-center">No</th>
-                      <th className="p-3 w-32">Jenjang</th>
+                      <th className="p-3 w-32">Usia</th>
                       <th className="p-3 w-48">Habit</th>
                       <th className="p-3">Deskripsi</th>
                       <th className="p-3 w-40">Semester</th>
@@ -510,7 +510,7 @@ export default function TrilogiMainriangPage() {
                         return (
                           <tr key={item.id} className="hover:bg-gray-50">
                             <td className="p-3 text-center">{index + 1}</td>
-                            <td className="p-3 font-medium">{item.jenjangKelas}</td>
+                            <td className="p-3 font-medium">{item.kelompokUsia}</td>
                             <td className="p-3 text-gray-600 text-xs">{item.habit}</td>
                             <td className="p-3">{item.deskripsi}</td>
                             <td className="p-3">{periodeMap.get(item.periode) || 'N/A'}</td>

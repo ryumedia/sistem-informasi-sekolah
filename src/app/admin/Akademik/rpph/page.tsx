@@ -43,6 +43,7 @@ interface RPPH {
   deskripsi: string;
   jenjangKelas: string;
   kelompokUsia: string;
+  periodeId?: string;
   tahapPerkembangan: string[]; // Array of IDs or Strings
   indikator: string[];
   trilogi: string[];
@@ -66,6 +67,7 @@ export default function RPPHPage() {
   const [tahapList, setTahapList] = useState<DataMaster[]>([]); // Filtered by Usia
   const [indikatorList, setIndikatorList] = useState<DataMaster[]>([]);
   const [trilogiList, setTrilogiList] = useState<DataMaster[]>([]);
+  const [periodeList, setPeriodeList] = useState<DataMaster[]>([]);
 
   // --- Filter State ---
   const currentYear = new Date().getFullYear();
@@ -78,6 +80,7 @@ export default function RPPHPage() {
   const [filterTahun, setFilterTahun] = useState<string>(currentYear.toString());
   const [filterBulan, setFilterBulan] = useState<string>("");
   const [filterJenjang, setFilterJenjang] = useState<string>("");
+  const [filterUsia, setFilterUsia] = useState<string>("");
 
   // --- State Modal & Form ---
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -95,6 +98,7 @@ export default function RPPHPage() {
     jenjangKelas: "",
     kelompokUsiaId: "", // ID untuk filter
     kelompokUsia: "", // Nama untuk display
+    periodeId: "",
     tahapPerkembangan: [] as string[],
     indikator: [] as string[],
     trilogi: [] as string[],
@@ -102,6 +106,7 @@ export default function RPPHPage() {
 
   const [formData, setFormData] = useState(initialFormState);
 
+  const periodeMap = new Map(periodeList.map(p => [p.id, p.namaPeriode]));
   // --- Fetch Data ---
 
   const fetchRPPH = async () => {
@@ -131,9 +136,25 @@ export default function RPPHPage() {
       const usiaSnap = await getDocs(query(collection(db, "kelompok_usia"), orderBy("usia", "asc")));
       setUsiaList(usiaSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
 
-      // Indikator (Sub)
-      const indikatorSnap = await getDocs(collection(db, "sub_indikators"));
-      const indikatorData = indikatorSnap.docs.map((d) => ({ id: d.id, ...d.data() } as DataMaster));
+      // Periode (Semester)
+      const periodeSnap = await getDocs(query(collection(db, "kpi_periode"), orderBy("namaPeriode", "asc")));
+      setPeriodeList(periodeSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+
+      // --- Fetch Indikator dengan Jenjang (Corrected Logic) ---
+      // 1. Ambil semua Indikator Group untuk mendapatkan mapping jenjang
+      const groupSnap = await getDocs(collection(db, "indikator_groups"));
+      const groupJenjangMap = new Map(groupSnap.docs.map(doc => [doc.id, doc.data().jenjang]));
+
+      // 2. Ambil semua Sub Indikator
+      const subIndikatorSnap = await getDocs(collection(db, "sub_indikators"));
+      
+      // 3. Gabungkan data: tambahkan properti 'jenjang' ke setiap sub-indikator
+      const indikatorData = subIndikatorSnap.docs.map((d) => {
+        const subIndikator = { id: d.id, ...d.data() } as DataMaster;
+        subIndikator.jenjang = groupJenjangMap.get(subIndikator.groupId) || "N/A"; // Ambil jenjang dari map
+        return subIndikator;
+      });
+
       // Sort natural (numeric: true) agar 1.1, 1.2, ... 1.10, 2.1 urut benar
       indikatorData.sort((a, b) => 
         (a.kode || "").localeCompare(b.kode || "", undefined, { numeric: true })
@@ -154,10 +175,11 @@ export default function RPPHPage() {
 
   // Fetch Tahap Perkembangan saat Usia dipilih
   useEffect(() => {
-    if (formData.kelompokUsiaId) {
+    if (formData.kelompokUsiaId && formData.periodeId) {
       const fetchTahap = async () => {
         const q = query(
           collection(db, "tahap_perkembangan"),
+          where("periodeId", "==", formData.periodeId),
           where("kelompokUsiaId", "==", formData.kelompokUsiaId)
         );
         const snap = await getDocs(q);
@@ -167,7 +189,7 @@ export default function RPPHPage() {
     } else {
       setTahapList([]);
     }
-  }, [formData.kelompokUsiaId]);
+  }, [formData.kelompokUsiaId, formData.periodeId]);
 
   useEffect(() => {
     fetchRPPH();
@@ -187,65 +209,115 @@ export default function RPPHPage() {
     });
   };
 
-  // Fungsi Mock AI Generator (Bisa diganti dengan call API ke Gemini/OpenAI)
+  // --- FUNGSI GENERATOR AI (MOCK) ---
+  // Fungsi ini dirancang untuk meniru AI yang lebih cerdas.
+  // Di masa depan, Anda bisa mengganti isi fungsi ini dengan panggilan API ke Gemini/OpenAI.
   const generateRPPHContent = (data: typeof formData) => {
-    // Simulasi AI: Membuat konten dinamis berdasarkan input
-    const opening = `1. Berbaris di halaman, ikrar, dan senam irama.\n2. Berdoa sebelum belajar.\n3. Apersepsi tentang ${data.tema} (${data.subTema}).\n4. Diskusi pemantik tentang ${data.materi}.`;
-    
-    const core = `1. Mengamati: Anak mengamati media gambar/video tentang ${data.subTema}.\n2. Menanya: Guru memancing pertanyaan tentang ${data.materi}.\n3. Mengumpulkan Informasi: Anak mengeksplorasi alat dan bahan yang disediakan.\n4. Menalar: Anak mengelompokkan benda sesuai warna/bentuk terkait tema.\n5. Mengkomunikasikan: Anak menceritakan hasil karyanya di depan kelas.`;
-    
-    const closing = `1. Menanyakan perasaan anak hari ini.\n2. Evaluasi kegiatan hari ini.\n3. Menginformasikan kegiatan untuk esok hari.\n4. Berdoa sesudah belajar.`;
-    
-    const tools = `Kertas gambar, krayon/pensil warna, gunting, lem, media gambar ${data.subTema}, alat peraga edukatif.`;
+    // --- Logika Dinamis Berdasarkan Input ---
+    const isTK = data.jenjangKelas.includes("TK");
+    const alokasiWaktu = isTK ? "180 Menit (3 Jam)" : "90 Menit (1,5 Jam)";
+
+    // --- Simulasi AI untuk Konten Dinamis ---
+    const generateAlatBahan = () => {
+      const commonItems = ["Buku cerita sesuai tema", "Spidol papan tulis", "Musik instrumental"];
+      if (data.subTema.toLowerCase().includes("hewan")) return [...commonItems, "Gambar/miniatur hewan", "Balok kayu", "Kertas origami untuk melipat bentuk hewan"].join(", ");
+      if (data.subTema.toLowerCase().includes("tanaman")) return [...commonItems, "Daun kering", "Biji-bijian", "Kertas gambar", "Lem dan gunting", "Tanaman asli dalam pot kecil"].join(", ");
+      if (data.subTema.toLowerCase().includes("langit")) return [...commonItems, "Kapas sebagai awan", "Kertas warna biru dan hitam", "Lem", "Gunting", "Gambar planet dan bintang"].join(", ");
+      return [...commonItems, `Alat peraga terkait ${data.subTema}`, "Krayon", "Kertas HVS", "Balok"].join(", ");
+    };
+
+    const generateKegiatan = (tahap: string) => {
+      const tema = data.tema.toLowerCase();
+      const subTema = data.subTema.toLowerCase();
+      switch(tahap) {
+        case "pembukaan": return `• Penyambutan anak dengan senyum dan sapaan hangat.\n• Freeplay: Anak memilih mainan yang sudah disiapkan sesuai minat.\n• Circle Time: Berdoa, salam, absensi, diskusi tentang cuaca dan hari, lalu perkenalan dengan tema '${data.tema}'.`;
+        case "rutinitas_islami": return isTK ? `• Sholat Dhuha berjamaah.\n• Menghafal surat pendek atau doa harian yang relevan dengan ${tema}.\n• Kisah singkat Nabi atau Sahabat.` : "";
+        case "inti_awal": return `• Guru membacakan buku cerita yang berkaitan dengan ${subTema}.\n• Sesi tanya jawab untuk memancing rasa ingin tahu anak tentang ${data.materi}.`;
+        case "inti_utama": return `• Kegiatan sentra seni: Anak membuat karya kreatif tentang ${subTema} (misal: kolase, melukis, membentuk plastisin).\n• Kegiatan sentra balok: Anak membangun bentuk yang berhubungan dengan ${tema}.\n• Guru melakukan observasi dan memberikan scaffolding sesuai kebutuhan anak.`;
+        case "istirahat": return `• Cuci tangan sebelum dan sesudah makan.\n• Doa bersama sebelum makan.\n• Snack time: Anak menikmati bekal dengan tenang.\n• Freeplay di dalam atau luar ruangan (tergantung cuaca).`;
+        case "penutup": return `• Recalling: Mengingat kembali kegiatan yang sudah dilakukan hari ini.\n• Refleksi: Menanyakan perasaan dan bagian favorit anak dari kegiatan hari ini.\n• Menyanyikan lagu perpisahan dan doa penutup.\n• Pesan untuk kegiatan esok hari.`;
+        default: return "";
+      }
+    };
+
+    const generateGoldenRule = () => {
+      if (isTK) return `Saat transisi dari Sholat Dhuha ke kegiatan inti, berikan instruksi yang jelas dan bertahap (misal: "Lipat mukena, simpan di loker, lalu kita duduk di karpet merah"). Hal ini melatih kemandirian dan keteraturan (order) yang menjadi inti dari metode Montessori.`;
+      return `Fokus pada proses, bukan hasil. Berikan pujian atas usaha anak ("Wah, kamu sabar sekali menempel daunnya!") daripada hanya memuji hasilnya ("Gambarmu bagus"). Ini membangun growth mindset pada anak.`;
+    };
+
+    const kegiatanPembukaan = generateKegiatan("pembukaan");
+    const kegiatanRutinitas = generateKegiatan("rutinitas_islami");
+    const kegiatanIntiAwal = generateKegiatan("inti_awal");
+    const kegiatanIntiUtama = generateKegiatan("inti_utama");
+    const kegiatanIstirahat = generateKegiatan("istirahat");
+    const kegiatanPenutup = generateKegiatan("penutup");
 
     return `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <h2 style="text-align: center; margin-bottom: 20px; text-transform: uppercase;">Rencana Pelaksanaan Pembelajaran Harian (RPPH)</h2>
+        <div style="text-align: center; margin-bottom: 25px;">
+          <h2 style="margin: 0; text-transform: uppercase; font-size: 1.2em;">Rencana Pelaksanaan Pembelajaran Harian (RPPH)</h2>
+          <h3 style="margin: 0; text-transform: uppercase; font-size: 1.1em; color: #555;">Main Riang Islamic Preschool</h3>
+        </div>
         
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
-          <tr><td style="width: 150px; font-weight: bold;">Hari/Tanggal</td><td>: ${new Date(data.tanggal).toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</td></tr>
-          <tr><td style="font-weight: bold;">Kelompok Usia</td><td>: ${data.kelompokUsia}</td></tr>
-          <tr><td style="font-weight: bold;">Tema / Sub Tema</td><td>: ${data.tema} / ${data.subTema} (${data.jenjangKelas})</td></tr>
-          <tr><td style="font-weight: bold;">Materi</td><td>: ${data.materi}</td></tr>
+          <tbody style="vertical-align: top;">
+            <tr><td style="width: 150px; font-weight: bold;">Kelompok Usia</td><td>: ${data.kelompokUsia}</td></tr>
+            <tr><td style="font-weight: bold;">Jenjang Kelas</td><td>: ${data.jenjangKelas}</td></tr>
+            <tr><td style="font-weight: bold;">Alokasi Waktu</td><td>: ${alokasiWaktu}</td></tr>
+            <tr><td style="font-weight: bold;">Tema / Subtema</td><td>: ${data.tema} / ${data.subTema}</td></tr>
+            <tr><td style="font-weight: bold;">Materi Hari Ini</td><td>: ${data.materi}</td></tr>
+          </tbody>
         </table>
 
-        <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">A. Deskripsi Kegiatan</h3>
-        <p style="text-align: justify;">${data.deskripsi}</p>
+        <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 25px;">B. Target & Indikator Keberhasilan</h3>
+        <div style="padding-left: 15px;">
+          <h4 style="margin-bottom: 5px; color: #444;">Tahap Perkembangan (STPPA):</h4>
+          <ul style="margin-top: 0; padding-left: 20px;">${data.tahapPerkembangan.map(i => `<li>${i}</li>`).join("") || "<li>-</li>"}</ul>
+          <h4 style="margin-bottom: 5px; color: #444;">Indikator Pembelajaran:</h4>
+          <ul style="margin-top: 0; padding-left: 20px;">${data.indikator.map(i => `<li>${i}</li>`).join("") || "<li>-</li>"}</ul>
+          <h4 style="margin-bottom: 5px; color: #444;">Trilogi Main Riang:</h4>
+          <ul style="margin-top: 0; padding-left: 20px;">${data.trilogi.map(i => `<li>${i}</li>`).join("") || "<li>-</li>"}</ul>
+        </div>
 
-        <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 20px;">B. Tujuan & Indikator Pembelajaran</h3>
-        <ul>
-          ${data.indikator.map(i => `<li>${i}</li>`).join("")}
-        </ul>
+        <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 25px;">C. Alat dan Bahan (Preparation List)</h3>
+        <p>${generateAlatBahan()}</p>
 
-        <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 20px;">C. Alat dan Bahan</h3>
-        <p>${tools}</p>
+        <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 25px;">D. Struktur & Langkah Kegiatan (${alokasiWaktu})</h3>
+        <div style="padding-left: 15px;">
+          <h4 style="margin-bottom: 5px; color: #444;">Pembukaan: Kedatangan, Freeplay & Circle Time</h4>
+          <div style="white-space: pre-line; margin-bottom: 15px; padding-left: 20px;">${kegiatanPembukaan}</div>
 
-        <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 20px;">D. Kegiatan Pembelajaran</h3>
+          ${isTK ? `
+          <h4 style="margin-bottom: 5px; color: #444;">Rutinitas Islami:</h4>
+          <div style="white-space: pre-line; margin-bottom: 15px; padding-left: 20px;">${kegiatanRutinitas}</div>
+          ` : ''}
+
+          <h4 style="margin-bottom: 5px; color: #444;">Inti Awal:</h4>
+          <div style="white-space: pre-line; margin-bottom: 15px; padding-left: 20px;">${kegiatanIntiAwal}</div>
+
+          <h4 style="margin-bottom: 5px; color: #444;">Inti Utama:</h4>
+          <div style="white-space: pre-line; margin-bottom: 15px; padding-left: 20px;">${kegiatanIntiUtama}</div>
+
+          <h4 style="margin-bottom: 5px; color: #444;">Istirahat & Snack Time:</h4>
+          <div style="white-space: pre-line; margin-bottom: 15px; padding-left: 20px;">${kegiatanIstirahat}</div>
+
+          <h4 style="margin-bottom: 5px; color: #444;">Penutup:</h4>
+          <div style="white-space: pre-line; margin-bottom: 15px; padding-left: 20px;">${kegiatanPenutup}</div>
+        </div>
         
-        <h4 style="margin-bottom: 5px; color: #444;">1. Kegiatan Pembukaan (+/- 30 Menit)</h4>
-        <div style="white-space: pre-line; margin-bottom: 15px; margin-left: 15px;">${opening}</div>
-
-        <h4 style="margin-bottom: 5px; color: #444;">2. Kegiatan Inti (+/- 60 Menit)</h4>
-        <div style="white-space: pre-line; margin-bottom: 15px; margin-left: 15px;">${core}</div>
-
-        <h4 style="margin-bottom: 5px; color: #444;">3. Kegiatan Penutup (+/- 30 Menit)</h4>
-        <div style="white-space: pre-line; margin-bottom: 15px; margin-left: 15px;">${closing}</div>
-
-        <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 20px;">E. Nilai Khas Sekolah (Trilogi)</h3>
-        <ul>
-          ${data.trilogi.map(t => `<li>${t}</li>`).join("")}
-        </ul>
+        <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 25px;">E. Golden Rule Guru</h3>
+        <p style="font-style: italic;">${generateGoldenRule()}</p>
 
         <div style="margin-top: 50px; display: flex; justify-content: space-between; page-break-inside: avoid;">
           <div style="text-align: center; width: 40%;">
             <p>Mengetahui,<br/>Kepala Sekolah</p>
             <br/><br/><br/><br/>
-            <p>( ........................... )</p>
+            <p style="border-bottom: 1px solid #999; padding-bottom: 2px;">( ........................... )</p>
           </div>
           <div style="text-align: center; width: 40%;">
             <p>Guru Kelas</p>
             <br/><br/><br/><br/>
-            <p>( ........................... )</p>
+            <p style="border-bottom: 1px solid #999; padding-bottom: 2px;">( ........................... )</p>
           </div>
         </div>
       </div>
@@ -329,6 +401,7 @@ export default function RPPHPage() {
       jenjangKelas: item.jenjangKelas,
       kelompokUsia: item.kelompokUsia,
       kelompokUsiaId: selectedUsia ? selectedUsia.id : "",
+      periodeId: item.periodeId || "",
       tahapPerkembangan: item.tahapPerkembangan,
       indikator: item.indikator,
       trilogi: item.trilogi,
@@ -373,8 +446,9 @@ export default function RPPHPage() {
     const matchTahun = filterTahun ? year === filterTahun : true;
     const matchBulan = filterBulan ? month === filterBulan : true;
     const matchJenjang = filterJenjang ? item.jenjangKelas === filterJenjang : true;
+    const matchUsia = filterUsia ? item.kelompokUsia === filterUsia : true;
 
-    return matchTahun && matchBulan && matchJenjang;
+    return matchTahun && matchBulan && matchJenjang && matchUsia;
   });
 
   return (
@@ -435,6 +509,17 @@ export default function RPPHPage() {
             <option key={j.id} value={j.nama}>{j.nama}</option>
           ))}
         </select>
+        
+        <select
+          className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
+          value={filterUsia}
+          onChange={(e) => setFilterUsia(e.target.value)}
+        >
+          <option value="">Semua Usia</option>
+          {usiaList.map((u) => (
+            <option key={u.id} value={u.usia}>{u.usia}</option>
+          ))}
+        </select>
       </div>
 
       {/* Table List */}
@@ -447,25 +532,27 @@ export default function RPPHPage() {
                 <th className="p-4">Tanggal</th>
                 <th className="p-4">Tema / Sub Tema</th>
                 <th className="p-4">Jenjang Kelas</th>
+                <th className="p-4">Semester</th>
+                <th className="p-4">Kelompok Usia</th>
                 <th className="p-4 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center">
+                  <td colSpan={7} className="p-8 text-center">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" />
                   </td>
                 </tr>
               ) : rpphList.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-gray-500">
+                  <td colSpan={7} className="p-8 text-center text-gray-500">
                     Belum ada dokumen RPPH. Klik "Buat RPPH Baru" untuk memulai.
                   </td>
                 </tr>
               ) : filteredRPPH.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-gray-500">
+                  <td colSpan={7} className="p-8 text-center text-gray-500">
                     Tidak ada data yang sesuai filter.
                   </td>
                 </tr>
@@ -479,6 +566,8 @@ export default function RPPHPage() {
                       <div className="text-xs text-gray-500">{item.subTema}</div>
                     </td>
                     <td className="p-4">{item.jenjangKelas}</td>
+                    <td className="p-4">{periodeList.find(p => p.id === item.periodeId)?.namaPeriode || '-'}</td>
+                    <td className="p-4">{item.kelompokUsia}</td>
                     <td className="p-4 flex justify-center gap-2">
                       <button
                         onClick={() => handlePrint(item.content)}
@@ -526,7 +615,7 @@ export default function RPPHPage() {
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto">
               {/* Baris 1 */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Tanggal Kegiatan</label>
                   <input
@@ -571,6 +660,18 @@ export default function RPPHPage() {
                     {usiaList.map((u) => (
                       <option key={u.id} value={u.id}>{u.usia}</option>
                     ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Semester</label>
+                  <select
+                    required
+                    className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-[#581c87] outline-none"
+                    value={formData.periodeId}
+                    onChange={(e) => setFormData({ ...formData, periodeId: e.target.value, tahapPerkembangan: [] })}
+                  >
+                    <option value="">Pilih Semester</option>
+                    {periodeList.map((p) => <option key={p.id} value={p.id}>{p.namaPeriode}</option>)}
                   </select>
                 </div>
               </div>
@@ -631,8 +732,8 @@ export default function RPPHPage() {
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-gray-800">Tahap Perkembangan (STPPA)</label>
                   <div className="h-40 overflow-y-auto border rounded-lg p-2 bg-gray-50 text-sm">
-                    {tahapList.length === 0 ? (
-                      <p className="text-xs text-gray-400 italic p-2">Pilih Kelompok Usia terlebih dahulu.</p>
+                    {!formData.kelompokUsiaId || !formData.periodeId ? (
+                      <p className="text-xs text-gray-400 italic p-2">Pilih Kelompok Usia & Semester.</p>
                     ) : (
                       tahapList.map((item) => (
                         <div key={item.id} className="flex items-start gap-2 mb-2 cursor-pointer" onClick={() => handleMultiSelect("tahapPerkembangan", item.deskripsi)}>
@@ -652,16 +753,24 @@ export default function RPPHPage() {
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-gray-800">Indikator Pembelajaran</label>
                   <div className="h-40 overflow-y-auto border rounded-lg p-2 bg-gray-50 text-sm">
-                    {indikatorList.map((item) => (
-                      <div key={item.id} className="flex items-start gap-2 mb-2 cursor-pointer" onClick={() => handleMultiSelect("indikator", item.deskripsi)}>
-                        {formData.indikator.includes(item.deskripsi) ? (
-                          <CheckSquare className="w-4 h-4 text-[#581c87] mt-0.5 shrink-0" />
-                        ) : (
-                          <Square className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" />
-                        )}
-                        <span className="text-xs text-gray-700">{item.kode} - {item.deskripsi}</span>
-                      </div>
-                    ))}
+                    {!formData.jenjangKelas || !formData.periodeId ? (
+                      <p className="text-xs text-gray-400 italic p-2">Pilih Jenjang & Semester.</p>
+                    ) : (
+                      indikatorList
+                        .filter((item) => item.jenjang === formData.jenjangKelas)
+                        .filter((item) => item.periode === formData.periodeId)
+                        .map((item) => (
+                          <div key={item.id} className="flex items-start gap-2 mb-2 cursor-pointer" onClick={() => handleMultiSelect("indikator", item.deskripsi)}>
+                            {formData.indikator.includes(item.deskripsi) ? (
+                              <CheckSquare className="w-4 h-4 text-[#581c87] mt-0.5 shrink-0" />
+                            ) : (
+                              <Square className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" />
+                            )}
+                            <span className="text-xs text-gray-700">{item.kode} - {item.deskripsi}</span>
+                          </div>
+                        )
+                      )
+                    )}
                   </div>
                 </div>
 
@@ -669,11 +778,12 @@ export default function RPPHPage() {
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-gray-800">Trilogi Mainriang</label>
                   <div className="h-40 overflow-y-auto border rounded-lg p-2 bg-gray-50 text-sm">
-                    {!formData.jenjangKelas ? (
-                      <p className="text-xs text-gray-400 italic p-2">Pilih Jenjang Kelas terlebih dahulu.</p>
+                    {!formData.kelompokUsia || !formData.periodeId ? (
+                      <p className="text-xs text-gray-400 italic p-2">Pilih Kelompok Usia & Semester.</p>
                     ) : (
                       trilogiList
-                        .filter((item) => item.jenjangKelas === formData.jenjangKelas)
+                        .filter((item) => item.kelompokUsia === formData.kelompokUsia)
+                        .filter((item) => item.periode === formData.periodeId)
                         .map((item) => {
                           const valueToStore = `${item.habit} - ${item.deskripsi}`;
                           return (
