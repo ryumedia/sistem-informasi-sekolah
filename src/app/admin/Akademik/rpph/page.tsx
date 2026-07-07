@@ -168,29 +168,16 @@ export default function RPPHPage() {
         (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true })
       );
       setTrilogiList(trilogiData);
+
+      // Tahap Perkembangan (ambil semua, filter di client)
+      const tahapSnap = await getDocs(query(collection(db, "tahap_perkembangan"), orderBy("lingkup", "asc")));
+      setTahapList(tahapSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     } catch (error) {
       console.error("Error fetching master data:", error);
     }
   };
 
   // Fetch Tahap Perkembangan saat Usia dipilih
-  useEffect(() => {
-    if (formData.kelompokUsiaId && formData.periodeId) {
-      const fetchTahap = async () => {
-        const q = query(
-          collection(db, "tahap_perkembangan"),
-          where("periodeId", "==", formData.periodeId),
-          where("kelompokUsiaId", "==", formData.kelompokUsiaId)
-        );
-        const snap = await getDocs(q);
-        setTahapList(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      };
-      fetchTahap();
-    } else {
-      setTahapList([]);
-    }
-  }, [formData.kelompokUsiaId, formData.periodeId]);
-
   useEffect(() => {
     fetchRPPH();
     fetchDataMaster();
@@ -734,17 +721,18 @@ export default function RPPHPage() {
                   <div className="h-40 overflow-y-auto border rounded-lg p-2 bg-gray-50 text-sm">
                     {!formData.kelompokUsiaId || !formData.periodeId ? (
                       <p className="text-xs text-gray-400 italic p-2">Pilih Kelompok Usia & Semester.</p>
-                    ) : (
-                      tahapList.map((item) => (
-                        <div key={item.id} className="flex items-start gap-2 mb-2 cursor-pointer" onClick={() => handleMultiSelect("tahapPerkembangan", item.deskripsi)}>
-                          {formData.tahapPerkembangan.includes(item.deskripsi) ? (
-                            <CheckSquare className="w-4 h-4 text-[#581c87] mt-0.5 shrink-0" />
-                          ) : (
-                            <Square className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" />
-                          )}
-                          <span className="text-xs text-gray-700">{item.lingkup} - {item.deskripsi}</span>
-                        </div>
-                      ))
+                    ) : ( tahapList
+                        .filter(item => item.kelompokUsiaId === formData.kelompokUsiaId && item.periode === formData.periodeId)
+                        .map((item) => (
+                          <div key={item.id} className="flex items-start gap-2 mb-2 cursor-pointer" onClick={() => handleMultiSelect("tahapPerkembangan", item.deskripsi)}>
+                            {formData.tahapPerkembangan.includes(item.deskripsi) ? (
+                              <CheckSquare className="w-4 h-4 text-[#581c87] mt-0.5 shrink-0" />
+                            ) : (
+                              <Square className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" />
+                            )}
+                            <span className="text-xs text-gray-700">{item.lingkup} - {item.deskripsi}</span>
+                          </div>
+                        ))
                     )}
                   </div>
                 </div>

@@ -460,7 +460,7 @@ export default function TrilogiMainriangPage() {
                         type="button"
                         onClick={() => {
                           setEditingSubId(null);
-                          setSubFormData({ kelompokUsia: "", habit: "", deskripsi: "", periode: selectedPeriode });
+                          setSubFormData({ kelompokUsia: "", habit: "", deskripsi: "", periode: selectedPeriode || "" });
                         }}
                         className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
                       >
