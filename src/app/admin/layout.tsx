@@ -105,9 +105,9 @@ export default function AdminLayout({
       href: "#", 
       roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"],
       submenu: [
-        { name: "7 Habits", href: "/admin/Akademik/7habits", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"]},
         { name: "Tahap Perkembangan", href: "/admin/Akademik/perkembangan", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
         { name: "Indikator", href: "/admin/Akademik/indikator", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
+        { name: "Ruang Lingkup", href: "/admin/Akademik/7habits", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"]},
         { name: "Trilogi Mainriang", href: "/admin/Akademik/trilogi", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
         { name: "RPPH", href: "/admin/Akademik/rpph", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
       ]

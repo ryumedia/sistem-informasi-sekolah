@@ -74,7 +74,7 @@ function StatusContent() {
           className="mt-8 w-full bg-[#581c87] text-white py-3 rounded-lg hover:bg-[#45156b] transition font-medium flex items-center justify-center gap-2"
         >
           <ArrowLeft className="w-4 h-4" />
-          Kembali ke Riwayat Pembayaran
+          Kembali ke Halaman Utama
         </button>
       </div>
     </div>

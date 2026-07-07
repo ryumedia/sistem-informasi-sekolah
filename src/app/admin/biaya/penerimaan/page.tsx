@@ -55,9 +55,9 @@ interface LaporanPenerimaan extends Pembayaran {
 }
 
 const nomenklaturOptions = [
-  { code: '4-1100', title: 'Uang Pangkal & Pendaftaran', desc: 'Formulir, uang gedung, uang pangkal, seragam awal.' },
-  { code: '4-1200', title: 'SPP & Iuran Bulanan', desc: 'SPP bulanan (Daycare/TK/PG).' },
-  { code: '4-1300', title: 'Pendapatan Kegiatan Siswa', desc: 'Field trip, pentas seni, market day.' },
+  '4-1100 Uang Pangkal & Pendaftaran Formulir, uang gedung, uang pangkal, seragam awal siswa baru.',
+  '4-1200 SPP & Iuran Bulanan SPP bulanan (Daycare/TK/PG digabung, bedakan via keterangan/tagging).',
+  '4-1300 Pendapatan Kegiatan Siswa Uang kegiatan insidentil (Field trip, pentas seni, market day)',
 ];
 
 export default function PenerimaanPage() {
@@ -185,19 +185,13 @@ export default function PenerimaanPage() {
     }
     setIsSubmitting(true);
     try {
-      // Temukan objek nomenklatur yang dipilih untuk mendapatkan detail lengkapnya
-      const nomenklaturDetail = nomenklaturOptions.find(n => n.code === selectedNomenklatur);
-      const nomenklaturLengkap = nomenklaturDetail 
-        ? `${nomenklaturDetail.code} - ${nomenklaturDetail.title}: ${nomenklaturDetail.desc}`
-        : selectedNomenklatur;
-
       const arusKasCollection = collection(db, 'arus_kas');
       await addDoc(arusKasCollection, {
         tanggal: selectedPenerimaan.tanggalBayar,
-        jenis: 'Masuk', // Mengubah 'tipe' menjadi 'jenis' dan valuenya menjadi 'Masuk'
+        jenis: 'Masuk',
         nominal: selectedPenerimaan.jumlahBayar,
-        keterangan: `${selectedPenerimaan.jenisBiaya}`,
-        nomenklatur: nomenklaturLengkap,
+        keterangan: `${selectedPenerimaan.jenisBiaya} ${selectedPenerimaan.namaSiswa}`, // Pastikan namaSiswa ada di LaporanPenerimaan
+        nomenklatur: selectedNomenklatur,
         cabang: selectedPenerimaan.cabangSiswa,
         refId: selectedPenerimaan.id, // Referensi ke dokumen pembayaran
         dicatatOleh: 'Sistem (dari Laporan Penerimaan)',
@@ -334,20 +328,17 @@ export default function PenerimaanPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Nomenklatur Pemasukan</label>
                 <div className="space-y-2">
-                  {nomenklaturOptions.map(n => (
-                    <label key={n.code} className={`flex items-start p-3 border rounded-lg cursor-pointer transition ${selectedNomenklatur === n.code ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400' : 'border-gray-200'}`}>
+                  {nomenklaturOptions.map((nomenklatur, index) => (
+                    <label key={index} className={`flex items-start p-3 border rounded-lg cursor-pointer transition ${selectedNomenklatur === nomenklatur ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400' : 'border-gray-200'}`}>
                       <input 
                         type="radio" 
                         name="nomenklatur" 
-                        value={n.code} 
-                        checked={selectedNomenklatur === n.code}
+                        value={nomenklatur} 
+                        checked={selectedNomenklatur === nomenklatur}
                         onChange={(e) => setSelectedNomenklatur(e.target.value)}
                         className="mt-1 h-4 w-4 text-purple-600 border-gray-300 focus:ring-purple-500"
                       />
-                      <div className="ml-3 text-sm">
-                        <p className="font-bold text-gray-900">{n.code} - {n.title}</p>
-                        <p className="text-gray-500">{n.desc}</p>
-                      </div>
+                      <p className="ml-3 text-sm text-gray-800">{nomenklatur}</p>
                     </label>
                   ))}
                 </div>
