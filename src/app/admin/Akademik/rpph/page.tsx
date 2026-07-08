@@ -256,6 +256,9 @@ export default function RPPHPage() {
           </tbody>
         </table>
 
+        <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 25px;">A. Ringkasan Kegiatan</h3>
+        <p style="text-align: justify; font-size: 14px;">${data.deskripsi}</p>
+
         <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 25px;">B. Target & Indikator Keberhasilan</h3>
         <div style="padding-left: 15px;">
           <h4 style="margin-bottom: 5px; color: #444;">Tahap Perkembangan (STPPA):</h4>

@@ -54,11 +54,12 @@ interface LaporanPenerimaan extends Pembayaran {
   jenisBiaya: string;
 }
 
-const nomenklaturOptions = [
-  '4-1100 Uang Pangkal & Pendaftaran Formulir, uang gedung, uang pangkal, seragam awal siswa baru.',
-  '4-1200 SPP & Iuran Bulanan SPP bulanan (Daycare/TK/PG digabung, bedakan via keterangan/tagging).',
-  '4-1300 Pendapatan Kegiatan Siswa Uang kegiatan insidentil (Field trip, pentas seni, market day)',
-];
+interface Nomenklatur {
+  id: string;
+  kode: string;
+  nama: string;
+  kategori: string;
+}
 
 export default function PenerimaanPage() {
   // --- STATE MANAGEMENT ---
@@ -77,6 +78,8 @@ export default function PenerimaanPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPenerimaan, setSelectedPenerimaan] = useState<LaporanPenerimaan | null>(null);
   const [selectedNomenklatur, setSelectedNomenklatur] = useState<string>("");
+  const [selectedCabangInModal, setSelectedCabangInModal] = useState<string>("");
+  const [nomenklaturPemasukanList, setNomenklaturPemasukanList] = useState<Nomenklatur[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- DATA FETCHING ---
@@ -85,11 +88,12 @@ export default function PenerimaanPage() {
       setLoading(true);
       try {
         // Fetch all necessary data in parallel for efficiency
-        const [pembayaranSnap, siswaSnap, tagihanSnap, cabangSnap] = await Promise.all([
+        const [pembayaranSnap, siswaSnap, tagihanSnap, cabangSnap, nomenklaturSnap] = await Promise.all([
           getDocs(query(collection(db, "pembayaran"), orderBy("tanggalBayar", "desc"))),
           getDocs(collection(db, "siswa")),
           getDocs(collection(db, "tagihan_siswa")),
           getDocs(query(collection(db, "cabang"), orderBy("nama", "asc"))),
+          getDocs(query(collection(db, "nomenklatur"), where("kategori", "==", "Pemasukan"), orderBy("kode", "asc"))),
         ]);
 
         // Create maps for quick lookups to avoid N+1 query problem
@@ -98,6 +102,9 @@ export default function PenerimaanPage() {
 
         const cabangData = cabangSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabang));
         setCabangList(cabangData);
+
+        const nomenklaturData = nomenklaturSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Nomenklatur));
+        setNomenklaturPemasukanList(nomenklaturData);
 
         // Process and join data
         const laporanData = pembayaranSnap.docs.map(doc => {
@@ -168,12 +175,14 @@ export default function PenerimaanPage() {
 
   const openModal = (penerimaan: LaporanPenerimaan) => {
     setSelectedPenerimaan(penerimaan);
+    setSelectedCabangInModal(penerimaan.cabangSiswa); // Set default cabang di modal
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setSelectedPenerimaan(null);
+    setSelectedCabangInModal("");
     setSelectedNomenklatur("");
     setIsSubmitting(false);
   };
@@ -192,7 +201,7 @@ export default function PenerimaanPage() {
         nominal: selectedPenerimaan.jumlahBayar,
         keterangan: `${selectedPenerimaan.jenisBiaya} ${selectedPenerimaan.namaSiswa}`, // Pastikan namaSiswa ada di LaporanPenerimaan
         nomenklatur: selectedNomenklatur,
-        cabang: selectedPenerimaan.cabangSiswa,
+        cabang: selectedCabangInModal,
         refId: selectedPenerimaan.id, // Referensi ke dokumen pembayaran
         dicatatOleh: 'Sistem (dari Laporan Penerimaan)',
       });
@@ -318,30 +327,38 @@ export default function PenerimaanPage() {
               {/* Detail Transaksi */}
               <div className="bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
                 <div className="flex justify-between"><span>Tanggal:</span><span className="font-medium text-right">{format(selectedPenerimaan.tanggalBayar.toDate(), 'dd MMMM yyyy')}</span></div>
-                <div className="flex justify-between"><span>Nama Siswa:</span><span className="font-medium text-right">{selectedPenerimaan.namaSiswa}</span></div>
-                <div className="flex justify-between"><span>Cabang:</span><span className="font-medium text-right">{selectedPenerimaan.cabangSiswa}</span></div>
+                <div className="flex justify-between"><span>Nama Siswa:</span><span className="font-medium text-right">{selectedPenerimaan.namaSiswa}</span></div>                
                 <div className="flex justify-between"><span>Jenis Biaya:</span><span className="font-medium text-right">{selectedPenerimaan.jenisBiaya}</span></div>
                 <div className="flex justify-between text-base"><span>Nominal:</span><span className="font-bold text-green-600 text-right">{formatCurrency(selectedPenerimaan.jumlahBayar)}</span></div>
               </div>
 
-              {/* Pilihan Nomenklatur */}
+              {/* Pilihan Cabang & Nomenklatur */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Pilih Nomenklatur Pemasukan</label>
-                <div className="space-y-2">
-                  {nomenklaturOptions.map((nomenklatur, index) => (
-                    <label key={index} className={`flex items-start p-3 border rounded-lg cursor-pointer transition ${selectedNomenklatur === nomenklatur ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-400' : 'border-gray-200'}`}>
-                      <input 
-                        type="radio" 
-                        name="nomenklatur" 
-                        value={nomenklatur} 
-                        checked={selectedNomenklatur === nomenklatur}
-                        onChange={(e) => setSelectedNomenklatur(e.target.value)}
-                        className="mt-1 h-4 w-4 text-purple-600 border-gray-300 focus:ring-purple-500"
-                      />
-                      <p className="ml-3 text-sm text-gray-800">{nomenklatur}</p>
-                    </label>
-                  ))}
-                </div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cabang</label>
+                <select 
+                  value={selectedCabangInModal} 
+                  onChange={(e) => setSelectedCabangInModal(e.target.value)} 
+                  className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm bg-white"
+                >
+                  <option value="">Pilih Cabang</option>
+                  {cabangList.map(c => <option key={c.id} value={c.nama}>{c.nama}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nomenklatur Pemasukan</label>
+                <select 
+                  value={selectedNomenklatur} 
+                  onChange={(e) => setSelectedNomenklatur(e.target.value)} 
+                  className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm bg-white"
+                >
+                  <option value="">Pilih Nomenklatur</option>
+                  {nomenklaturPemasukanList.map(n => {
+                    const displayText = `${n.kode} - ${n.nama}`;
+                    return (
+                      <option key={n.id} value={displayText}>{displayText}</option>
+                    );
+                  })}
+                </select>
               </div>
 
             </div>
