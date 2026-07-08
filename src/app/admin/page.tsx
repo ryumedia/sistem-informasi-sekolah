@@ -83,6 +83,13 @@ export default function AdminDashboard() {
       // Tandai bahwa proses otentikasi (baik login maupun logout) telah selesai.
       if (!isAuthReady) setIsAuthReady(true);
     });
+
+    // Ambil daftar cabang untuk filter
+    const fetchCabang = async () => {
+      const snapCabang = await getDocs(query(collection(db, "cabang"), orderBy("nama", "asc")));
+      setCabangList(snapCabang.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    };
+    fetchCabang();
     return () => unsubscribe();
   }, []);
 
@@ -109,14 +116,14 @@ export default function AdminDashboard() {
         // PHASE 1: JALANKAN QUERY AGREGASI (SANGAT CEPAT)
         const [
           kelasCountSnap,
-          siswaCountSnap,
+          siswaAktifCountSnap,
           guruCountSnap,
           pemasukanAgg,
           pengeluaranAgg,
           perfAgg
         ] = await Promise.all([
           getCountFromServer(getBaseQuery("kelas")),
-          getCountFromServer(getBaseQuery("siswa")),
+          getCountFromServer(query(getBaseQuery("siswa"), where("status", "==", "Aktif"))),
           getCountFromServer(getBaseQuery("guru")),
           getAggregateFromServer(qPemasukan, { total: sum("nominal") }),
           getAggregateFromServer(qPengeluaran, { total: sum("nominal") }),
@@ -130,7 +137,7 @@ export default function AdminDashboard() {
         setKeuangan({ pemasukan, pengeluaran, saldo: pemasukan - pengeluaran });
         setStats({
           kelas: kelasCountSnap.data().count,
-          siswa: siswaCountSnap.data().count,
+          siswa: siswaAktifCountSnap.data().count,
           guru: guruCountSnap.data().count,
           performance: parseFloat(avgPerformance.toFixed(2)),
         });
@@ -147,7 +154,7 @@ export default function AdminDashboard() {
         if (selectedCabang) {
           // Strategi 1: Jika cabang spesifik dipilih, ambil semua siswa di cabang itu dan agregasi di memori.
           // Ini efisien jika jumlah siswa per cabang tidak terlalu besar.
-          const siswaSnap = await getDocs(getBaseQuery("siswa")); // getBaseQuery sudah memfilter berdasarkan cabang
+          const siswaSnap = await getDocs(query(getBaseQuery("siswa"), where("status", "==", "Aktif"))); // getBaseQuery sudah memfilter berdasarkan cabang
           const allSiswaInCabang = siswaSnap.docs.map(doc => doc.data());
 
           processedKelasStats = classes.map((cls) => {
@@ -170,7 +177,7 @@ export default function AdminDashboard() {
         } else {
           // Optimasi Strategi 2: Ambil semua siswa sekali saja jika datanya tidak jutaan, 
           // daripada melakukan ratusan request individual (N+1 query problem).
-          const siswaSnap = await getDocs(collection(db, "siswa"));
+          const siswaSnap = await getDocs(query(collection(db, "siswa"), where("status", "==", "Aktif")));
           const allSiswa = siswaSnap.docs.map(doc => doc.data());
 
           processedKelasStats = classes.map((cls) => {
@@ -223,7 +230,7 @@ export default function AdminDashboard() {
             disabled={userRole === "Kepala Sekolah"}
             className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`}
           >
-            {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
+            {userRole !== "Kepala Sekolah" && userRole !== "Guru" && <option value="">Semua Cabang</option>}
             {cabangList.map(c => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
         </div>
