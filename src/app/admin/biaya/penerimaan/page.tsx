@@ -56,7 +56,6 @@ interface LaporanPenerimaan extends Pembayaran {
 
 interface Nomenklatur {
   id: string;
-  kode: string;
   nama: string;
   kategori: string;
 }
@@ -93,7 +92,7 @@ export default function PenerimaanPage() {
           getDocs(collection(db, "siswa")),
           getDocs(collection(db, "tagihan_siswa")),
           getDocs(query(collection(db, "cabang"), orderBy("nama", "asc"))),
-          getDocs(query(collection(db, "nomenklatur"), where("kategori", "==", "Pemasukan"), orderBy("kode", "asc"))),
+          getDocs(query(collection(db, "nomenklatur_keuangan"), where("kategori", "==", "Pemasukan"), orderBy("nama", "asc"))),
         ]);
 
         // Create maps for quick lookups to avoid N+1 query problem
@@ -124,7 +123,6 @@ export default function PenerimaanPage() {
         });
 
         setLaporanList(laporanData);
-        setFilteredLaporanList(laporanData);
 
       } catch (error) {
         console.error("Error fetching data: ", error);
@@ -160,10 +158,10 @@ export default function PenerimaanPage() {
       filtered = filtered.filter(item => item.tanggalBayar.toDate() <= endDate);
     }
 
-    setFilteredLaporanList(filtered);
+    setFilteredLaporanList(filtered); // This line is fine, the dependency array is the issue.
   }, [filterCabang, filterTanggalMulai, filterTanggalSelesai, laporanList, cabangList]);
 
-  // --- CALCULATE TOTAL ---
+  // --- CALCULATE TOTAL & INITIAL FILTERED LIST ---
   useEffect(() => {
     const total = filteredLaporanList.reduce((sum, item) => sum + item.jumlahBayar, 0);
     setTotalPenerimaan(total);
@@ -353,10 +351,7 @@ export default function PenerimaanPage() {
                 >
                   <option value="">Pilih Nomenklatur</option>
                   {nomenklaturPemasukanList.map(n => {
-                    const displayText = `${n.kode} - ${n.nama}`;
-                    return (
-                      <option key={n.id} value={displayText}>{displayText}</option>
-                    );
+                    return <option key={n.id} value={n.nama}>{n.nama}</option>;
                   })}
                 </select>
               </div>

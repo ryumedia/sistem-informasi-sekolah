@@ -54,21 +54,23 @@ export default function RPPHGuruPage() {
 
     const fetchRPPH = async () => {
       try {
-        // Cari kelas dimana guru ini terdaftar
+        // 1. Cari kelas dimana guru ini mengajar untuk mendapatkan jenjang kelasnya
         const qKelas = query(
           collection(db, "kelas"),
-          where("cabang", "==", guruData.cabang),
           where("guruKelas", "array-contains", guruData.nama)
         );
         const kelasSnap = await getDocs(qKelas);
-        const classes = kelasSnap.docs.map(doc => doc.data().namaKelas);
 
-        if (classes.length > 0) {
-          // Query RPPH
+        // 2. Kumpulkan semua jenjang kelas yang unik dari kelas-kelas tersebut
+        const jenjangKelasGuru = [...new Set(kelasSnap.docs.map(doc => doc.data().jenjangKelas))];
+
+        if (jenjangKelasGuru.length > 0) {
+          // 3. Ambil RPPH yang jenjang kelasnya cocok dengan daftar jenjang yang diajar guru
           const qRpph = query(
             collection(db, "rpph"),
-            where("kelas", "in", classes)
+            where("jenjangKelas", "in", jenjangKelasGuru)
           );
+
           const rpphSnap = await getDocs(qRpph);
           const list = rpphSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           
