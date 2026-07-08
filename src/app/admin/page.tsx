@@ -41,51 +41,47 @@ export default function AdminDashboard() {
 
   // Fetch Cabang List for Filter
   useEffect(() => {
-    // 1. Cek Cache Lokal (LocalStorage) agar loading "Memeriksa hak akses" hilang dalam milidetik
+    // --- OPTIMISASI: Tahap 1 (Sinkron) ---
+    // Baca cache dari localStorage secara langsung saat komponen pertama kali render.
+    // Ini membuat UI terasa instan pada kunjungan berikutnya.
     const cachedRole = localStorage.getItem('user_role');
     const cachedCabang = localStorage.getItem('user_cabang');
     
     if (cachedRole) {
       setUserRole(cachedRole);
-      if (cachedCabang) setSelectedCabang(cachedCabang);
+      // Hanya set cabang dari cache jika rolenya memang memerlukan filter cabang spesifik.
+      if (cachedCabang && (cachedRole === "Kepala Sekolah" || cachedRole === "Guru")) {
+        setSelectedCabang(cachedCabang);
+      }
       setIsAuthReady(true);
     }
 
+    // --- OPTIMISASI: Tahap 2 (Asinkron) ---
+    // Jalankan listener otentikasi dan fetch data terbaru di latar belakang.
+    // Ini akan memvalidasi ulang dan memperbarui cache jika ada perubahan.
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         try {
-          // Gunakan Firestore Cache jika tersedia
           const qUser = query(collection(db, "guru"), where("email", "==", currentUser.email));
-          const qCabang = query(collection(db, "cabang"), orderBy("nama", "asc"));
-
-          const [userSnap, snapCabang] = await Promise.all([
-            getDocs(qUser),
-            getDocs(qCabang)
-          ]);
+          const userSnap = await getDocs(qUser);
 
           if (!userSnap.empty) {
             const userData = userSnap.docs[0].data();
             setUserRole(userData.role);
-            // Simpan ke cache untuk kunjungan berikutnya
             localStorage.setItem('user_role', userData.role);
             if (userData.role === "Kepala Sekolah" || userData.role === "Guru") {
               setSelectedCabang(userData.cabang);
               localStorage.setItem('user_cabang', userData.cabang);
             }
           }
-
-          setCabangList(snapCabang.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        } catch (error) {
-          console.error("Error fetching user data:", error);
-        } finally {
-          setIsAuthReady(true);
         }
+        catch (error) { console.error("Error fetching user data:", error); }
       } else {
-        // Jika logout, bersihkan cache
         localStorage.removeItem('user_role');
         localStorage.removeItem('user_cabang');
-        setIsAuthReady(true);
       }
+      // Tandai bahwa proses otentikasi (baik login maupun logout) telah selesai.
+      if (!isAuthReady) setIsAuthReady(true);
     });
     return () => unsubscribe();
   }, []);
