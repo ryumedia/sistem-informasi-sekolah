@@ -59,12 +59,17 @@ export default function AdminLayout({
     return () => unsubscribe();
   }, []);
 
-  // Redirect Guru from dashboard to performance page
+  // Redirect dari /admin ke /admin/performance untuk role yang tidak berhak,
+  // atau untuk semua role saat pertama kali masuk (jika userData belum siap).
   useEffect(() => {
-    if ((userData?.role === 'Guru' || userData?.role === "Caregiver")&& pathname === '/admin') {
+    const dashboardRoles = ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"];
+    // Jika pengguna berada di halaman dashboard (`/admin`):
+    // 1. Jika data pengguna sudah ada, periksa perannya. Jika perannya TIDAK diizinkan, alihkan.
+    // 2. Jika data pengguna belum ada (misalnya saat awal login), alihkan semua ke performance sebagai halaman default.
+    if (pathname === '/admin' && (!userData || (userData.role && !dashboardRoles.includes(userData.role)))) {
       router.replace('/admin/performance');
     }
-  }, [userData, pathname, router]);
+  }, [pathname, router, userData]);
 
   // Realtime Listener untuk Badge Notifikasi
   useEffect(() => {
