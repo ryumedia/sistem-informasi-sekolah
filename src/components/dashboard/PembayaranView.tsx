@@ -137,9 +137,15 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
   };
 
   const handlePaymentAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!selectedTagihan) return;
     const rawValue = e.target.value.replace(/[^0-9]/g, '');
-    const numericValue = rawValue ? parseInt(rawValue, 10) : 0;
-    setPaymentAmount(numericValue);
+    let numericValue = rawValue ? parseInt(rawValue, 10) : 0;
+    
+    const sisa = selectedTagihan.nominal - (selectedTagihan.dibayar || 0);
+    if (numericValue > sisa) {
+      numericValue = sisa;
+    }
+    setPaymentAmount(numericValue < 0 ? 0 : numericValue);
   };
 
   const handleLanjutPembayaran = async () => {

@@ -7,6 +7,7 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy,
 import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
 import { Plus, X, Pencil, Trash2, Search, Lock, FileText, Upload, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download } from "lucide-react";
 
 interface Siswa {
   id: string;
@@ -53,6 +54,7 @@ export default function DataSiswaPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCabang, setFilterCabang] = useState("");
   const [filterKelas, setFilterKelas] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
 
   // State Form
   const [formData, setFormData] = useState({
@@ -479,6 +481,34 @@ export default function DataSiswaPage() {
     }
   };
 
+  // Handle Export Excel
+  const handleExportExcel = async () => {
+    try {
+      // @ts-ignore
+      const XLSX = await import("xlsx");
+      // Map data to have user-friendly headers
+      const dataToExport = filteredSiswa.map(siswa => ({
+        'Nama Siswa': siswa.nama,
+        'Email': siswa.email,
+        'Status': siswa.status,
+        'Cabang': siswa.cabang,
+        'Kelas': siswa.kelas,
+        'NISN': siswa.nisn,
+        'Jenis Kelamin': siswa.jenisKelamin,
+        'Tempat Lahir': siswa.tempatLahir,
+        'Tanggal Lahir': siswa.tanggalLahir,
+        'Alamat': siswa.alamat,
+      }));
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Data Siswa");
+      XLSX.writeFile(workbook, `Data-Siswa-${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+      alert("Gagal mengekspor data ke Excel.");
+    }
+  };
+
   // Logic Filter
   const filteredSiswa = siswaList.filter((siswa) => {
     const matchSearch = siswa.nama.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -486,7 +516,8 @@ export default function DataSiswaPage() {
     const matchCabang = filterCabang ? siswa.cabang === filterCabang : true;
     const matchKelas = filterKelas ? siswa.kelas === filterKelas : true;
     
-    return matchSearch && matchCabang && matchKelas;
+    const matchStatus = filterStatus ? siswa.status === filterStatus : true;
+    return matchSearch && matchCabang && matchKelas && matchStatus;
   });
 
   // Pagination Logic
@@ -497,7 +528,7 @@ export default function DataSiswaPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterCabang, filterKelas]);
+  }, [searchQuery, filterCabang, filterKelas, filterStatus]);
 
   return (
     <div className="space-y-6">
@@ -518,6 +549,12 @@ export default function DataSiswaPage() {
             >
                 {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                 Import Excel
+            </button>
+            <button
+                onClick={handleExportExcel}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition"
+            >
+                <Download className="w-4 h-4" /> Export Excel
             </button>
             <button
             onClick={() => setIsModalOpen(true)}
@@ -558,6 +595,17 @@ export default function DataSiswaPage() {
           {kelasList
             .filter((k) => !filterCabang || k.cabang === filterCabang)
             .map((k) => <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>)}
+        </select>
+        <select
+          className="border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+        >
+          <option value="">Semua Status</option>
+          <option value="Aktif">Aktif</option>
+          <option value="Nonaktif">Nonaktif</option>
+          <option value="Lulus">Lulus</option>
+          <option value="Pindah">Pindah</option>
         </select>
       </div>
 

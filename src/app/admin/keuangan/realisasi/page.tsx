@@ -498,8 +498,15 @@ export default function RealisasiPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Realisasi (Rp)</label>
-                  <input required type="number" min="0" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={realisasiInput} onChange={(e) => setRealisasiInput(Number(e.target.value))} />
+                  <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                    value={realisasiInput === 0 ? "" : realisasiInput.toLocaleString("id-ID")} 
+                    onChange={(e) => {
+                      const rawValue = e.target.value.replace(/\./g, "");
+                      if (!isNaN(Number(rawValue))) {
+                        setRealisasiInput(Number(rawValue));
+                      }
+                    }}
+                    placeholder="0" />
                 </div>
                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
                   <label className="block text-xs font-medium text-blue-600 mb-1">Selisih (Sisa Anggaran)</label>

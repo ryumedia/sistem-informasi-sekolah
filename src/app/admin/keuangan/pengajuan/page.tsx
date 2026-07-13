@@ -425,7 +425,10 @@ export default function PengajuanPage() {
                     />
                   </td>
                   <td className="p-4">{item.tanggal}</td>
-                  <td className="p-4 font-medium text-gray-900">{item.pengaju}</td>
+                  <td className="p-4">
+                    <div className="font-medium text-gray-900">{item.pengaju}</div>
+                    <div className="text-xs text-gray-500">{item.barang}</div>
+                  </td>
                   <td className="p-4">{item.cabang}</td>
                   <td className="p-4 font-bold text-[#581c87]">Rp {item.total.toLocaleString("id-ID")}</td>
                   <td className="p-4">

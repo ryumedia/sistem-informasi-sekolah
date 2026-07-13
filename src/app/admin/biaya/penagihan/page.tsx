@@ -97,7 +97,7 @@ export default function PenagihanPage() {
         const [cabangSnap, kelasSnap, siswaSnap, tagihanSnap, jenisBiayaSnap] = await Promise.all([
           getDocs(query(collection(db, "cabang"), orderBy("nama", "asc"))),
           getDocs(query(collection(db, "kelas"), orderBy("namaKelas", "asc"))),
-          getDocs(query(collection(db, "siswa"), orderBy("nama", "asc"))),
+          getDocs(query(collection(db, "siswa"), where("status", "==", "Aktif"), orderBy("nama", "asc"))),
           getDocs(collection(db, "tagihan_siswa")), // Ambil semua data tagihan
           getDocs(query(collection(db, "jenis_biaya"), orderBy("nama", "asc"))),
         ]);

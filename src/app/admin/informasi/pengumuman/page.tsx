@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, deleteDoc, doc, query, orderBy, addDoc, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
-import { Edit, Trash2, Plus, Loader2, X, Save, Filter } from "lucide-react";
+import { Edit, Trash2, Plus, Loader2, X, Save, Filter, Link as LinkIcon } from "lucide-react";
 
 export default function PengumumanPage() {
   const [dataPengumuman, setDataPengumuman] = useState<any[]>([]);
@@ -21,6 +21,7 @@ export default function PengumumanPage() {
     cabang: "",
     judul: "", // Nama Pengumuman
     deskripsi: "", // Deskripsi Pengumuman
+    linkLampiran: "", // Link Lampiran
   });
 
   const fetchData = async () => {
@@ -105,6 +106,7 @@ export default function PengumumanPage() {
           cabang: formData.cabang,
           judul: formData.judul,
           deskripsi: formData.deskripsi,
+          linkLampiran: formData.linkLampiran,
         });
         alert("Pengumuman berhasil diperbarui!");
       } else {
@@ -112,6 +114,7 @@ export default function PengumumanPage() {
           cabang: formData.cabang,
           judul: formData.judul,
           deskripsi: formData.deskripsi,
+          linkLampiran: formData.linkLampiran,
           createdAt: serverTimestamp(),
         });
         alert("Pengumuman berhasil ditambahkan!");
@@ -128,7 +131,7 @@ export default function PengumumanPage() {
   };
 
   const resetForm = () => {
-      setFormData({ cabang: userCabang || "", judul: "", deskripsi: "" });
+      setFormData({ cabang: userCabang || "", judul: "", deskripsi: "", linkLampiran: "" });
       setEditingId(null);
   }
 
@@ -137,7 +140,8 @@ export default function PengumumanPage() {
     setFormData({
       cabang: item.cabang,
       judul: item.judul,
-      deskripsi: item.deskripsi
+      deskripsi: item.deskripsi,
+      linkLampiran: item.linkLampiran || ""
     });
     setIsModalOpen(true);
   };
@@ -287,6 +291,16 @@ export default function PengumumanPage() {
                   value={formData.deskripsi}
                   onChange={(e) => setFormData({ ...formData, deskripsi: e.target.value })}
                   placeholder="Tuliskan detail pengumuman..."
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1 flex items-center gap-1"><LinkIcon className="w-3 h-3" /> Link Lampiran (Opsional)</label>
+                <input
+                  type="url"
+                  className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none"
+                  value={formData.linkLampiran}
+                  onChange={(e) => setFormData({ ...formData, linkLampiran: e.target.value })}
+                  placeholder="https://..."
                 />
               </div>
               <div className="flex justify-end gap-3 pt-2">

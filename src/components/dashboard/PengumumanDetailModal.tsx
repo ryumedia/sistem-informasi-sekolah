@@ -1,6 +1,6 @@
 // d:\Private\Ryumedia\sistem-informasi-sekolah\src\components\dashboard\PengumumanDetailModal.tsx
 "use client";
-import { X } from "lucide-react";
+import { X, Link as LinkIcon } from "lucide-react";
 import { formatDate } from "@/lib/dateUtils";
 
 export default function PengumumanDetailModal({ data, onClose }: { data: any; onClose: () => void }) {
@@ -19,6 +19,15 @@ export default function PengumumanDetailModal({ data, onClose }: { data: any; on
         <div className="p-6 text-gray-700 text-sm leading-relaxed whitespace-pre-wrap">
           {data.deskripsi}
         </div>
+        {data.linkLampiran && (
+          <div className="p-4 border-t bg-gray-50 rounded-b-xl">
+            <a href={data.linkLampiran} target="_blank" rel="noopener noreferrer" 
+              className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-purple-700 transition text-sm font-medium">
+              <LinkIcon className="w-4 h-4" />
+              Lihat Lampiran
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );

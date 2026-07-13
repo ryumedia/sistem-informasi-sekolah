@@ -404,9 +404,10 @@ export default function CaregiverReportView({ userData, onBack }: { user: any, u
 
   useEffect(() => {
     const fetchStudents = async () => {
+      if (!userData?.cabang) return; // Jangan fetch jika cabang tidak ada
       try {
         // Ambil kelas yang diampu oleh Caregiver
-        const kelasQuery = query(collection(db, "kelas"), where("guruKelas", "array-contains", userData.nama));
+        const kelasQuery = query(collection(db, "kelas"), where("cabang", "==", userData.cabang), where("guruKelas", "array-contains", userData.nama));
         const kelasSnap = await getDocs(kelasQuery);
         const allowedKelas = kelasSnap.docs.map(doc => doc.data().namaKelas).filter(Boolean);
 
@@ -414,12 +415,14 @@ export default function CaregiverReportView({ userData, onBack }: { user: any, u
           // 1. Ambil siswa yang kelas regulernya sesuai dengan kelas guru
           const regularQuery = query(
             collection(db, "siswa"),
+            where("cabang", "==", userData.cabang),
             where("kelas", "in", allowedKelas)
           );
 
           // 2. Ambil siswa yang status isDaycare=true DAN kelasDaycare sesuai dengan kelas guru
           const daycareQuery = query(
             collection(db, "siswa"), 
+            where("cabang", "==", userData.cabang),
             where("isDaycare", "==", true),
             where("kelasDaycare", "in", allowedKelas)
           );

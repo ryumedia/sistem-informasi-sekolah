@@ -4,7 +4,7 @@ import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import { db } from "@/lib/firebase";
 import { collection, query, orderBy, getDocs, deleteDoc, doc, Timestamp, addDoc, updateDoc, serverTimestamp, getDoc, setDoc } from "firebase/firestore";
-import { Loader2, PlusCircle, Users, QrCode, Edit, Trash2, X, Building, Calendar, Clock, MapPin, Map } from 'lucide-react';
+import { Loader2, PlusCircle, Users, QrCode, Edit, Trash2, X, Building, Calendar, Clock, MapPin, Map, Link as LinkIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { Scanner } from '@yudiel/react-qr-scanner';
 
@@ -16,6 +16,7 @@ interface Acara {
   tempat: string;
   cabang: string[];
   linkGMap?: string;
+  linkDokumentasi?: string;
   createdAt?: Timestamp;
 }
 
@@ -295,6 +296,7 @@ function AcaraModal({ acara, cabangList, onClose, onSubmit }: AcaraModalProps) {
     tempat: acara?.tempat || '',
     cabang: acara?.cabang || [],
     linkGMap: acara?.linkGMap || '',
+    linkDokumentasi: acara?.linkDokumentasi || '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -402,6 +404,12 @@ function AcaraModal({ acara, cabangList, onClose, onSubmit }: AcaraModalProps) {
           <div className="space-y-2">
             <label htmlFor="linkGMap" className="font-medium text-sm text-gray-700 flex items-center gap-2"><Map className="w-4 h-4" />Link Google Map (Opsional)</label>
             <input type="url" id="linkGMap" placeholder="https://maps.app.goo.gl/..." value={formData.linkGMap} onChange={e => setFormData({...formData, linkGMap: e.target.value})} className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-[#581c87] outline-none" />
+          </div>
+
+          {/* --- LINK DOKUMENTASI --- */}
+          <div className="space-y-2">
+            <label htmlFor="linkDokumentasi" className="font-medium text-sm text-gray-700 flex items-center gap-2"><LinkIcon className="w-4 h-4" />Link Dokumentasi (Opsional)</label>
+            <input type="url" id="linkDokumentasi" placeholder="https://..." value={formData.linkDokumentasi} onChange={e => setFormData({...formData, linkDokumentasi: e.target.value})} className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-[#581c87] outline-none" />
           </div>
         </form>
 

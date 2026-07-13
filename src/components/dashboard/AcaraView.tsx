@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, Timestamp, orderBy, doc, getDoc } from "firebase/firestore";
-import { ArrowLeft, Calendar, Clock, MapPin, Map, CheckCircle } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, MapPin, Map, CheckCircle, Camera } from "lucide-react";
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 
@@ -14,6 +14,7 @@ interface Acara {
   waktu: string;
   tempat: string;
   linkGMap?: string;
+  linkDokumentasi?: string;
 }
 
 export default function AcaraView({ userData, onBack }: { userData: any, onBack: () => void }) {
@@ -113,12 +114,20 @@ export default function AcaraView({ userData, onBack }: { userData: any, onBack:
                         <span>{item.tempat}</span>
                       </div>
                     </div>
-                    {item.linkGMap && (
-                      <div className="border-t mt-3 pt-3 flex justify-end">
-                        <a href={item.linkGMap} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition text-xs font-medium">
-                          <Map className="w-3 h-3" />
-                          Lihat Peta
-                        </a>
+                    {(item.linkGMap || item.linkDokumentasi) && (
+                      <div className="border-t mt-3 pt-3 flex justify-end gap-2">
+                        {item.linkDokumentasi && (
+                          <a href={item.linkDokumentasi} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 transition text-xs font-medium">
+                            <Camera className="w-3 h-3" />
+                            Lihat Dokumentasi
+                          </a>
+                        )}
+                        {item.linkGMap && (
+                          <a href={item.linkGMap} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition text-xs font-medium">
+                            <Map className="w-3 h-3" />
+                            Lihat Peta
+                          </a>
+                        )}
                       </div>
                     )}
                  </div>
