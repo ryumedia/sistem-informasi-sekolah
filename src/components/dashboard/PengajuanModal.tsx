@@ -13,6 +13,7 @@ export default function PengajuanModal({ user, userData, onClose }: { user: any;
     tanggal: new Date().toISOString().split('T')[0],
     pengaju: userData?.nama || user?.displayName || "",
     cabang: userData?.cabang || "",
+    jenisPengajuan: "Baru", // Nilai default
     nomenklatur: "",
     barang: "",
     harga: 0,
@@ -45,6 +46,7 @@ export default function PengajuanModal({ user, userData, onClose }: { user: any;
         tanggal: formData.tanggal,
         pengaju: formData.pengaju,
         cabang: formData.cabang,
+        jenisPengajuan: formData.jenisPengajuan,
         nomenklatur: formData.nomenklatur,
         barang: formData.barang,
         hargaSatuan: Number(formData.harga),
@@ -90,6 +92,14 @@ export default function PengajuanModal({ user, userData, onClose }: { user: any;
             <label className="block text-xs font-medium text-gray-500 mb-1">Nama Pengaju</label>
             <input readOnly type="text" className="w-full border rounded-lg p-2 text-sm bg-gray-100 text-gray-600"
               value={formData.pengaju} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Jenis Pengajuan</label>
+            <select required className="w-full border rounded-lg p-2 text-sm bg-white text-gray-900"
+              value={formData.jenisPengajuan} onChange={(e) => setFormData({...formData, jenisPengajuan: e.target.value})}>
+              <option value="Baru">Baru</option>
+              <option value="Realokasi">Realokasi</option>
+            </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Nomenklatur (Pos Anggaran)</label>

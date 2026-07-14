@@ -21,6 +21,7 @@ interface Pengajuan {
   arusKasId?: string;
   nomenklatur?: string;
   tanggalRealisasi?: string;
+  jenisPengajuan?: string;
 }
 
 export default function RealisasiPage() {
@@ -137,7 +138,8 @@ export default function RealisasiPage() {
     try {
       // Ambil data pengajuan yang sudah disetujui
       const pengajuanCollection = collection(db, "pengajuan");
-      const constraints: any[] = [where("status", "==", "Disetujui")];
+      // Ambil data yang statusnya Disetujui atau Disetujui (Realokasi)
+      const constraints: any[] = [where("status", "in", ["Disetujui", "Disetujui (Realokasi)"])];
 
       if (["Guru", "Caregiver"].includes(currentUser.role)) {
          constraints.push(where("userId", "==", currentUser.uid || currentUser.id));
@@ -188,9 +190,14 @@ export default function RealisasiPage() {
     setCurrentPage(1);
   }, [startDate, endDate, filterCabang, filterNomenklatur, filterNama]);
 
-  const totalAnggaran = filteredData.reduce((acc, curr) => acc + (curr.total || 0), 0);
+  // Total Anggaran: Hanya hitung dari pengajuan 'Baru'
+  const totalAnggaran = filteredData
+    .filter(item => item.status !== 'Disetujui (Realokasi)')
+    .reduce((acc, curr) => acc + (curr.total || 0), 0);
+  // Total Realisasi: Hitung dari semua jenis pengajuan yang sudah direalisasikan
   const totalRealisasi = filteredData.reduce((acc, curr) => acc + (curr.realisasi || 0), 0);
   const totalSelisih = totalAnggaran - totalRealisasi;
+
 
   const handleOpenModal = (item: Pengajuan) => {
     setSelectedItem(item);
@@ -378,7 +385,12 @@ export default function RealisasiPage() {
                     <div className="text-xs text-gray-500">{item.nomenklatur}</div>
                   </td>
                   <td className="p-4">{item.cabang}</td>
-                  <td className="p-4">Rp {item.total.toLocaleString("id-ID")}</td>
+                  <td className="p-4">
+                    <div>Rp {item.total.toLocaleString("id-ID")}</div>
+                    {item.jenisPengajuan && (
+                      <div className={`text-xs font-medium mt-1 ${item.jenisPengajuan === 'Realokasi' ? 'text-blue-600' : 'text-gray-500'}`}>{item.jenisPengajuan}</div>
+                    )}
+                  </td>
                   <td className={`p-4 font-medium ${item.realisasi ? "text-green-600" : "text-gray-400"}`}>
                     {item.realisasi ? `Rp ${item.realisasi.toLocaleString("id-ID")}` : "-"}
                   </td>

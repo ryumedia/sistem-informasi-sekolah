@@ -18,6 +18,7 @@ interface Pengajuan {
   qty: number;
   total: number;
   status: string;
+  jenisPengajuan?: string;
 }
 
 export default function PengajuanPage() {
@@ -53,6 +54,7 @@ export default function PengajuanPage() {
     barang: "",
     hargaSatuan: 0,
     qty: 0,
+    jenisPengajuan: "Baru",
   });
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -213,7 +215,12 @@ export default function PengajuanPage() {
       newStatus = "Menunggu Direktur";
     } else if (item.status === "Menunggu Direktur") {
       if (!userRoles.includes("Direktur")) return alert("Hanya Direktur yang dapat menyetujui tahap ini.");
-      newStatus = "Disetujui";
+      // LOGIKA BARU: Cek jenis pengajuan saat approval Direktur
+      if (item.jenisPengajuan === 'Realokasi') {
+        newStatus = "Disetujui (Realokasi)";
+      } else {
+        newStatus = "Disetujui";
+      }
     } else {
       return;
     }
@@ -269,6 +276,7 @@ export default function PengajuanPage() {
       barang: item.barang,
       hargaSatuan: item.hargaSatuan,
       qty: item.qty,
+      jenisPengajuan: item.jenisPengajuan || "Baru",
     });
   };
 
@@ -430,10 +438,16 @@ export default function PengajuanPage() {
                     <div className="text-xs text-gray-500">{item.barang}</div>
                   </td>
                   <td className="p-4">{item.cabang}</td>
-                  <td className="p-4 font-bold text-[#581c87]">Rp {item.total.toLocaleString("id-ID")}</td>
+                  <td className="p-4">
+                    <div className="font-bold text-[#581c87]">Rp {item.total.toLocaleString("id-ID")}</div>
+                    {item.jenisPengajuan && (
+                      <div className={`text-xs font-medium mt-1 ${item.jenisPengajuan === 'Realokasi' ? 'text-blue-600' : 'text-gray-500'}`}>{item.jenisPengajuan}</div>
+                    )}
+                  </td>
                   <td className="p-4">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                       item.status === 'Disetujui' ? 'bg-green-100 text-green-700' : 
+                      item.status === 'Disetujui (Realokasi)' ? 'bg-sky-100 text-sky-700' :
                       item.status === 'Menunggu Direktur' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
                     }`}>
                       {item.status}
@@ -443,7 +457,7 @@ export default function PengajuanPage() {
                     <button onClick={() => setDetailItem(item)} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg" title="Lihat Detail">
                       <Eye className="w-4 h-4" />
                     </button>
-                    {item.status !== 'Disetujui' && (
+                    {item.status !== 'Disetujui' && item.status !== 'Disetujui (Realokasi)' && (
                       <button onClick={() => handleApprove(item)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg" title="Approve">
                         <CheckCircle className="w-4 h-4" />
                       </button>
@@ -539,6 +553,7 @@ export default function PengajuanPage() {
                   <p className="text-gray-500 text-xs">Status</p>
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                     detailItem.status === 'Disetujui' ? 'bg-green-100 text-green-700' : 
+                    detailItem.status === 'Disetujui (Realokasi)' ? 'bg-sky-100 text-sky-700' :
                     detailItem.status === 'Menunggu Direktur' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
                   }`}>
                     {detailItem.status}
@@ -549,6 +564,10 @@ export default function PengajuanPage() {
                 <p className="text-gray-500 text-xs">Pengaju</p>
                 <p className="font-medium">{detailItem.pengaju}</p>
                 <p className="text-xs text-gray-400">{detailItem.cabang}</p>
+              </div>
+              <div>
+                <p className="text-gray-500 text-xs">Jenis Pengajuan</p>
+                <p className="font-medium">{detailItem.jenisPengajuan || 'Baru'}</p>
               </div>
               <div className="border-t pt-3 mt-2">
                 <p className="text-gray-500 text-xs mb-1">Rincian Barang/Jasa</p>
@@ -598,6 +617,14 @@ export default function PengajuanPage() {
                   {cabangList.map((c) => (
                     <option key={c.id} value={c.nama}>{c.nama}</option>
                   ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Jenis Pengajuan</label>
+                <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                  value={editFormData.jenisPengajuan} onChange={(e) => setEditFormData({...editFormData, jenisPengajuan: e.target.value})}>
+                  <option value="Baru">Baru</option>
+                  <option value="Realokasi">Realokasi</option>
                 </select>
               </div>
               <div>
