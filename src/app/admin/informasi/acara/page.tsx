@@ -15,6 +15,7 @@ interface Acara {
   waktu: string;
   tempat: string;
   cabang: string[];
+  jenis?: 'Umum' | 'Khusus';
   linkGMap?: string;
   linkDokumentasi?: string;
   createdAt?: Timestamp;
@@ -212,8 +213,13 @@ export default function DaftarAcaraPage() {
               ) : (
                 acaraList.map((item, index) => (
                   <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="p-4 text-center">{index + 1}</td>
-                    <td className="p-4 font-medium text-gray-900">{item.nama}</td>
+                    <td className="p-4 text-center align-top">{index + 1}</td>
+                    <td className="p-4 align-top">
+                      <div className="font-medium text-gray-900">{item.nama}</div>
+                      {item.jenis && (
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full mt-1 inline-block ${item.jenis === 'Khusus' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>{item.jenis}</span>
+                      )}
+                    </td>
                     <td className="p-4">
                       <div className="flex flex-wrap gap-1">
                         {item.cabang?.map(c => (
@@ -294,6 +300,7 @@ function AcaraModal({ acara, cabangList, onClose, onSubmit }: AcaraModalProps) {
     tanggal: acara?.tanggal ? format(acara.tanggal.toDate(), 'yyyy-MM-dd') : '',
     waktu: acara?.waktu || '',
     tempat: acara?.tempat || '',
+    jenis: acara?.jenis || 'Umum',
     cabang: acara?.cabang || [],
     linkGMap: acara?.linkGMap || '',
     linkDokumentasi: acara?.linkDokumentasi || '',
@@ -362,6 +369,22 @@ function AcaraModal({ acara, cabangList, onClose, onSubmit }: AcaraModalProps) {
           <div className="space-y-2">
             <label htmlFor="nama" className="font-medium text-sm text-gray-700">Nama Acara</label>
             <input type="text" id="nama" value={formData.nama} onChange={e => setFormData({...formData, nama: e.target.value})} className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-[#581c87] outline-none" required />
+          </div>
+
+          {/* --- JENIS ACARA --- */}
+          <div className="space-y-3">
+            <label className="font-medium text-sm text-gray-700">Jenis Acara</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="jenis" value="Umum" checked={formData.jenis === 'Umum'} onChange={e => setFormData({...formData, jenis: 'Umum'})} className="w-4 h-4 text-[#581c87] focus:ring-[#581c87]"/>
+                <span>Umum (Terlihat oleh semua)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="jenis" value="Khusus" checked={formData.jenis === 'Khusus'} onChange={e => setFormData({...formData, jenis: 'Khusus'})} className="w-4 h-4 text-[#581c87] focus:ring-[#581c87]"/>
+                <span>Khusus (Terbatas untuk staf)</span>
+              </label>
+            </div>
+            <p className="text-xs text-gray-500">Acara 'Khusus' hanya akan tampil untuk Admin, Guru, dan staf lainnya (bukan Siswa).</p>
           </div>
 
           {/* --- CABANG --- */}

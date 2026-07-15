@@ -14,6 +14,7 @@ interface Acara {
   waktu: string;
   tempat: string;
   linkGMap?: string;
+  jenis?: 'Umum' | 'Khusus';
   linkDokumentasi?: string;
 }
 
@@ -38,7 +39,13 @@ export default function AcaraView({ userData, onBack }: { userData: any, onBack:
         );
 
         const snap = await getDocs(q);
-        const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as Acara));
+        let items = snap.docs.map(d => ({ id: d.id, ...d.data() } as Acara));
+
+        // Filter acara 'Khusus' jika role adalah 'Siswa'
+        if (userData?.role === 'Siswa') {
+          items = items.filter(acara => acara.jenis !== 'Khusus');
+        }
+
         setAcaraList(items);
 
         // 2. Cek status kehadiran untuk setiap acara secara paralel
