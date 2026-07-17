@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
-import { ArrowLeft, Loader2, User, Users } from "lucide-react";
+import { ArrowLeft, Loader2, User, Users, ChevronRight } from "lucide-react";
 
 export default function DaftarSiswaGuruPage() {
   const router = useRouter();
@@ -111,18 +111,27 @@ export default function DaftarSiswaGuruPage() {
             </div>
           ) : (
             siswaList.map(siswa => (
-              <div key={siswa.id} className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm flex items-center gap-4">
-                {siswa.foto ? (
-                  <img src={siswa.foto} alt={siswa.nama} className="w-12 h-12 rounded-full object-cover bg-gray-100" />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-500">
-                    <User className="w-6 h-6" />
-                  </div>
-                )}
-                <div className="flex-1">
-                  <p className="font-bold text-gray-800 text-sm">{siswa.nama}</p>
+              <div 
+                key={siswa.id} 
+                className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm flex items-center gap-4 cursor-pointer hover:bg-gray-50 hover:shadow-md transition-all group"
+                onClick={() => router.push(`/guru/daftar-siswa/${siswa.id}`)}
+              >
+                <div className="shrink-0">
+                  {siswa.foto ? (
+                    <img src={siswa.foto} alt={siswa.nama} className="w-12 h-12 rounded-full object-cover bg-gray-100" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-500">
+                      <User className="w-6 h-6" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-gray-800 text-sm group-hover:text-purple-700 transition-colors">{siswa.nama}</p>
                   <p className="text-xs text-gray-500">NISN: {siswa.nisn || "-"}</p>
                 </div>
+                <div className="shrink-0">
+                  <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-purple-600" />
+                  </div>
               </div>
             ))
           )}
