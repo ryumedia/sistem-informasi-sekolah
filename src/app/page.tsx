@@ -1,12 +1,12 @@
 // src/app/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
 import { collection, query, where, getDocs, doc, getDoc, addDoc, orderBy, limit } from "firebase/firestore";
 import { BookOpen, Calendar, Bell, User, LogOut, Shield, Home, KeyRound, Activity, FileText, FilePlus, CreditCard, Ticket, QrCode, X } from "lucide-react";
 import { formatDate } from "@/lib/dateUtils";
@@ -23,6 +23,7 @@ import PengajuanModal from "../components/dashboard/PengajuanModal";
 import AcaraView from "../components/dashboard/AcaraView";
 import PengumumanDetailModal from "../components/dashboard/PengumumanDetailModal";
 import PembayaranView from "../components/dashboard/PembayaranView";
+import EditProfileModal from "../components/dashboard/EditProfileModal"; // Import EditProfileModal
 
 export default function UserHome() {
   const router = useRouter();
@@ -32,10 +33,25 @@ export default function UserHome() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("home");
   const [isPasswordModalOpen, setPasswordModalOpen] = useState(false);
+  const [isEditProfileModalOpen, setEditProfileModalOpen] = useState(false);
   const [isPengajuanModalOpen, setPengajuanModalOpen] = useState(false);
   const [latestPengumuman, setLatestPengumuman] = useState<any[]>([]);
   const [selectedPengumuman, setSelectedPengumuman] = useState<any>(null);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+
+  const fetchUserData = useCallback(async (currentUser: FirebaseUser) => {
+    const collectionsToQuery = ["guru", "siswa", "caregivers"];
+    for (const collectionName of collectionsToQuery) {
+      const q = query(collection(db, collectionName), where("email", "==", currentUser.email));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const docData = snapshot.docs[0].data();
+        setUserData({ id: snapshot.docs[0].id, ...docData });
+        return docData; // Return data to be used immediately
+      }
+    }
+    return null;
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -53,61 +69,38 @@ export default function UserHome() {
       }
       setUser(currentUser);
 
-      try {
-        const qGuru = query(collection(db, "guru"), where("email", "==", currentUser.email));
-        const snapshotGuru = await getDocs(qGuru);
-        
-        if (!snapshotGuru.empty) {
-          setUserData({ id: snapshotGuru.docs[0].id, ...snapshotGuru.docs[0].data() });
-        } else {
-          const qSiswa = query(collection(db, "siswa"), where("email", "==", currentUser.email));
-          const snapshotSiswa = await getDocs(qSiswa);
-
-          if (!snapshotSiswa.empty) {
-            const siswaData = snapshotSiswa.docs[0].data();
-            setUserData({ id: snapshotSiswa.docs[0].id, ...siswaData });
-
-            // Jika siswa, ambil jenjang kelasnya
-            if (siswaData.kelas) {
-              // LOGIKA DIPERBAIKI: Query koleksi 'kelas' berdasarkan field 'nama'
-              const qKelas = query(collection(db, "kelas"), where("namaKelas", "==", siswaData.kelas));
-              const snapshotKelas = await getDocs(qKelas);
-
-              if (!snapshotKelas.empty) {
-                const kelasData = snapshotKelas.docs[0].data();
-                const jenjangNama = kelasData.jenjangKelas;
-                if (jenjangNama) {
-                  setJenjangKelas(jenjangNama);
-                }
-              } else {
-                console.error("Tidak bisa menemukan dokumen kelas dengan nama:", siswaData.kelas);
-              }
-            }
-          } else {
-            const qCaregiver = query(collection(db, "caregivers"), where("email", "==", currentUser.email));
-            const snapshotCaregiver = await getDocs(qCaregiver);
-
-            if (!snapshotCaregiver.empty) {
-              setUserData({ id: snapshotCaregiver.docs[0].id, ...snapshotCaregiver.docs[0].data() });
+      const loadData = async () => {
+        try {
+          const fetchedData = await fetchUserData(currentUser);
+          if (fetchedData && fetchedData.role === 'Siswa' && fetchedData.kelas) {
+            const qKelas = query(collection(db, "kelas"), where("namaKelas", "==", fetchedData.kelas));
+            const snapshotKelas = await getDocs(qKelas);
+            if (!snapshotKelas.empty) {
+              const kelasData = snapshotKelas.docs[0].data();
+              setJenjangKelas(kelasData.jenjangKelas || "");
             } else {
-              setUserData({ nama: currentUser.email, role: "User" });
+              console.error("Tidak bisa menemukan dokumen kelas dengan nama:", fetchedData.kelas);
             }
+          } else if (!fetchedData) {
+            setUserData({ nama: currentUser.email, role: "User" });
           }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        } finally {
+          setLoading(false);
         }
-      } catch (error) {
-        console.error("Error fetching user data:", error);
-      } finally {
-        setLoading(false);
-      }
+      };
+
+      loadData();
     });
 
     return () => unsubscribe();
-  }, [router]);
+  }, [router]); // Hapus fetchUserData dari dependency array
 
   // Fetch Latest Pengumuman for Dashboard
   useEffect(() => {
     const fetchLatestPengumuman = async () => {
-      if (!userData) return;
+      if (!userData?.cabang && !["Admin", "Direktur", "Yayasan"].includes(userData?.role)) return;
       try {
         let q;
         const role = userData?.role;
@@ -138,11 +131,18 @@ export default function UserHome() {
       }
     };
     fetchLatestPengumuman();
-  }, [userData]);
+  }, [userData?.cabang, userData?.role]); // Ubah dependency ke yang lebih spesifik
 
   const handleLogout = async () => {
     await signOut(auth);
     router.push("/login");
+  };
+
+  const handleProfileUpdate = () => {
+    if (user) {
+      fetchUserData(user);
+    }
+    setEditProfileModalOpen(false);
   };
 
   if (loading) {
@@ -270,10 +270,17 @@ export default function UserHome() {
                     <User className="w-8 h-8" />
                   </div>
                 )}
-                <div>
-                  <h2 className="font-bold text-gray-800 text-lg">{userData?.nama || "User"}</h2>
-                  <p className="text-gray-500 text-sm">{user?.email}</p>
-                  <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+                <div className="flex-1">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h2 className="font-bold text-gray-800 text-lg">{userData?.nama || "User"}</h2>
+                      <p className="text-gray-500 text-sm">{user?.email}</p>
+                    </div>
+                    <button onClick={() => setEditProfileModalOpen(true)} className="text-xs bg-purple-100 text-purple-700 font-semibold px-3 py-1 rounded-full hover:bg-purple-200 transition-colors">
+                      Edit
+                    </button>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 text-xs text-gray-600">
                     {userData?.role === 'Siswa' ? (
                       <>
                         <span>NISN: {userData?.nisn || '-'}</span>
@@ -370,6 +377,10 @@ export default function UserHome() {
 
         {isPengajuanModalOpen && (
           <PengajuanModal user={user} userData={userData} onClose={() => setPengajuanModalOpen(false)} />
+        )}
+
+        {isEditProfileModalOpen && (
+          <EditProfileModal user={user} userData={userData} onClose={() => setEditProfileModalOpen(false)} onProfileUpdate={handleProfileUpdate} />
         )}
 
         {selectedPengumuman && (

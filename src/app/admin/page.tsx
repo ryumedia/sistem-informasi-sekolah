@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db, auth } from '@/lib/firebase';
 import { 
   collection, 
@@ -14,17 +14,19 @@ import {
   sum,
   average 
 } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
 import { Building, Users, UserSquare, Star, ArrowDown, ArrowUp, Scale, Loader2 } from 'lucide-react';
 
-export default function AdminDashboard() {
+interface AdminDashboardProps {
+  userRole?: string;
+  userCabang?: string;
+}
+
+export default function AdminDashboard({ userRole, userCabang }: AdminDashboardProps) {
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [selectedCabang, setSelectedCabang] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [loadingTable, setLoadingTable] = useState(false);
   const [kelasStatsList, setKelasStatsList] = useState<any[]>([]);
-  const [userRole, setUserRole] = useState<string>("");
-  const [isAuthReady, setIsAuthReady] = useState(false);
 
   const [stats, setStats] = useState({
     kelas: 0,
@@ -39,66 +41,29 @@ export default function AdminDashboard() {
     saldo: 0,
   });
 
+  const isAuthReady = useMemo(() => !!userRole, [userRole]);
+
   // Fetch Cabang List for Filter
   useEffect(() => {
-    // --- OPTIMISASI: Tahap 1 (Sinkron) ---
-    // Baca cache dari localStorage secara langsung saat komponen pertama kali render.
-    // Ini membuat UI terasa instan pada kunjungan berikutnya.
-    const cachedRole = localStorage.getItem('user_role');
-    const cachedCabang = localStorage.getItem('user_cabang');
-    
-    if (cachedRole) {
-      setUserRole(cachedRole);
-      // Hanya set cabang dari cache jika rolenya memang memerlukan filter cabang spesifik.
-      if (cachedCabang && (cachedRole === "Kepala Sekolah" || cachedRole === "Guru")) {
-        setSelectedCabang(cachedCabang);
-      }
-      setIsAuthReady(true);
-    }
-
-    // --- OPTIMISASI: Tahap 2 (Asinkron) ---
-    // Jalankan listener otentikasi dan fetch data terbaru di latar belakang.
-    // Ini akan memvalidasi ulang dan memperbarui cache jika ada perubahan.
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        try {
-          const qUser = query(collection(db, "guru"), where("email", "==", currentUser.email));
-          const userSnap = await getDocs(qUser);
-
-          if (!userSnap.empty) {
-            const userData = userSnap.docs[0].data();
-            setUserRole(userData.role);
-            localStorage.setItem('user_role', userData.role);
-            if (userData.role === "Kepala Sekolah" || userData.role === "Guru") {
-              setSelectedCabang(userData.cabang);
-              localStorage.setItem('user_cabang', userData.cabang);
-            }
-          }
-        }
-        catch (error) { console.error("Error fetching user data:", error); }
-      } else {
-        localStorage.removeItem('user_role');
-        localStorage.removeItem('user_cabang');
-      }
-      // Tandai bahwa proses otentikasi (baik login maupun logout) telah selesai.
-      if (!isAuthReady) setIsAuthReady(true);
-    });
-
-    // Ambil daftar cabang untuk filter
     const fetchCabang = async () => {
       const snapCabang = await getDocs(query(collection(db, "cabang"), orderBy("nama", "asc")));
       setCabangList(snapCabang.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     };
     fetchCabang();
-    return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (userRole === "Kepala Sekolah" && userCabang) {
+      setSelectedCabang(userCabang);
+    }
+  }, [userRole, userCabang]);
 
   // Fetch Dashboard Data based on Filter
   useEffect(() => {
     if (!isAuthReady) return; // Jangan fetch data sebelum role/cabang user dipastikan
 
     // Cegah fetching data dashboard jika role adalah Guru atau Caregiver (karena akan diredirect)
-    if (["Guru", "Caregiver"].includes(userRole)) return;
+    if (userRole && ["Guru", "Caregiver"].includes(userRole)) return;
 
     const fetchData = async () => {
       setLoading(true);
@@ -240,7 +205,7 @@ export default function AdminDashboard() {
           Gunakan pengecekan isAuthReady dan userRole di sini. 
           Jika role dilarang, tampilkan loader saja sambil menunggu redirect dari Layout.
       */}
-      {!isAuthReady || ["Guru", "Caregiver"].includes(userRole) ? (
+      {!isAuthReady || (userRole && ["Guru", "Caregiver"].includes(userRole)) ? (
         <div className="w-full text-center py-20">
           <Loader2 className="w-8 h-8 animate-spin text-[#581c87] mx-auto" />
           <p className="text-sm text-gray-500 mt-2">Memeriksa hak akses...</p>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Children, cloneElement, isValidElement } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
@@ -380,7 +380,15 @@ export default function AdminLayout({
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-8">
-          {children}
+          {Children.map(children, child => {
+            if (isValidElement(child)) {
+              return cloneElement(child as React.ReactElement<any>, { 
+                userRole: userData?.role,
+                userCabang: userData?.cabang
+              });
+            }
+            return child;
+          })}
         </main>
       </div>
     </div>
