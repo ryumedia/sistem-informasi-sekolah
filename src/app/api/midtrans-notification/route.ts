@@ -18,10 +18,13 @@ export async function POST(request: Request) {
     // 1. Buat signature key dari data notifikasi
     const serverKey = process.env.MIDTRANS_SERVER_KEY;
     if (!serverKey) {
-      console.error("MIDTRANS_SERVER_KEY is not set");
+      // Log error kritis di server
+      console.error("CRITICAL: MIDTRANS_SERVER_KEY environment variable is not set on the server.");
+      // Tetap kembalikan status 200 ke Midtrans agar tidak dianggap gagal total,
+      // namun beri pesan bahwa ada masalah konfigurasi.
       return NextResponse.json(
-        { error: "Server configuration error" },
-        { status: 500 }
+        { status: "error", message: "Server configuration issue: Missing server key." },
+        { status: 200 }
       );
     }
 
