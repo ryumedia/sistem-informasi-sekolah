@@ -16,7 +16,7 @@ function StatusContent() {
     // Jika pengguna kembali ke halaman ini (misalnya dengan tombol back browser)
     // dan tidak ada status, arahkan mereka kembali ke dashboard.
     if (!transactionStatus) {
-      router.replace('/dashboard');
+      router.replace('/');
     }
   }, [transactionStatus, router]);
 

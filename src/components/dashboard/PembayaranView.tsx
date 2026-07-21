@@ -13,7 +13,7 @@ import {
   addDoc,
   Timestamp,
 } from "firebase/firestore";
-import { ArrowLeft, Loader2, CreditCard, X } from 'lucide-react';
+import { ArrowLeft, Loader2, CreditCard, X, History, ListChecks } from 'lucide-react';
 
 // --- INTERFACES ---
 interface Tagihan {
@@ -26,6 +26,18 @@ interface Tagihan {
   dibayar?: number;
 }
 
+interface Pembayaran {
+  id: string;
+  tagihanId: string;
+  transactionId?: string; // order_id dari Midtrans
+  jumlahBayar: number;
+  tanggalBayar: Timestamp;
+  status: 'pending' | 'settlement' | 'expire' | 'cancel' | 'deny' | string;
+  jenisBiaya: string; // Untuk tampilan di riwayat
+  bulan: string;
+  tahun: string;
+}
+
 const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
 };
@@ -33,6 +45,9 @@ const formatCurrency = (value: number) => {
 export default function PembayaranView({ userData, onBack }: { user: any, userData: any, onBack: () => void }) {
   const [tagihanList, setTagihanList] = useState<Tagihan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'tagihan' | 'riwayat'>('tagihan');
+  const [riwayatList, setRiwayatList] = useState<Pembayaran[]>([]);
+  const [loadingRiwayat, setLoadingRiwayat] = useState(true);
   // State untuk filter dan data turunan
   const [filteredTagihanList, setFilteredTagihanList] = useState<Tagihan[]>([]);
   const [uniqueYears, setUniqueYears] = useState<string[]>([]);
@@ -44,6 +59,7 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
   const [selectedTagihan, setSelectedTagihan] = useState<Tagihan | null>(null);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState(0);
+  const [isResumingPayment, setIsResumingPayment] = useState<string | null>(null); // Menyimpan ID pembayaran yang sedang dilanjutkan
 
 
   useEffect(() => {
@@ -71,14 +87,55 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
         const years = [...new Set(list.map(t => t.tahun))].sort((a, b) => parseInt(b) - parseInt(a));
         setUniqueYears(years);
       } catch (error) {
-        console.error("Error fetching tagihan:", error);
+        console.error("Error fetching data:", error);
       } finally {
         setLoading(false);
       }
     };
 
     fetchTagihan();
-  }, [userData]);
+  }, [userData?.id]);
+
+  useEffect(() => {
+    if (!userData?.id || activeTab !== 'riwayat') return;
+
+    const fetchRiwayat = async () => {
+      setLoadingRiwayat(true);
+      try {
+        // Ambil data tagihan terbaru untuk mapping, jika belum ada
+        let localTagihanList = tagihanList;
+        if (localTagihanList.length === 0) {
+            const tagihanQuery = query(collection(db, "tagihan_siswa"), where("siswaId", "==", userData.id));
+            const tagihanSnap = await getDocs(tagihanQuery);
+            localTagihanList = tagihanSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tagihan));
+        }
+        const tagihanMap = new Map(localTagihanList.map(t => [t.id, t]));
+
+        const q = query(
+          collection(db, "pembayaran"),
+          where("siswaId", "==", userData.id),
+          orderBy("tanggalBayar", "desc")
+        );
+        const snap = await getDocs(q);
+        setRiwayatList(snap.docs.map(doc => {
+          const pembayaranData = doc.data();
+          const tagihanTerkait = tagihanMap.get(pembayaranData.tagihanId);
+          return {
+            id: doc.id,
+            ...pembayaranData,
+            jenisBiaya: tagihanTerkait?.jenisBiaya || 'N/A',
+            bulan: tagihanTerkait?.bulan || '',
+            tahun: tagihanTerkait?.tahun || '',
+          } as Pembayaran;
+        }));
+      } catch (error) {
+        console.error("Error fetching payment history:", error);
+      } finally {
+        setLoadingRiwayat(false);
+      }
+    };
+    fetchRiwayat();
+  }, [userData?.id, activeTab, tagihanList]);
 
   // Efek untuk memuat script Midtrans Snap
   useEffect(() => {
@@ -159,6 +216,7 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
         body: JSON.stringify({
           tagihanId: selectedTagihan.id,
           amount: paymentAmount,
+          // TIDAK mengirim order_id, agar backend membuat yang baru
           userDetails: {
             nama: userData.nama,
             email: userData.email || 'email@default.com', // Pastikan user punya email
@@ -175,43 +233,34 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
         throw new Error(data.error);
       }
 
+      // --- ALUR BARU ---
+      // 1. Dapatkan order_id dan token dari backend
+      const { token, order_id: newOrderId } = data;
+
+      // 2. Buat dokumen pembayaran di Firestore DENGAN order_id dari backend
+      const pembayaranRef = await addDoc(collection(db, "pembayaran"), {
+        tagihanId: selectedTagihan.id,
+        siswaId: userData.id,
+        jumlahBayar: paymentAmount,
+        tanggalBayar: Timestamp.now(),
+        dicatatOleh: "Midtrans Snap",
+        transactionId: newOrderId, // Gunakan Order ID dari backend
+        status: 'pending'
+      });
+
       if (data.token) {
         (window as any).snap.pay(data.token, {
           onSuccess: async (result: any) => {
-            console.log('Payment Success:', result);
-            
-            // 1. Update status tagihan di Firestore
-            const tagihanRef = doc(db, "tagihan_siswa", selectedTagihan.id);
-            const currentDibayar = selectedTagihan.dibayar || 0;
-            const updateTagihanPromise = updateDoc(tagihanRef, {
-              dibayar: currentDibayar + paymentAmount,
-              status: (currentDibayar + paymentAmount) >= selectedTagihan.nominal ? 'Lunas' : 'Belum Lunas'
-            });
-
-            // 2. Buat catatan pembayaran baru di koleksi 'pembayaran'
-            const pembayaranCollectionRef = collection(db, "pembayaran");
-            const createPembayaranPromise = addDoc(pembayaranCollectionRef, {
-              tagihanId: selectedTagihan.id,
-              siswaId: userData.id,
-              jumlahBayar: paymentAmount,
-              tanggalBayar: Timestamp.now(),
-              dicatatOleh: "Midtrans Snap", // Otomatis dicatat oleh sistem
-              transactionId: result.order_id, // Simpan ID dari Midtrans
-            });
-
-            await Promise.all([updateTagihanPromise, createPembayaranPromise]);
-
-            closePaymentModal();
-            // Refresh data
-            window.location.reload();
+            // Frontend tidak lagi handle update DB on Success, semua dihandle webhook
+            // Cukup arahkan ke halaman status
+            window.location.href = `/pembayaran/selesai?order_id=${result.order_id}&status_code=${result.status_code}&transaction_status=${result.transaction_status}`;
           },
           onPending: (result: any) => {
-            console.log('Payment Pending:', result);
-            alert("Menunggu pembayaran Anda.");
+            window.location.href = `/pembayaran/selesai?order_id=${result.order_id}&status_code=${result.status_code}&transaction_status=${result.transaction_status}`;
           },
           onError: (result: any) => {
-            console.error('Payment Error:', result);
-            alert("Pembayaran gagal.");
+            updateDoc(pembayaranRef, { status: 'error' }); // Tandai sebagai error jika pembayaran gagal di Snap
+            window.location.href = `/pembayaran/selesai?order_id=${result.order_id}&status_code=${result.status_code}&transaction_status=error`;
           },
           onClose: () => {
             console.log('customer closed the popup without finishing the payment');
@@ -226,6 +275,66 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
     }
   };
 
+  const handleResumePayment = async (paymentItem: Pembayaran) => {
+    if (!paymentItem.transactionId) {
+      alert("Informasi transaksi tidak lengkap untuk melanjutkan pembayaran.");
+      return;
+    }
+    setIsResumingPayment(paymentItem.id);
+
+    try {
+      // ALUR YANG BENAR: Minta TOKEN BARU ke backend dengan menggunakan ORDER ID LAMA.
+      const response = await fetch('/api/midtrans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // Kirim data yang diperlukan untuk membuat ulang parameter transaksi di backend
+          tagihanId: paymentItem.tagihanId,
+          amount: paymentItem.jumlahBayar,
+          order_id: paymentItem.transactionId, // <--- Ini kuncinya, gunakan Order ID yang sudah ada
+          userDetails: {
+            nama: userData.nama,
+            email: userData.email || 'email@default.com',
+          },
+          itemDetails: {
+            name: `${paymentItem.jenisBiaya} ${paymentItem.bulan} ${paymentItem.tahun}`,
+          }
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      if (data.token) {
+        // Gunakan TOKEN BARU yang didapat untuk membuka Snap
+        (window as any).snap.pay(data.token, {
+          onSuccess: (result: any) => {
+            window.location.href = `/pembayaran/selesai?order_id=${result.order_id}&status_code=${result.status_code}&transaction_status=${result.transaction_status}`;
+          },
+          onPending: (result: any) => {
+            window.location.href = `/pembayaran/selesai?order_id=${result.order_id}&status_code=${result.status_code}&transaction_status=${result.transaction_status}`;
+          },
+          onError: (result: any) => {
+            window.location.href = `/pembayaran/selesai?order_id=${result.order_id}&status_code=${result.status_code}&transaction_status=error`;
+          },
+          onClose: () => {
+            console.log('customer closed the popup without finishing the payment');
+            setIsResumingPayment(null); // Hentikan loading jika popup ditutup
+          }
+        });
+      } else {
+        throw new Error("Token pembayaran tidak diterima dari server.");
+      }
+    } catch (error) {
+      console.error("Failed to resume payment:", error);
+      alert("Gagal melanjutkan sesi pembayaran. Silakan coba lagi.");
+      setIsResumingPayment(null);
+    }
+  };
+
   return (
     <div className="flex-1 bg-gray-50 min-h-screen flex flex-col">
       <header className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-3">
@@ -235,7 +344,19 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
         <h1 className="text-lg font-bold text-gray-800">Riwayat Pembayaran</h1>
       </header>
 
-      <div className="p-4 space-y-6">
+      <div className="p-4">
+        <div className="mb-4 border-b border-gray-200">
+          <nav className="flex space-x-4" aria-label="Tabs">
+            <button onClick={() => setActiveTab("tagihan")} className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-t-lg ${activeTab === "tagihan" ? "border-b-2 border-purple-500 text-purple-600" : "text-gray-500 hover:text-gray-700"}`}>
+              <ListChecks className="w-4 h-4" /> Daftar Tagihan
+            </button>
+            <button onClick={() => setActiveTab("riwayat")} className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-t-lg ${activeTab === "riwayat" ? "border-b-2 border-purple-500 text-purple-600" : "text-gray-500 hover:text-gray-700"}`}>
+              <History className="w-4 h-4" /> Riwayat Pembayaran
+            </button>
+          </nav>
+        </div>
+
+        {activeTab === 'tagihan' && <div className="space-y-6">
         {/* Filter dan Ringkasan */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-white p-4 rounded-xl shadow-sm">
@@ -290,7 +411,65 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
               </div>
             );
           })
-        )}
+        )}</div>}
+
+        {activeTab === 'riwayat' && <div className="space-y-4">
+          {loadingRiwayat ? (
+            <div className="text-center py-10"><Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" /></div>
+          ) : riwayatList.length === 0 ? (
+            <div className="text-center py-10 text-gray-500 bg-white rounded-lg shadow-sm">
+              Belum ada riwayat pembayaran.
+            </div>
+          ) : (
+            riwayatList.map(item => {
+              const getStatusPill = (status: string) => {
+                switch (status) {
+                  case 'settlement':
+                  case 'capture':
+                    return <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded-full">Sukses</span>;
+                  case 'pending':
+                    return <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2 py-1 rounded-full">Tertunda</span>;
+                  case 'expire':
+                    return <span className="bg-gray-100 text-gray-800 text-xs font-semibold px-2 py-1 rounded-full">Kedaluwarsa</span>;
+                  case 'deny':
+                  case 'cancel':
+                  case 'error':
+                    return <span className="bg-red-100 text-red-800 text-xs font-semibold px-2 py-1 rounded-full">Gagal</span>;
+                  default:
+                    return <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded-full">{status}</span>;
+                }
+              };
+
+              return (
+                <div key={item.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h3 className="font-bold text-gray-800">{item.jenisBiaya}</h3>
+                      <p className="text-xs text-gray-500">{item.bulan} {item.tahun}</p>
+                    </div>
+                    {getStatusPill(item.status)}
+                  </div>
+                  <div className="space-y-1 text-sm border-t pt-2 mt-2">
+                    <div className="flex justify-between"><span>Tanggal Transaksi:</span><span className="font-medium">{new Date(item.tanggalBayar.seconds * 1000).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>
+                    <div className="flex justify-between"><span>Jumlah Bayar:</span><span className="font-bold text-green-600">{formatCurrency(item.jumlahBayar)}</span></div>
+                    <div className="flex justify-between"><span>Order ID:</span><span className="font-mono text-xs text-gray-500">{item.transactionId || '-'}</span></div>
+                  </div>
+                  {item.status === 'pending' && (
+                    <div className="border-t mt-3 pt-3 flex justify-end">
+                      <button 
+                        onClick={() => handleResumePayment(item)} 
+                        disabled={isResumingPayment === item.id}
+                        className="bg-orange-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-orange-600 transition text-sm disabled:opacity-50 disabled:cursor-wait">
+                        {isResumingPayment === item.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                        {isResumingPayment === item.id ? 'Memuat...' : 'Lanjutkan Pembayaran'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>}
       </div>
 
       {/* Modal Pembayaran */}

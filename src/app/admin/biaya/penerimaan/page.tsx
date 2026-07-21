@@ -26,6 +26,7 @@ interface Pembayaran {
   dicatatOleh: string;
   sudahMasukArusKas?: boolean;
   transactionId?: string; // ID dari Midtrans, opsional
+  status?: 'pending' | 'settlement' | 'expire' | 'cancel' | 'deny' | string; // Status dari Midtrans
 }
 
 interface Siswa {
@@ -115,6 +116,7 @@ export default function PenerimaanPage() {
             ...pembayaran,
             namaSiswa: siswa?.nama || "Siswa Dihapus",
             cabangSiswa: siswa?.cabang || "N/A",
+            transactionId: pembayaran.transactionId, // Gunakan transactionId dari pembayaran
             kelasSiswa: siswa?.kelas || "N/A",
             jenisBiaya: tagihan 
               ? `${tagihan.jenisBiaya} ${tagihan.bulan} ${tagihan.tahun}` 
@@ -272,41 +274,63 @@ export default function PenerimaanPage() {
                 <th className="p-4">Jenis Biaya</th>
                 <th className="p-4">ID Transaksi</th>
                 <th className="p-4">Nominal Pembayaran</th>
+                <th className="p-4 text-center">Status Pembayaran</th>
                 <th className="p-4">Dicatat Oleh</th>
                 <th className="p-4 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={10} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
+                <tr><td colSpan={11} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
               ) : filteredLaporanList.length === 0 ? (
-                <tr><td colSpan={10} className="p-8 text-center text-gray-500">Tidak ada data penerimaan yang cocok.</td></tr>
+                <tr><td colSpan={11} className="p-8 text-center text-gray-500">Tidak ada data penerimaan yang cocok.</td></tr>
               ) : (
-                filteredLaporanList.map((item, i) => (
-                  <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="p-4 text-center">{i + 1}</td>
-                    <td className="p-4">{format(item.tanggalBayar.toDate(), 'dd MMMM yyyy')}</td>
-                    <td className="p-4 font-medium text-gray-900">{item.namaSiswa}</td>
-                    <td className="p-4">{item.cabangSiswa}</td>
-                    <td className="p-4">{item.kelasSiswa}</td>
-                    <td className="p-4">{item.jenisBiaya}</td>
-                    <td className="p-4 text-xs text-gray-500 font-mono">
-                      {item.transactionId || '-'}
-                    </td>
-                    <td className="p-4 font-semibold text-green-600">{formatCurrency(item.jumlahBayar)}</td>
-                    <td className="p-4">{item.dicatatOleh}</td>
-                    <td className="p-4 text-center">
-                      <button 
-                        onClick={() => openModal(item)}
-                        disabled={item.sudahMasukArusKas}
-                        className="text-green-600 hover:text-green-800 disabled:text-gray-300 disabled:cursor-not-allowed"
-                        title="Tambahkan ke Arus Kas"
-                      >
-                        <PlusCircle className="w-5 h-5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                filteredLaporanList.map((item, i) => {
+                  const getStatusPill = (status?: string) => {
+                    if (!status) return <span className="bg-gray-100 text-gray-800 text-xs font-semibold px-2 py-1 rounded-full">Manual</span>;
+                    switch (status) {
+                      case 'settlement':
+                      case 'capture':
+                        return <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded-full">Sukses</span>;
+                      case 'pending':
+                        return <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2 py-1 rounded-full">Tertunda</span>;
+                      case 'expire':
+                        return <span className="bg-gray-200 text-gray-800 text-xs font-semibold px-2 py-1 rounded-full">Kedaluwarsa</span>;
+                      case 'deny':
+                      case 'cancel':
+                      case 'error':
+                        return <span className="bg-red-100 text-red-800 text-xs font-semibold px-2 py-1 rounded-full">Gagal</span>;
+                      default:
+                        return <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded-full">{status}</span>;
+                    }
+                  };
+                  return (
+                    <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="p-4 text-center">{i + 1}</td>
+                      <td className="p-4">{format(item.tanggalBayar.toDate(), 'dd MMMM yyyy')}</td>
+                      <td className="p-4 font-medium text-gray-900">{item.namaSiswa}</td>
+                      <td className="p-4">{item.cabangSiswa}</td>
+                      <td className="p-4">{item.kelasSiswa}</td>
+                      <td className="p-4">{item.jenisBiaya}</td>
+                      <td className="p-4 text-xs text-gray-500 font-mono">
+                        {item.transactionId || '-'}
+                      </td>
+                      <td className="p-4 font-semibold text-green-600">{formatCurrency(item.jumlahBayar)}</td>
+                      <td className="p-4 text-center">{getStatusPill(item.status)}</td>
+                      <td className="p-4">{item.dicatatOleh}</td>
+                      <td className="p-4 text-center">
+                        <button 
+                          onClick={() => openModal(item)}
+                          disabled={item.sudahMasukArusKas || item.status !== 'settlement'}
+                          className="text-green-600 hover:text-green-800 disabled:text-gray-300 disabled:cursor-not-allowed"
+                          title={item.status !== 'settlement' ? 'Hanya pembayaran sukses yang bisa ditambahkan' : 'Tambahkan ke Arus Kas'}
+                        >
+                          <PlusCircle className="w-5 h-5" />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>
