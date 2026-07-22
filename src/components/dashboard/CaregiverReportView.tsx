@@ -115,6 +115,8 @@ function LaporanHarianModal({
     const dataToSave = {
       ...formData,
       tanggal: Timestamp.fromDate(formData.tanggal),
+      cabangId: student.cabangId, // Tambahkan cabangId dari data siswa
+      kelasId: student.kelasId,   // Tambahkan kelasId dari data siswa
     };
 
     try {
@@ -227,7 +229,7 @@ function GrowthDataModal({
     setIsSubmitting(true);
     
     const dataToSave = {
-      tanggal: formData.tanggal,
+      tanggal: Timestamp.fromDate(new Date(formData.tanggal)),
       cabang: student.cabang,
       kelas: student.kelasDaycare || student.kelas,
       siswaId: student.id,
@@ -411,6 +413,11 @@ export default function CaregiverReportView({ userData, onBack }: { user: any, u
         const kelasSnap = await getDocs(kelasQuery);
         const allowedKelas = kelasSnap.docs.map(doc => doc.data().namaKelas).filter(Boolean);
 
+        // Ambil ID cabang berdasarkan nama cabang dari data caregiver
+        const cabangQuery = query(collection(db, "cabang"), where("nama", "==", userData.cabang));
+        const cabangSnap = await getDocs(cabangQuery);
+        const cabangId = !cabangSnap.empty ? cabangSnap.docs[0].id : null;
+
         if (allowedKelas.length > 0) {
           // 1. Ambil siswa yang kelas regulernya sesuai dengan kelas guru
           const regularQuery = query(
@@ -438,8 +445,13 @@ export default function CaregiverReportView({ userData, onBack }: { user: any, u
           daycareSnap.docs.forEach(doc => studentMap.set(doc.id, { id: doc.id, ...doc.data() }));
 
           const list = Array.from(studentMap.values());
-          list.sort((a: any, b: any) => (a.nama || "").localeCompare(b.nama || ""));
-          setStudents(list);
+          const listWithIds = list.map(s => ({
+            ...s,
+            // Ambil cabangId dari dokumen kelas yang cocok, bukan dari userData.
+            cabangId: cabangId, // Gunakan cabangId yang sudah kita fetch
+            kelasId: kelasSnap.docs.find(k => k.data().namaKelas === (s.kelasDaycare || s.kelas))?.id || null
+          })).sort((a: any, b: any) => (a.nama || "").localeCompare(b.nama || ""));
+          setStudents(listWithIds);
         } else {
           setStudents([]);
         }

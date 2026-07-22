@@ -3,14 +3,25 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { ArrowLeft, Shield, User, BarChart, Target, Triangle, Users, StickyNote, BookCopy, Calendar } from "lucide-react";
+import { collection, query, where, getDocs, Timestamp, orderBy } from "firebase/firestore";
+import { ArrowLeft, Shield, User, BarChart, Target, Triangle, Users, StickyNote, BookCopy, Calendar, Loader2, Baby, Ruler, Scaling } from "lucide-react";
+import { format } from "date-fns";
 import { formatDate } from "@/lib/dateUtils";
+
+interface GrowthRecord {
+    id: string;
+    siswaId: string;
+    tanggal: Timestamp;
+    lingkarKepala: number;
+    tinggiBadan: number;
+    beratBadan: number;
+}
 
 export default function AkademikView({ user, userData, onBack }: { user: any, userData: any, onBack: () => void }) {
   const [waliKelas, setWaliKelas] = useState("-");
   const [loading, setLoading] = useState(false);
   const [catatanList, setCatatanList] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState("catatan");
   const router = useRouter();
 
   useEffect(() => {
@@ -115,24 +126,21 @@ export default function AkademikView({ user, userData, onBack }: { user: any, us
                 </div>
               </div>
 
+              {/* Tabs */}
               <div className="mt-6">
-                <h3 className="font-semibold text-gray-800 mb-3">Catatan Guru</h3>
-                <div className="space-y-3">
-                  {catatanList.length === 0 ? (
-                    <div className="text-center py-6 bg-white rounded-xl border border-dashed border-gray-200">
-                      <p className="text-xs text-gray-400">Belum ada catatan dari guru.</p>
-                    </div>
-                  ) : (
-                    catatanList.map((note) => (
-                      <div key={note.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                        <div className="flex items-center gap-2 mb-2">
-                           <Calendar className="w-3 h-3 text-gray-400" />
-                           <span className="text-xs text-gray-500 font-medium">{formatDate(note.createdAt)}</span>
-                        </div>
-                        <p className="text-sm text-gray-700 leading-relaxed">{note.catatan}</p>
-                      </div>
-                    ))
-                  )}
+                <div className="mb-4 border-b border-gray-200">
+                  <nav className="flex space-x-4" aria-label="Tabs">
+                    <button onClick={() => setActiveTab("catatan")} className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-t-lg ${activeTab === "catatan" ? "border-b-2 border-purple-500 text-purple-600" : "text-gray-500 hover:text-gray-700"}`}>
+                      <StickyNote className="w-4 h-4" /> Catatan Guru
+                    </button>
+                    <button onClick={() => setActiveTab("pertumbuhan")} className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-t-lg ${activeTab === "pertumbuhan" ? "border-b-2 border-purple-500 text-purple-600" : "text-gray-500 hover:text-gray-700"}`}>
+                      <BarChart className="w-4 h-4" /> Pertumbuhan Anak
+                    </button>
+                  </nav>
+                </div>
+                <div>
+                  {activeTab === 'catatan' && <CatatanGuruTab catatanList={catatanList} />}
+                  {activeTab === 'pertumbuhan' && <PertumbuhanAnakTab userId={userData.id} />}
                 </div>
               </div>
             </>
@@ -167,6 +175,106 @@ function MenuButton({ icon, label, color, onClick }: any) {
       <span className="text-xs font-medium text-gray-700 text-center">{label}</span>
     </button>
   )
+}
+
+function CatatanGuruTab({ catatanList }: { catatanList: any[] }) {
+  return (
+    <div className="space-y-3">
+      {catatanList.length === 0 ? (
+        <div className="text-center py-6 bg-white rounded-xl border border-dashed border-gray-200">
+          <p className="text-xs text-gray-400">Belum ada catatan dari guru.</p>
+        </div>
+      ) : (
+        catatanList.map((note) => (
+          <div key={note.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-2">
+              <Calendar className="w-3 h-3 text-gray-400" />
+              <span className="text-xs text-gray-500 font-medium">{formatDate(note.createdAt)}</span>
+            </div>
+            <p className="text-sm text-gray-700 leading-relaxed">{note.catatan}</p>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function PertumbuhanAnakTab({ userId }: { userId: string }) {
+  const [allData, setAllData] = useState<GrowthRecord[]>([]);
+  const [filteredData, setFilteredData] = useState<GrowthRecord[]>([]);
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [selectedYear, setSelectedYear] = useState<string>('semua');
+  const [loading, setLoading] = useState(true);
+
+  const toJsDate = (ts: any): Date => {
+    if (!ts) return new Date();
+    if (ts instanceof Timestamp) return ts.toDate();
+    if (ts.seconds) return new Date(ts.seconds * 1000);
+    return new Date(ts);
+  };
+
+  useEffect(() => {
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const growthQuery = query(collection(db, "pertumbuhan_anak"), where("siswaId", "==", userId), orderBy("tanggal", "desc"));
+        const snapshot = await getDocs(growthQuery);
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GrowthRecord));
+        setAllData(data);
+
+        if (data.length > 0) {
+          const years = new Set(data.map(d => toJsDate(d.tanggal).getFullYear()));
+          setAvailableYears(Array.from(years).sort((a, b) => b - a));
+        }
+      } catch (err) {
+        console.error("Error fetching growth data:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [userId]);
+
+  useEffect(() => {
+    let data = allData;
+    if (selectedYear !== 'semua') {
+      data = data.filter(d => toJsDate(d.tanggal).getFullYear() === parseInt(selectedYear));
+    }
+    setFilteredData(data);
+  }, [allData, selectedYear]);
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white p-4 rounded-lg shadow-sm">
+        <label htmlFor="year-filter" className="block text-sm font-medium text-gray-700 mb-1">Filter Tahun</label>
+        <select id="year-filter" value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500">
+          <option value="semua">Semua Tahun</option>
+          {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
+        </select>
+      </div>
+
+      {loading ? <div className="flex justify-center items-center p-10"><Loader2 className="w-8 h-8 text-gray-400 animate-spin" /></div>
+        : filteredData.length === 0 ? <div className="p-6 text-center text-gray-500 bg-white rounded-lg shadow-sm">Tidak ada data pertumbuhan untuk filter yang dipilih.</div>
+        : (
+          <div className="space-y-4">
+            {filteredData.map(record => (
+              <div key={record.id} className="bg-white p-5 rounded-lg shadow-sm">
+                <h3 className="font-bold text-lg text-purple-700 border-b pb-2 mb-3">{format(toJsDate(record.tanggal), 'd MMMM yyyy')}</h3>
+                <ul className="space-y-3">
+                  <li className="flex items-center justify-between text-sm"><span className="flex items-center text-gray-600"><Baby className="w-4 h-4 mr-2 text-gray-400" />Lingkar Kepala</span><span className="font-bold text-gray-800">{record.lingkarKepala} cm</span></li>
+                  <li className="flex items-center justify-between text-sm"><span className="flex items-center text-gray-600"><Ruler className="w-4 h-4 mr-2 text-gray-400" />Tinggi Badan</span><span className="font-bold text-gray-800">{record.tinggiBadan} cm</span></li>
+                  <li className="flex items-center justify-between text-sm"><span className="flex items-center text-gray-600"><Scaling className="w-4 h-4 mr-2 text-gray-400" />Berat Badan</span><span className="font-bold text-gray-800">{record.beratBadan} kg</span></li>
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+    </div>
+  );
 }
 
 function MenuButtonLarge({ icon, label, desc, color, onClick }: any) {

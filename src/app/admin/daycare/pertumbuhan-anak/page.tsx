@@ -23,6 +23,7 @@ interface Siswa {
   nama: string;
   kelas: string;
   cabang: string;
+  kelasDaycare?: string; // Tambahkan kelasDaycare sebagai properti opsional
 }
 
 interface Kelas {
@@ -41,6 +42,7 @@ interface Cabang {
 const PertumbuhanAnakPage = () => {
   const [growthList, setGrowthList] = useState<GrowthData[]>([]);
   const [siswaList, setSiswaList] = useState<Siswa[]>([]);
+  const [allKelasList, setAllKelasList] = useState<Kelas[]>([]); // State baru untuk semua kelas
   const [kelasList, setKelasList] = useState<Kelas[]>([]);
   const [cabangList, setCabangList] = useState<Cabang[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,45 +117,36 @@ const PertumbuhanAnakPage = () => {
                 : query(collection(db, "kelas"), orderBy("namaKelas", "asc"));
 
             const kelasSnapshot = await getDocs(kelasQuery);
-            let allKelas = kelasSnapshot.docs.map(doc => {
+            const fetchedKelas = kelasSnapshot.docs.map(doc => {
                 const { id, ...data } = { id: doc.id, ...doc.data() };
                 return { id, ...data } as Kelas;
             });
+            setAllKelasList(fetchedKelas); // Simpan semua kelas
             
-            // Filter kelas hanya untuk Daycare dan sesuai cabang user jika bukan admin
-            allKelas = allKelas.filter(k => k.jenjangKelas === "Daycare");
+            // Filter kelas sesuai cabang user jika bukan admin
+            let userKelas = fetchedKelas;
             if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
-                allKelas = allKelas.filter(k => k.cabang === currentUser.cabang);
+                userKelas = userKelas.filter(k => k.cabang === currentUser.cabang);
             }
 
-            setKelasList(allKelas);
+            setKelasList(userKelas);
 
             // Fetch Siswa
-            const allowedKelasNames = allKelas.map(k => k.namaKelas);
+            const allowedKelasNames = userKelas.map(k => k.namaKelas);
             let siswaQuery;
 
             if (currentUser.role === "Admin" || currentUser.role === "Direktur" || currentUser.role === "Yayasan") {
                 siswaQuery = query(collection(db, "siswa"), orderBy("nama", "asc"));
             } else {
-                siswaQuery = currentUser.cabang
-                    ? query(collection(db, "siswa"), where("cabang", "==", currentUser.cabang))
-                    : query(collection(db, "siswa"), orderBy("nama", "asc"));
+                siswaQuery = query(collection(db, "siswa"), where("cabang", "==", currentUser.cabang));
             }
 
             const siswaSnapshot = await getDocs(siswaQuery);
-            let allSiswa = siswaSnapshot.docs.map(doc => {
-                const { id, ...data } = { id: doc.id, ...doc.data() };
-                return { id, ...data } as Siswa;
-            });
+            let allSiswa = siswaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Siswa));
 
             if (currentUser.role !== "Admin" && currentUser.role !== "Direktur" && currentUser.role !== "Yayasan") {
-                allSiswa = allSiswa.filter(s => allowedKelasNames.includes(s.kelas));
+                allSiswa = allSiswa.filter(s => allowedKelasNames.includes(s.kelas) || (s.kelasDaycare && allowedKelasNames.includes(s.kelasDaycare)));
             }
-            // Filter lagi hanya siswa daycare
-            allSiswa = allSiswa.filter(s => {
-                const kelasSiswa = allKelas.find(k => k.namaKelas === s.kelas && k.cabang === s.cabang);
-                return kelasSiswa?.jenjangKelas === "Daycare";
-            });
 
             setSiswaList(allSiswa);
 
@@ -193,12 +186,12 @@ const PertumbuhanAnakPage = () => {
   // Effect for cascading dropdowns in modal
   useEffect(() => {
     if (formData.cabang) {
-      setFilteredKelasList(kelasList.filter(k => k.cabang === formData.cabang));
+      setFilteredKelasList(allKelasList.filter(k => k.cabang === formData.cabang));
     } else {
       setFilteredKelasList([]);
     }
     setFormData((prev) => ({ ...prev, kelas: '', siswaId: '' }));
-  }, [formData.cabang, kelasList]);
+  }, [formData.cabang, allKelasList]);
 
   useEffect(() => {
     if (formData.cabang && formData.kelas) {
@@ -292,6 +285,7 @@ const PertumbuhanAnakPage = () => {
     
     const dataToSave = {
         ...formData,
+        tanggal: Timestamp.fromDate(new Date(formData.tanggal)),
         lingkarKepala: parseFloat(formData.lingkarKepala) || 0,
         tinggiBadan: parseFloat(formData.tinggiBadan) || 0,
         beratBadan: parseFloat(formData.beratBadan) || 0,
@@ -437,8 +431,8 @@ const PertumbuhanAnakPage = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Kelas</label>
-                  <select required 
-                    disabled={!formData.cabang || ((currentUser?.role === "Caregiver" || currentUser?.role === "Guru") && kelasList.length === 1)} 
+                  <select required
+                    disabled={!formData.cabang}
                     value={formData.kelas} 
                     onChange={(e) => setFormData({...formData, kelas: e.target.value, siswaId: ''})} 
                     className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900 disabled:bg-gray-100 disabled:cursor-not-allowed"
