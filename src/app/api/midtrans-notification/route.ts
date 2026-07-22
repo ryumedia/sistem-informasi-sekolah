@@ -2,50 +2,34 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase-admin"; // Gunakan firebase-admin di backend
 import crypto from "crypto";
 
-const getTagihanById = async (tagihanId: string) => {
-  const tagihanRef = db.collection("tagihan_siswa").doc(tagihanId);
-  const doc = await tagihanRef.get();
-  if (!doc.exists) {
-    return null;
-  }
-  return { id: doc.id, ...doc.data() };
-};
-
 export async function POST(request: Request) {
   try {
     const notificationJson = await request.json();
 
-    // 1. Buat signature key dari data notifikasi
+    // 1. Ambil server key dan periksa keberadaannya
     const serverKey = process.env.MIDTRANS_SERVER_KEY;
     if (!serverKey) {
-      // Log error kritis di server
-      console.error("CRITICAL: MIDTRANS_SERVER_KEY environment variable is not set on the server.");
-      // Tetap kembalikan status 200 ke Midtrans agar tidak dianggap gagal total,
-      // namun beri pesan bahwa ada masalah konfigurasi.
-      return NextResponse.json(
-        { status: "error", message: "Server configuration issue: Missing server key." },
-        { status: 200 }
-      );
+      throw new Error("MIDTRANS_SERVER_KEY is not set in environment variables");
     }
 
-    const signatureKey = crypto
-      .createHash("sha512")
-      .update(
-        `${notificationJson.order_id}${notificationJson.status_code}${notificationJson.gross_amount}${serverKey}`
-      )
-      .digest("hex");
+    // 2. Buat signature key pembanding dari data notifikasi yang masuk
+    const hash = crypto.createHash("sha512");
+    hash.update(`${notificationJson.order_id}${notificationJson.status_code}${notificationJson.gross_amount}${serverKey}`);
+    const generatedSignatureKey = hash.digest("hex");
 
-    // 2. Verifikasi signature key
-    if (signatureKey !== notificationJson.signature_key) {
-      return NextResponse.json({ error: "Invalid signature" }, { status: 403 });
+    // 3. Bandingkan signature key yang kita buat dengan yang dikirim oleh Midtrans
+    if (generatedSignatureKey !== notificationJson.signature_key) {
+      throw new Error("Invalid signature key");
     }
 
-    // 3. Dapatkan data dari notifikasi
+    // Jika signature valid, kita bisa percaya data dari notifikasi
     const orderId = notificationJson.order_id;
     const transactionStatus = notificationJson.transaction_status;
     const fraudStatus = notificationJson.fraud_status;
 
-    // Cari dokumen pembayaran berdasarkan transactionId (order_id)
+    console.log(`Webhook received for order_id: ${orderId}, status: ${transactionStatus}, fraud: ${fraudStatus}`);
+
+    // 4. Cari dokumen pembayaran berdasarkan transactionId (order_id)
     const pembayaranQuery = db
       .collection("pembayaran")
       .where("transactionId", "==", orderId);
@@ -60,10 +44,14 @@ export async function POST(request: Request) {
     const pembayaranDoc = pembayaranSnap.docs[0];
     const pembayaranData = pembayaranDoc.data();
 
-    // 4. Update status pembayaran di Firestore
+    // 5. Update status pembayaran di Firestore (Hanya jika status berubah)
+    if (pembayaranData.status === transactionStatus) {
+      console.log(`Status for order_id: ${orderId} is already '${transactionStatus}'. No update needed.`);
+      return NextResponse.json({ status: "ok, no change" });
+    }
     await pembayaranDoc.ref.update({ status: transactionStatus });
 
-    // 5. Jika pembayaran sukses (settlement), update juga data tagihan
+    // 6. Jika pembayaran sukses (settlement), update juga data tagihan
     if (transactionStatus === "settlement" || transactionStatus === "capture") {
       if (fraudStatus === "accept") {
         const tagihanRef = db.collection("tagihan_siswa").doc(pembayaranData.tagihanId);
