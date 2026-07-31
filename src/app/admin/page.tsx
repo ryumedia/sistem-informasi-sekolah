@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
+import { useUser } from '@/contexts/UserContext'; // Import the hook
 import { db, auth } from '@/lib/firebase';
 import { 
   collection, 
@@ -14,19 +15,22 @@ import {
   sum,
   average 
 } from 'firebase/firestore';
-import { Building, Users, UserSquare, Star, ArrowDown, ArrowUp, Scale, Loader2 } from 'lucide-react';
+import { Building, Users, UserSquare, Star, ArrowDown, ArrowUp, Scale, Loader2, PieChart, BarChart3, Wallet } from 'lucide-react';
 
-interface AdminDashboardProps {
-  userRole?: string;
-  userCabang?: string;
-}
-
-export default function AdminDashboard({ userRole, userCabang }: AdminDashboardProps) {
+type TabName = 'umum' | 'keuangan' | 'kelas';
+export default function AdminDashboard() {
+  const { userData, isAuthDataLoaded } = useUser();
+  const { role: userRole, cabang: userCabang } = userData || {};
+  console.log("[AdminDashboard] Rendered with context:", { userRole, userCabang, isAuthDataLoaded });
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [selectedCabang, setSelectedCabang] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [loadingTable, setLoadingTable] = useState(false);
   const [kelasStatsList, setKelasStatsList] = useState<any[]>([]);
+
+  const [activeTab, setActiveTab] = useState<TabName>('umum');
+  const [loadingTab, setLoadingTab] = useState(false);
+  const [fetchedTabs, setFetchedTabs] = useState<Partial<Record<TabName, boolean>>>({});
 
   const [stats, setStats] = useState({
     kelas: 0,
@@ -41,8 +45,6 @@ export default function AdminDashboard({ userRole, userCabang }: AdminDashboardP
     saldo: 0,
   });
 
-  const isAuthReady = useMemo(() => !!userRole, [userRole]);
-
   // Fetch Cabang List for Filter
   useEffect(() => {
     const fetchCabang = async () => {
@@ -54,130 +56,113 @@ export default function AdminDashboard({ userRole, userCabang }: AdminDashboardP
 
   useEffect(() => {
     if (userRole === "Kepala Sekolah" && userCabang) {
-      setSelectedCabang(userCabang);
+      setSelectedCabang(userCabang || ""); // Memastikan selectedCabang selalu berupa string
     }
   }, [userRole, userCabang]);
 
-  // Fetch Dashboard Data based on Filter
+  // Fetch data when activeTab or selectedCabang changes
   useEffect(() => {
-    if (!isAuthReady) return; // Jangan fetch data sebelum role/cabang user dipastikan
+    if (!isAuthDataLoaded || (userRole && ["Guru", "Caregiver"].includes(userRole))) {
+      console.log(`[Dashboard useEffect] Returning early. isAuthDataLoaded: ${isAuthDataLoaded}, userRole: ${userRole}`);
+      return;
+    }
 
-    // Cegah fetching data dashboard jika role adalah Guru atau Caregiver (karena akan diredirect)
-    if (userRole && ["Guru", "Caregiver"].includes(userRole)) return;
+    console.log(`[Dashboard] Fetching data for tab: ${activeTab}, cabang: '${selectedCabang}'`);
+    const getBaseQuery = (col: string) => selectedCabang ? query(collection(db, col), where("cabang", "==", selectedCabang)) : collection(db, col);
 
-    const fetchData = async () => {
-      setLoading(true);
-      setLoadingTable(true);
-      const getBaseQuery = (col: string) => selectedCabang ? query(collection(db, col), where("cabang", "==", selectedCabang)) : collection(db, col);
+    const fetchGeneralStats = async () => {
+      const pQuery = selectedCabang
+        ? query(collectionGroup(db, 'kpi_guru'), where('cabang', '==', selectedCabang))
+        : collectionGroup(db, 'kpi_guru');
 
-      try {
-        const pQuery = selectedCabang
-            ? query(collectionGroup(db, 'kpi_guru'), where('cabang', '==', selectedCabang))
-            : collectionGroup(db, 'kpi_guru');
+      const [kelasCountSnap, siswaAktifCountSnap, guruCountSnap, perfAgg] = await Promise.all([
+        getCountFromServer(getBaseQuery("kelas")),
+        getCountFromServer(query(getBaseQuery("siswa"), where("status", "==", "Aktif"))),
+        getCountFromServer(getBaseQuery("guru")),
+        getAggregateFromServer(pQuery, { avg: average('persentase') })
+      ]);
 
-        const qPemasukan = query(collection(db, "arus_kas"), ...(selectedCabang ? [where("cabang", "==", selectedCabang)] : []), where("jenis", "==", "Masuk"));
-        const qPengeluaran = query(collection(db, "arus_kas"), ...(selectedCabang ? [where("cabang", "==", selectedCabang)] : []), where("jenis", "==", "Keluar"));
+        console.log("[Dashboard] General Stats Raw:", { kelasCount: kelasCountSnap.data().count, siswaCount: siswaAktifCountSnap.data().count, guruCount: guruCountSnap.data().count, perfAvg: perfAgg.data().avg });
+      const avgPerformance = perfAgg.data().avg || 0;
+      setStats({
+        kelas: kelasCountSnap.data().count,
+        siswa: siswaAktifCountSnap.data().count,
+        guru: guruCountSnap.data().count,
+        performance: parseFloat(avgPerformance.toFixed(2)),
+      });
+    };
 
-        // PHASE 1: JALANKAN QUERY AGREGASI (SANGAT CEPAT)
-        const [
-          kelasCountSnap,
-          siswaAktifCountSnap,
-          guruCountSnap,
-          pemasukanAgg,
-          pengeluaranAgg,
-          perfAgg
-        ] = await Promise.all([
-          getCountFromServer(getBaseQuery("kelas")),
-          getCountFromServer(query(getBaseQuery("siswa"), where("status", "==", "Aktif"))),
-          getCountFromServer(getBaseQuery("guru")),
-          getAggregateFromServer(qPemasukan, { total: sum("nominal") }),
-          getAggregateFromServer(qPengeluaran, { total: sum("nominal") }),
-          getAggregateFromServer(pQuery, { avg: average('persentase') })
+    const fetchKeuanganStats = async () => {
+      const qPemasukan = query(collection(db, "arus_kas"), ...(selectedCabang ? [where("cabang", "==", selectedCabang)] : []), where("jenis", "==", "Masuk"));
+      const qPengeluaran = query(collection(db, "arus_kas"), ...(selectedCabang ? [where("cabang", "==", selectedCabang)] : []), where("jenis", "==", "Keluar"));
+
+      const [pemasukanAgg, pengeluaranAgg] = await Promise.all([
+        getAggregateFromServer(qPemasukan, { total: sum("nominal") }),
+        getAggregateFromServer(qPengeluaran, { total: sum("nominal") }),
+      ]);
+
+      console.log("[Dashboard] Keuangan Stats Raw:", { pemasukanTotal: pemasukanAgg.data().total, pengeluaranTotal: pengeluaranAgg.data().total });
+      const pemasukan = pemasukanAgg.data().total || 0;
+      const pengeluaran = pengeluaranAgg.data().total || 0;
+      setKeuangan({ pemasukan, pengeluaran, saldo: pemasukan - pengeluaran });
+    };
+
+    const fetchKelasStats = async () => {
+      const kelasSnap = await getDocs(getBaseQuery("kelas"));
+      const classes = kelasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+
+      const kelasStatPromises = classes.map(async (cls) => {
+        const baseSiswaQuery = query(
+          collection(db, "siswa"),
+          where("cabang", "==", cls.cabang),
+          where("kelas", "==", cls.namaKelas),
+          where("status", "==", "Aktif")
+        );
+        const lakiQuery = query(baseSiswaQuery, where("jenisKelamin", "==", "Laki-laki"));
+        const perempuanQuery = query(baseSiswaQuery, where("jenisKelamin", "==", "Perempuan"));
+
+        const [lakiSnap, perempuanSnap] = await Promise.all([
+          getCountFromServer(lakiQuery),
+          getCountFromServer(perempuanQuery)
         ]);
 
-        const pemasukan = pemasukanAgg.data().total || 0;
-        const pengeluaran = pengeluaranAgg.data().total || 0;
-        const avgPerformance = perfAgg.data().avg || 0;
+          console.log(`[Dashboard] Kelas ${cls.namaKelas} (${cls.cabang}) - Laki: ${lakiSnap.data().count}, Perempuan: ${perempuanSnap.data().count}`);
+        const laki = lakiSnap.data().count;
+        const perempuan = perempuanSnap.data().count;
+        return { id: cls.id, namaKelas: cls.namaKelas, cabang: cls.cabang, laki, perempuan, jumlah: laki + perempuan };
+      });
 
-        setKeuangan({ pemasukan, pengeluaran, saldo: pemasukan - pengeluaran });
-        setStats({
-          kelas: kelasCountSnap.data().count,
-          siswa: siswaAktifCountSnap.data().count,
-          guru: guruCountSnap.data().count,
-          performance: parseFloat(avgPerformance.toFixed(2)),
-        });
+      let processedKelasStats = await Promise.all(kelasStatPromises);
+      processedKelasStats.sort((a: any, b: any) => {
+        if (a.cabang !== b.cabang) return a.cabang.localeCompare(b.cabang);
+        return a.namaKelas.localeCompare(b.namaKelas);
+      });
+      setKelasStatsList(processedKelasStats);
+    };
 
-        // Sembunyikan loading utama agar Card dan Keuangan segera muncul
-        setLoading(false);
-
-        // PHASE 2: AMBIL DATA DETAIL UNTUK TABEL (DI LATAR BELAKANG)
-        const kelasSnap = await getDocs(getBaseQuery("kelas"));
-        const classes = kelasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-
-        let processedKelasStats: any[] = [];
-
-        if (selectedCabang) {
-          // Strategi 1: Jika cabang spesifik dipilih, ambil semua siswa di cabang itu dan agregasi di memori.
-          // Ini efisien jika jumlah siswa per cabang tidak terlalu besar.
-          const siswaSnap = await getDocs(query(getBaseQuery("siswa"), where("status", "==", "Aktif"))); // getBaseQuery sudah memfilter berdasarkan cabang
-          const allSiswaInCabang = siswaSnap.docs.map(doc => doc.data());
-
-          processedKelasStats = classes.map((cls) => {
-            const siswaDiKelas = allSiswaInCabang.filter(s =>
-              s.kelas === cls.namaKelas // Cabang sudah difilter oleh allSiswaInCabang
-            );
-
-            const laki = siswaDiKelas.filter(s => s.jenisKelamin === 'Laki-laki').length;
-            const perempuan = siswaDiKelas.filter(s => s.jenisKelamin === 'Perempuan').length;
-
-            return {
-              id: cls.id,
-              namaKelas: cls.namaKelas,
-              cabang: cls.cabang,
-              laki,
-              perempuan,
-              jumlah: laki + perempuan
-            };
-          });
-        } else {
-          // Optimasi Strategi 2: Ambil semua siswa sekali saja jika datanya tidak jutaan, 
-          // daripada melakukan ratusan request individual (N+1 query problem).
-          const siswaSnap = await getDocs(query(collection(db, "siswa"), where("status", "==", "Aktif")));
-          const allSiswa = siswaSnap.docs.map(doc => doc.data());
-
-          processedKelasStats = classes.map((cls) => {
-            const diKelas = allSiswa.filter(s => s.cabang === cls.cabang && s.kelas === cls.namaKelas);
-            const laki = diKelas.filter(s => s.jenisKelamin === 'Laki-laki').length;
-            const perempuan = diKelas.filter(s => s.jenisKelamin === 'Perempuan').length;
-            
-            return { 
-              id: cls.id, 
-              namaKelas: cls.namaKelas, 
-              cabang: cls.cabang, 
-              laki, 
-              perempuan, 
-              jumlah: laki + perempuan 
-            };
-          });
-        }
-
-        // Sort: Cabang ASC, then Nama Kelas ASC
-        processedKelasStats.sort((a: any, b: any) => {
-             if (a.cabang !== b.cabang) return a.cabang.localeCompare(b.cabang);
-             return a.namaKelas.localeCompare(b.namaKelas);
-        });
-        setKelasStatsList(processedKelasStats);
-
+    const loadTabData = async () => {
+      setLoadingTab(true);
+      try {
+        if (activeTab === 'umum') await fetchGeneralStats();
+        if (activeTab === 'keuangan') await fetchKeuanganStats();
+        if (activeTab === 'kelas') await fetchKelasStats();
+        console.log(`[Dashboard] Finished fetching for tab: ${activeTab}`);
+        setFetchedTabs(prev => ({ ...prev, [activeTab]: true }));
       } catch (error) {
-        console.error("Error fetching dashboard data:", error);
+        console.error(`Error fetching data for tab ${activeTab}:`, error);
       } finally {
-        setLoading(false);
-        setLoadingTable(false);
+        setLoadingTab(false);
+        setLoading(false); // Matikan loading utama setelah tab pertama selesai
       }
     };
 
-    fetchData();
-  }, [selectedCabang, isAuthReady, userRole]);
+    loadTabData();
+  }, [activeTab, selectedCabang, isAuthDataLoaded, userRole]);
+
+  // Reset fetched status when cabang changes
+  useEffect(() => {
+    setFetchedTabs({});
+  }, [selectedCabang]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
@@ -190,7 +175,7 @@ export default function AdminDashboard({ userRole, userCabang }: AdminDashboardP
         <div>
           <label className="text-xs font-medium text-gray-500 mr-2">Filter Cabang:</label>
           <select 
-            value={selectedCabang} 
+            value={selectedCabang}
             onChange={(e) => setSelectedCabang(e.target.value)}
             disabled={userRole === "Kepala Sekolah"}
             className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`}
@@ -201,77 +186,78 @@ export default function AdminDashboard({ userRole, userCabang }: AdminDashboardP
         </div>
       </div>
 
-      {/* 
-          Gunakan pengecekan isAuthReady dan userRole di sini. 
-          Jika role dilarang, tampilkan loader saja sambil menunggu redirect dari Layout.
-      */}
-      {!isAuthReady || (userRole && ["Guru", "Caregiver"].includes(userRole)) ? (
-        <div className="w-full text-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-[#581c87] mx-auto" />
-          <p className="text-sm text-gray-500 mt-2">Memeriksa hak akses...</p>
-        </div>
-      ) : loading ? (
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+          <TabButton icon={<PieChart />} label="Ringkasan Umum" isActive={activeTab === 'umum'} onClick={() => setActiveTab('umum')} />
+          <TabButton icon={<Wallet />} label="Keuangan" isActive={activeTab === 'keuangan'} onClick={() => setActiveTab('keuangan')} />
+          <TabButton icon={<BarChart3 />} label="Siswa per Kelas" isActive={activeTab === 'kelas'} onClick={() => setActiveTab('kelas')} />
+        </nav>
+      </div>
+
+      {loadingTab ? (
         <div className="w-full text-center py-10">
           <Loader2 className="w-8 h-8 animate-spin text-[#581c87] mx-auto" />
           <p className="text-sm text-gray-500 mt-2">Memuat data...</p>
         </div>
       ) : (
-        <>
-          {/* Stat Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <StatCard icon={<Building />} title="Jumlah Kelas" value={stats.kelas} color="blue" />
-            <StatCard icon={<Users />} title="Jumlah Siswa" value={stats.siswa} color="green" />
-            <StatCard icon={<UserSquare />} title="Jumlah Guru" value={stats.guru} color="orange" />
-            <StatCard icon={<Star />} title="Nilai Performance" value={stats.performance} color="purple" suffix="%" />
-          </div>
-
-          {/* Keuangan Recap */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">Rekap Keuangan {selectedCabang && `(${selectedCabang})`}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-              <KeuanganCard icon={<ArrowDown />} title="Total Pemasukan" value={formatCurrency(keuangan.pemasukan)} color="text-green-600" bgColor="bg-green-50" />
-              <KeuanganCard icon={<ArrowUp />} title="Total Pengeluaran" value={formatCurrency(keuangan.pengeluaran)} color="text-red-600" bgColor="bg-red-50" />
-              <KeuanganCard icon={<Scale />} title="Saldo Akhir" value={formatCurrency(keuangan.saldo)} color="text-blue-600" bgColor="bg-blue-50" />
+        <div className="animate-fadeIn">
+          {activeTab === 'umum' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <StatCard icon={<Building />} title="Jumlah Kelas" value={stats.kelas} color="blue" />
+              <StatCard icon={<Users />} title="Jumlah Siswa" value={stats.siswa} color="green" />
+              <StatCard icon={<UserSquare />} title="Jumlah Guru" value={stats.guru} color="orange" />
+              <StatCard icon={<Star />} title="Nilai Performance" value={stats.performance} color="purple" suffix="%" />
             </div>
-          </div>
+          )}
 
-          {/* Tabel Data Kelas & Siswa */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">Data Kelas & Siswa</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left text-gray-600">
-                <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
-                  <tr>
-                    <th className="p-3 w-12 text-center">No</th>
-                    <th className="p-3">Nama Kelas</th>
-                    <th className="p-3">Cabang</th>
-                    <th className="p-3 text-center">Laki-laki</th>
-                    <th className="p-3 text-center">Perempuan</th>
-                    <th className="p-3 text-center">Jumlah</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {loadingTable ? (
-                    <tr><td colSpan={6} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" /></td></tr>
-                  ) : kelasStatsList.length === 0 ? (
-                    <tr><td colSpan={6} className="p-4 text-center text-gray-500">Tidak ada data kelas.</td></tr>
-                  ) : (
-                    kelasStatsList.map((item, idx) => (
-                      <tr key={item.id} className="hover:bg-gray-50">
-                        <td className="p-3 text-center">{idx + 1}</td>
-                        <td className="p-3 font-medium text-gray-900">{item.namaKelas}</td>
-                        <td className="p-3">{item.cabang}</td>
-                        <td className="p-3 text-center">{item.laki}</td>
-                        <td className="p-3 text-center">{item.perempuan}</td>
-                        <td className="p-3 text-center font-bold">{item.jumlah}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+          {activeTab === 'keuangan' && (
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+              <h2 className="text-lg font-bold text-gray-800 mb-4">Rekap Keuangan {selectedCabang && `(${selectedCabang})`}</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                <KeuanganCard icon={<ArrowDown />} title="Total Pemasukan" value={formatCurrency(keuangan.pemasukan)} color="text-green-600" bgColor="bg-green-50" />
+                <KeuanganCard icon={<ArrowUp />} title="Total Pengeluaran" value={formatCurrency(keuangan.pengeluaran)} color="text-red-600" bgColor="bg-red-50" />
+                <KeuanganCard icon={<Scale />} title="Saldo Akhir" value={formatCurrency(keuangan.saldo)} color="text-blue-600" bgColor="bg-blue-50" />
+              </div>
             </div>
-          </div>
-        </>
+          )}
+
+          {activeTab === 'kelas' && (
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+              <h2 className="text-lg font-bold text-gray-800 mb-4">Data Siswa per Kelas</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left text-gray-600">
+                  <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
+                    <tr>
+                      <th className="p-3 w-12 text-center">No</th>
+                      <th className="p-3">Nama Kelas</th>
+                      <th className="p-3">Cabang</th>
+                      <th className="p-3 text-center">Laki-laki</th>
+                      <th className="p-3 text-center">Perempuan</th>
+                      <th className="p-3 text-center">Jumlah</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {kelasStatsList.length === 0 ? (
+                      <tr><td colSpan={6} className="p-4 text-center text-gray-500">Tidak ada data kelas.</td></tr>
+                    ) : (
+                      kelasStatsList.map((item, idx) => (
+                        <tr key={item.id} className="hover:bg-gray-50">
+                          <td className="p-3 text-center">{idx + 1}</td>
+                          <td className="p-3 font-medium text-gray-900">{item.namaKelas}</td>
+                          <td className="p-3">{item.cabang}</td>
+                          <td className="p-3 text-center">{item.laki}</td>
+                          <td className="p-3 text-center">{item.perempuan}</td>
+                          <td className="p-3 text-center font-bold">{item.jumlah}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -305,4 +291,17 @@ const KeuanganCard = ({ icon, title, value, color, bgColor }: { icon: React.Reac
     <p className="text-xs text-gray-500">{title}</p>
     <p className={`text-lg font-bold ${color}`}>{value}</p>
   </div>
+);
+
+const TabButton = ({ icon, label, isActive, onClick }: { icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void }) => (
+  <button
+    onClick={onClick}
+    className={`flex items-center gap-2 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ease-in-out
+      ${isActive
+        ? 'border-purple-600 text-purple-600'
+        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+      }`}
+  >
+    {icon} {label}
+  </button>
 );

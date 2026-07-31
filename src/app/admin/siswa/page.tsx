@@ -12,24 +12,60 @@ import { Download } from "lucide-react";
 interface Siswa {
   id: string;
   nama: string;
-  jenisKelamin: string;
-  nisn: string;
-  tempatLahir: string;
-  tanggalLahir: string;
-  agama: string;
-  anakKe: string;
-  alamat: string;
-  namaAyah: string;
-  namaIbu: string;
   kelas: string;
   cabang: string;
   email: string;
   status: string;
-  foto?: string;
+  uid?: string;
+
+  // Data Pribadi
+  jenisKelamin: string;
+  kewarganegaraan?: string;
+  nik?: string;
+  noKartuKeluarga?: string;
+  tempatLahir: string;
+  tanggalLahir: string;
+  noAktaLahir?: string;
+  agama?: string;
+  rt?: string;
+  rw?: string;
+  dusun?: string;
+  desaKelurahan?: string;
+  kodePos?: string;
+  lintang?: string;
+  bujur?: string;
+  tempatTinggal?: string;
+  modaTransportasi?: string;
+  anakKe?: string;
+  fotoAktaKelahiran?: string;
+  fotoKartuKeluarga?: string;
+
+  // Data Ayah
+  namaAyah: string;
+  nikAyah?: string;
+  tahunLahirAyah?: string;
+  pendidikanAyah?: string;
+  pekerjaanAyah?: string;
+  penghasilanAyah?: string;
+
+  // Data Ibu
+  namaIbu: string;
+  nikIbu?: string;
+  tahunLahirIbu?: string;
+  pendidikanIbu?: string;
+  pekerjaanIbu?: string;
+  penghasilanIbu?: string;
+
+  // Kontak
+  noTelpRumah?: string;
+  noWA?: string;
+
+  // Data Sekolah
   jenjangUsia?: string;
+  nisn: string;
   isDaycare?: boolean;
   kelasDaycare?: string;
-  uid?: string; // Tambahkan field UID
+  foto?: string;
 }
 
 export default function DataSiswaPage() {
@@ -37,6 +73,10 @@ export default function DataSiswaPage() {
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [kelasList, setKelasList] = useState<any[]>([]);
   const [usiaList, setUsiaList] = useState<any[]>([]);
+  const [transportasiList, setTransportasiList] = useState<any[]>([]);
+  const [pendidikanList, setPendidikanList] = useState<any[]>([]);
+  const [pekerjaanList, setPekerjaanList] = useState<any[]>([]);
+  const [penghasilanList, setPenghasilanList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -59,24 +99,54 @@ export default function DataSiswaPage() {
   // State Form
   const [formData, setFormData] = useState({
     nama: "",
-    jenisKelamin: "Laki-laki",
-    nisn: "",
-    tempatLahir: "",
-    tanggalLahir: "",
-    agama: "",
-    anakKe: "",
-    alamat: "",
-    namaAyah: "",
-    namaIbu: "",
-    kelas: "",
-    cabang: "",
     email: "",
     password: "",
     status: "Aktif",
-    foto: "",
+    cabang: "",
+    kelas: "",
+    nisn: "",
     jenjangUsia: "",
     isDaycare: false,
     kelasDaycare: "",
+    foto: "",
+
+    // Data Pribadi
+    jenisKelamin: "Laki-laki",
+    kewarganegaraan: "Indonesia (WNI)",
+    nik: "",
+    noKartuKeluarga: "",
+    tempatLahir: "",
+    tanggalLahir: "",
+    noAktaLahir: "",
+    agama: "",
+    rt: "",
+    rw: "",
+    dusun: "",
+    desaKelurahan: "",
+    kodePos: "",
+    lintang: "",
+    bujur: "",
+    tempatTinggal: "Bersama Orang Tua",
+    modaTransportasi: "",
+    anakKe: "",
+    fotoAktaKelahiran: "",
+    fotoKartuKeluarga: "",
+
+    // Data Orang Tua & Kontak
+    namaAyah: "",
+    namaIbu: "",
+    nikAyah: "",
+    tahunLahirAyah: "",
+    pendidikanAyah: "",
+    pekerjaanAyah: "",
+    penghasilanAyah: "",
+    nikIbu: "",
+    tahunLahirIbu: "",
+    pendidikanIbu: "",
+    pekerjaanIbu: "",
+    penghasilanIbu: "",
+    noTelpRumah: "",
+    noWA: "",
   });
 
   // Fetch Data Siswa
@@ -130,9 +200,27 @@ export default function DataSiswaPage() {
         console.error("Error fetching usia:", error);
       }
     };
+    const fetchMasterData = async (collectionName: string, setter: Function) => {
+      // Tentukan field untuk diurutkan berdasarkan nama koleksi
+      const orderByField = collectionName === 'transportasi' ? 'nama' : 'urutan';
+      try {
+        const q = query(collection(db, collectionName), orderBy(orderByField, "asc"));
+        const querySnapshot = await getDocs(q);
+        const data = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setter(data);
+      } catch (error) {
+        console.error(`Error fetching ${collectionName}:`, error);
+        alert(`Gagal mengambil data master untuk ${collectionName}.`);
+      }
+    };
+
     fetchCabang();
     fetchKelas();
     fetchUsia();
+    fetchMasterData("transportasi", setTransportasiList);
+    fetchMasterData("pendidikan", setPendidikanList);
+    fetchMasterData("pekerjaan", setPekerjaanList);
+    fetchMasterData("penghasilan", setPenghasilanList);
   }, []);
 
   // Cek Role User (Kepala Sekolah hanya bisa lihat cabangnya sendiri)
@@ -172,16 +260,22 @@ export default function DataSiswaPage() {
   }, []);
 
   // Handle File Change (Base64)
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, fieldName: keyof typeof formData) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setFormData((prev) => ({ ...prev, foto: reader.result as string }));
+        setFormData((prev) => ({ ...prev, [fieldName]: reader.result as string }));
       };
       reader.readAsDataURL(file);
     }
   };
+
+  const clearFile = (fieldName: keyof typeof formData) => {
+    setFormData(prev => ({...prev, [fieldName]: ""}));
+    // Also clear the file input if needed, though it's tricky.
+    // This state change is usually enough.
+  }
 
   // Handle Submit (Tambah/Edit)
   const handleSubmit = async (e: React.FormEvent) => {
@@ -206,26 +300,56 @@ export default function DataSiswaPage() {
            }
         }
 
-        await updateDoc(doc(db, "siswa", editId), {
+        const dataToUpdate: Partial<Siswa> = {
           nama: formData.nama,
-          jenisKelamin: formData.jenisKelamin,
-          nisn: formData.nisn,
-          tempatLahir: formData.tempatLahir,
-          tanggalLahir: formData.tanggalLahir,
-          agama: formData.agama,
-          anakKe: formData.anakKe,
-          alamat: formData.alamat,
-          namaAyah: formData.namaAyah,
-          namaIbu: formData.namaIbu,
-          kelas: formData.kelas,
-          cabang: formData.cabang,
           email: formData.email,
           status: formData.status,
-          foto: formData.foto,
+          cabang: formData.cabang,
+          kelas: formData.kelas,
+          nisn: formData.nisn,
           jenjangUsia: formData.jenjangUsia,
           isDaycare: formData.isDaycare,
           kelasDaycare: formData.isDaycare ? formData.kelasDaycare : "",
-        });
+          foto: formData.foto,
+
+          // Data Pribadi
+          jenisKelamin: formData.jenisKelamin,
+          kewarganegaraan: formData.kewarganegaraan,
+          nik: formData.nik,
+          noKartuKeluarga: formData.noKartuKeluarga,
+          tempatLahir: formData.tempatLahir,
+          tanggalLahir: formData.tanggalLahir,
+          noAktaLahir: formData.noAktaLahir,
+          agama: formData.agama,
+          rt: formData.rt,
+          rw: formData.rw,
+          dusun: formData.dusun,
+          desaKelurahan: formData.desaKelurahan,
+          kodePos: formData.kodePos,
+          lintang: formData.lintang,
+          bujur: formData.bujur,
+          tempatTinggal: formData.tempatTinggal,
+          modaTransportasi: formData.modaTransportasi,
+          anakKe: formData.anakKe,
+          fotoAktaKelahiran: formData.fotoAktaKelahiran,
+          fotoKartuKeluarga: formData.fotoKartuKeluarga,
+
+          namaAyah: formData.namaAyah,
+          nikAyah: formData.nikAyah,
+          tahunLahirAyah: formData.tahunLahirAyah,
+          pendidikanAyah: formData.pendidikanAyah,
+          pekerjaanAyah: formData.pekerjaanAyah,
+          penghasilanAyah: formData.penghasilanAyah,
+          namaIbu: formData.namaIbu,
+          nikIbu: formData.nikIbu,
+          tahunLahirIbu: formData.tahunLahirIbu,
+          pendidikanIbu: formData.pendidikanIbu,
+          pekerjaanIbu: formData.pekerjaanIbu,
+          penghasilanIbu: formData.penghasilanIbu,
+          noTelpRumah: formData.noTelpRumah,
+          noWA: formData.noWA,
+        };
+        await updateDoc(doc(db, "siswa", editId), dataToUpdate);
         alert("Data siswa berhasil diperbarui!");
       } else {
 
@@ -253,29 +377,57 @@ export default function DataSiswaPage() {
         await deleteApp(secondaryApp);
 
         // 2. Simpan ke Firestore dengan Role 'Siswa' & UID
-        await addDoc(collection(db, "siswa"), {
+        const dataToAdd: Omit<Siswa, 'id'> = {
           nama: formData.nama,
-          jenisKelamin: formData.jenisKelamin,
-          nisn: formData.nisn,
-          tempatLahir: formData.tempatLahir,
-          tanggalLahir: formData.tanggalLahir,
-          agama: formData.agama,
-          anakKe: formData.anakKe,
-          alamat: formData.alamat,
-          namaAyah: formData.namaAyah,
-          namaIbu: formData.namaIbu,
-          kelas: formData.kelas,
-          cabang: formData.cabang,
           email: formData.email,
           status: formData.status,
-          foto: formData.foto,
-          role: "Siswa",
-          uid: userCredential.user.uid,
-          createdAt: new Date(),
+          cabang: formData.cabang,
+          kelas: formData.kelas,
+          nisn: formData.nisn,
           jenjangUsia: formData.jenjangUsia,
           isDaycare: formData.isDaycare,
           kelasDaycare: formData.isDaycare ? formData.kelasDaycare : "",
-        });
+          foto: formData.foto,
+          uid: userCredential.user.uid,
+
+          // Data Pribadi
+          jenisKelamin: formData.jenisKelamin,
+          kewarganegaraan: formData.kewarganegaraan,
+          nik: formData.nik,
+          noKartuKeluarga: formData.noKartuKeluarga,
+          tempatLahir: formData.tempatLahir,
+          tanggalLahir: formData.tanggalLahir,
+          noAktaLahir: formData.noAktaLahir,
+          agama: formData.agama,
+          rt: formData.rt,
+          rw: formData.rw,
+          dusun: formData.dusun,
+          desaKelurahan: formData.desaKelurahan,
+          kodePos: formData.kodePos,
+          lintang: formData.lintang,
+          bujur: formData.bujur,
+          tempatTinggal: formData.tempatTinggal,
+          modaTransportasi: formData.modaTransportasi,
+          anakKe: formData.anakKe,
+          fotoAktaKelahiran: formData.fotoAktaKelahiran,
+          fotoKartuKeluarga: formData.fotoKartuKeluarga,
+
+          namaAyah: formData.namaAyah,
+          nikAyah: formData.nikAyah,
+          tahunLahirAyah: formData.tahunLahirAyah,
+          pendidikanAyah: formData.pendidikanAyah,
+          pekerjaanAyah: formData.pekerjaanAyah,
+          penghasilanAyah: formData.penghasilanAyah,
+          namaIbu: formData.namaIbu,
+          nikIbu: formData.nikIbu,
+          tahunLahirIbu: formData.tahunLahirIbu,
+          pendidikanIbu: formData.pendidikanIbu,
+          pekerjaanIbu: formData.pekerjaanIbu,
+          penghasilanIbu: formData.penghasilanIbu,
+          noTelpRumah: formData.noTelpRumah,
+          noWA: formData.noWA,
+        };
+        await addDoc(collection(db, "siswa"), { ...dataToAdd, role: "Siswa", createdAt: new Date() });
         alert("Siswa baru berhasil ditambahkan sebagai User!");
       }
       closeModal();
@@ -322,24 +474,54 @@ export default function DataSiswaPage() {
     setEditId(siswa.id);
     setFormData({
       nama: siswa.nama,
-      jenisKelamin: siswa.jenisKelamin || "Laki-laki",
-      nisn: siswa.nisn || "",
-      tempatLahir: siswa.tempatLahir || "",
-      tanggalLahir: siswa.tanggalLahir || "",
-      agama: siswa.agama || "",
-      anakKe: siswa.anakKe || "",
-      alamat: siswa.alamat || "",
-      namaAyah: siswa.namaAyah || "",
-      namaIbu: siswa.namaIbu || "",
+      email: siswa.email,
+      password: "", // Password tidak di-load saat edit
+      status: siswa.status,
       kelas: siswa.kelas,
       cabang: siswa.cabang,
-      email: siswa.email,
-      status: siswa.status,
-      password: "",
-      foto: siswa.foto || "",
+      nisn: siswa.nisn || "",
       jenjangUsia: siswa.jenjangUsia || "",
       isDaycare: siswa.isDaycare || false,
       kelasDaycare: siswa.kelasDaycare || "",
+      foto: siswa.foto || "",
+
+      // Data Pribadi
+      jenisKelamin: siswa.jenisKelamin || "Laki-laki",
+      kewarganegaraan: siswa.kewarganegaraan || "Indonesia (WNI)",
+      nik: siswa.nik || "",
+      noKartuKeluarga: siswa.noKartuKeluarga || "",
+      tempatLahir: siswa.tempatLahir || "",
+      tanggalLahir: siswa.tanggalLahir || "",
+      noAktaLahir: siswa.noAktaLahir || "",
+      agama: siswa.agama || "",
+      rt: siswa.rt || "",
+      rw: siswa.rw || "",
+      dusun: siswa.dusun || "",
+      desaKelurahan: siswa.desaKelurahan || "",
+      kodePos: siswa.kodePos || "",
+      lintang: siswa.lintang || "",
+      bujur: siswa.bujur || "",
+      tempatTinggal: siswa.tempatTinggal || "Bersama Orang Tua",
+      modaTransportasi: siswa.modaTransportasi || "",
+      anakKe: siswa.anakKe || "",
+      fotoAktaKelahiran: siswa.fotoAktaKelahiran || "",
+      fotoKartuKeluarga: siswa.fotoKartuKeluarga || "",
+
+      // Data Orang Tua & Kontak
+      namaAyah: siswa.namaAyah || "",
+      nikAyah: siswa.nikAyah || "",
+      tahunLahirAyah: siswa.tahunLahirAyah || "",
+      pendidikanAyah: siswa.pendidikanAyah || "",
+      pekerjaanAyah: siswa.pekerjaanAyah || "",
+      penghasilanAyah: siswa.penghasilanAyah || "",
+      namaIbu: siswa.namaIbu || "",
+      nikIbu: siswa.nikIbu || "",
+      tahunLahirIbu: siswa.tahunLahirIbu || "",
+      pendidikanIbu: siswa.pendidikanIbu || "",
+      pekerjaanIbu: siswa.pekerjaanIbu || "",
+      penghasilanIbu: siswa.penghasilanIbu || "",
+      noTelpRumah: siswa.noTelpRumah || "",
+      noWA: siswa.noWA || "",
     });
     setIsModalOpen(true);
   };
@@ -349,24 +531,54 @@ export default function DataSiswaPage() {
     setEditId(null);
     setFormData({
       nama: "",
-      jenisKelamin: "Laki-laki",
-      nisn: "",
-      tempatLahir: "",
-      tanggalLahir: "",
-      agama: "",
-      anakKe: "",
-      alamat: "",
-      namaAyah: "",
-      namaIbu: "",
-      kelas: "",
-      cabang: "",
       email: "",
       password: "",
       status: "Aktif",
-      foto: "",
+      cabang: "",
+      kelas: "",
+      nisn: "",
       jenjangUsia: "",
       isDaycare: false,
       kelasDaycare: "",
+      foto: "",
+
+      // Data Pribadi
+      jenisKelamin: "Laki-laki",
+      kewarganegaraan: "Indonesia (WNI)",
+      nik: "",
+      noKartuKeluarga: "",
+      tempatLahir: "",
+      tanggalLahir: "",
+      noAktaLahir: "",
+      agama: "",
+      rt: "",
+      rw: "",
+      dusun: "",
+      desaKelurahan: "",
+      kodePos: "",
+      lintang: "",
+      bujur: "",
+      tempatTinggal: "Bersama Orang Tua",
+      modaTransportasi: "",
+      anakKe: "",
+      fotoAktaKelahiran: "",
+      fotoKartuKeluarga: "",
+
+      // Data Orang Tua & Kontak
+      namaAyah: "",
+      namaIbu: "",
+      nikAyah: "",
+      tahunLahirAyah: "",
+      pendidikanAyah: "",
+      pekerjaanAyah: "",
+      penghasilanAyah: "",
+      nikIbu: "",
+      tahunLahirIbu: "",
+      pendidikanIbu: "",
+      pekerjaanIbu: "",
+      penghasilanIbu: "",
+      noTelpRumah: "",
+      noWA: "",
     });
   };
 
@@ -445,11 +657,21 @@ export default function DataSiswaPage() {
                 nisn: row.NISN || "",
                 tempatLahir: row['Tempat Lahir'] || "",
                 tanggalLahir: tglLahir, 
-                agama: row.Agama || "",
-                anakKe: row['Anak Ke'] || "",
-                alamat: row.Alamat || "",
+                agama: row.Agama || "",                
+                anakKe: row['Anak Ke-berapa'] || "",
                 namaAyah: row['Nama Ayah'] || "",
+                nikAyah: row['NIK Ayah'] || "",
+                tahunLahirAyah: row['Tahun Lahir Ayah'] || "",
+                pendidikanAyah: row['Pendidikan Ayah'] || "",
+                pekerjaanAyah: row['Pekerjaan Ayah'] || "",
+                penghasilanAyah: row['Penghasilan Ayah'] || "",
                 namaIbu: row['Nama Ibu'] || "",
+                nikIbu: row['NIK Ibu'] || "",
+                tahunLahirIbu: row['Tahun Lahir Ibu'] || "",
+                pendidikanIbu: row['Pendidikan Ibu'] || "",
+                pekerjaanIbu: row['Pekerjaan Ibu'] || "",
+                penghasilanIbu: row['Penghasilan Ibu'] || "",
+                noWA: row['Nomor WA'] || "",
                 kelas: row.Kelas || "",
                 cabang: row.Cabang || "",
                 status: "Aktif",
@@ -497,7 +719,6 @@ export default function DataSiswaPage() {
         'Jenis Kelamin': siswa.jenisKelamin,
         'Tempat Lahir': siswa.tempatLahir,
         'Tanggal Lahir': siswa.tanggalLahir,
-        'Alamat': siswa.alamat,
       }));
       const worksheet = XLSX.utils.json_to_sheet(dataToExport);
       const workbook = XLSX.utils.book_new();
@@ -514,7 +735,7 @@ export default function DataSiswaPage() {
     const matchSearch = siswa.nama.toLowerCase().includes(searchQuery.toLowerCase()) || 
                         siswa.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchCabang = filterCabang ? siswa.cabang === filterCabang : true;
-    const matchKelas = filterKelas ? siswa.kelas === filterKelas : true;
+    const matchKelas = filterKelas ? (siswa.kelas === filterKelas || siswa.kelasDaycare === filterKelas) : true;
     
     const matchStatus = filterStatus ? siswa.status === filterStatus : true;
     return matchSearch && matchCabang && matchKelas && matchStatus;
@@ -742,109 +963,245 @@ export default function DataSiswaPage() {
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nama Siswa</label>
-                  <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.nama} onChange={(e) => setFormData({...formData, nama: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Jenis Kelamin</label>
-                  <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.jenisKelamin} onChange={(e) => setFormData({...formData, jenisKelamin: e.target.value})}>
-                    <option value="Laki-laki">Laki-laki</option>
-                    <option value="Perempuan">Perempuan</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Jenjang Usia</label>
-                  <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.jenjangUsia} onChange={(e) => setFormData({...formData, jenjangUsia: e.target.value})}>
-                    <option value="">Pilih Jenjang Usia</option>
-                    {usiaList.map((u) => <option key={u.id} value={u.usia}>{u.usia}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">NISN</label>
-                  <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.nisn} onChange={(e) => setFormData({...formData, nisn: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Agama</label>
-                  <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.agama} onChange={(e) => setFormData({...formData, agama: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tempat Lahir</label>
-                  <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.tempatLahir} onChange={(e) => setFormData({...formData, tempatLahir: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal Lahir</label>
-                  <input type="date" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.tanggalLahir} onChange={(e) => setFormData({...formData, tanggalLahir: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nama Ayah</label>
-                  <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.namaAyah} onChange={(e) => setFormData({...formData, namaAyah: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nama Ibu</label>
-                  <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.namaIbu} onChange={(e) => setFormData({...formData, namaIbu: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Anak Ke-</label>
-                  <input type="number" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.anakKe} onChange={(e) => setFormData({...formData, anakKe: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                  <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}>
-                    <option value="Aktif">Aktif</option>
-                    <option value="Nonaktif">Nonaktif</option>
-                    <option value="Lulus">Lulus</option>
-                    <option value="Pindah">Pindah</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Cabang</label>
-                  <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.cabang} onChange={(e) => setFormData({...formData, cabang: e.target.value})}>
-                    <option value="">Pilih Cabang</option>
-                    {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Kelas</label>
-                  <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.kelas} onChange={(e) => setFormData({...formData, kelas: e.target.value})}>
-                    <option value="">Pilih Kelas</option>
-                    {kelasList
-                      .filter((k) => !formData.cabang || k.cabang === formData.cabang)
-                      .map((k) => <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email (Login)</label>
-                  <input required type="email" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
-                </div>
-                {!editId && (
+              {/* A. DATA PRIBADI */}
+              <div className="space-y-4 border-b pb-4">
+                <h4 className="text-lg font-semibold text-gray-800">A. Data Pribadi</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                      <input required type="text" minLength={6} className="w-full pl-9 border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                        value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} placeholder="Min. 6 karakter" />
-                    </div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nama Siswa</label>
+                    <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.nama} onChange={(e) => setFormData({...formData, nama: e.target.value})} />
                   </div>
-                )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Jenis Kelamin</label>
+                    <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.jenisKelamin} onChange={(e) => setFormData({...formData, jenisKelamin: e.target.value})}>
+                      <option value="Laki-laki">Laki-laki</option>
+                      <option value="Perempuan">Perempuan</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Kewarganegaraan</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.kewarganegaraan} onChange={(e) => setFormData({...formData, kewarganegaraan: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">NIK</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.nik} onChange={(e) => setFormData({...formData, nik: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">No. Kartu Keluarga</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.noKartuKeluarga} onChange={(e) => setFormData({...formData, noKartuKeluarga: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tempat Lahir</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.tempatLahir} onChange={(e) => setFormData({...formData, tempatLahir: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal Lahir</label>
+                    <input type="date" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.tanggalLahir} onChange={(e) => setFormData({...formData, tanggalLahir: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">No. Akta Lahir</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.noAktaLahir} onChange={(e) => setFormData({...formData, noAktaLahir: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Agama</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.agama} onChange={(e) => setFormData({...formData, agama: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">RT</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.rt} onChange={(e) => setFormData({...formData, rt: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">RW</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.rw} onChange={(e) => setFormData({...formData, rw: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nama Dusun</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.dusun} onChange={(e) => setFormData({...formData, dusun: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Desa/Kelurahan</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.desaKelurahan} onChange={(e) => setFormData({...formData, desaKelurahan: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Kode Pos</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.kodePos} onChange={(e) => setFormData({...formData, kodePos: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Lintang (Optional)</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.lintang} onChange={(e) => setFormData({...formData, lintang: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Bujur (Optional)</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.bujur} onChange={(e) => setFormData({...formData, bujur: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tempat Tinggal</label>
+                    <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.tempatTinggal} onChange={(e) => setFormData({...formData, tempatTinggal: e.target.value})}>
+                      <option>Bersama Orang Tua</option>
+                      <option>Wali</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Moda Transportasi</label>
+                    <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.modaTransportasi} onChange={(e) => setFormData({...formData, modaTransportasi: e.target.value})}>
+                      <option value="">Pilih Transportasi</option>
+                      {transportasiList.map((t) => <option key={t.id} value={t.nama}>{t.nama}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Anak Ke-</label>
+                    <input type="number" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.anakKe} onChange={(e) => setFormData({...formData, anakKe: e.target.value})} />
+                  </div>
+                </div>
               </div>
 
-              <div className="col-span-1 md:grid-cols-2 lg:col-span-4 border-t pt-4">
+              {/* B. DATA AYAH KANDUNG */}
+              <div className="space-y-4 border-b pb-4">
+                <h4 className="text-lg font-semibold text-gray-800">B. Data Ayah Kandung</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nama Ayah</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.namaAyah} onChange={(e) => setFormData({...formData, namaAyah: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">NIK Ayah</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.nikAyah} onChange={(e) => setFormData({...formData, nikAyah: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tahun Lahir Ayah</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.tahunLahirAyah} onChange={(e) => setFormData({...formData, tahunLahirAyah: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Pendidikan Ayah</label>
+                    <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.pendidikanAyah} onChange={(e) => setFormData({...formData, pendidikanAyah: e.target.value})}>
+                      <option value="">Pilih Pendidikan</option>
+                      {pendidikanList.map((p) => <option key={p.id} value={p.nama}>{p.nama}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Pekerjaan Ayah</label>
+                    <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.pekerjaanAyah} onChange={(e) => setFormData({...formData, pekerjaanAyah: e.target.value})}>
+                      <option value="">Pilih Pekerjaan</option>
+                      {pekerjaanList.map((p) => <option key={p.id} value={p.nama}>{p.nama}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Penghasilan Ayah</label>
+                    <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.penghasilanAyah} onChange={(e) => setFormData({...formData, penghasilanAyah: e.target.value})}>
+                      <option value="">Pilih Penghasilan</option>
+                      {penghasilanList.map((p) => <option key={p.id} value={p.nama}>{p.nama}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* C. DATA IBU KANDUNG */}
+              <div className="space-y-4 border-b pb-4">
+                <h4 className="text-lg font-semibold text-gray-800">C. Data Ibu Kandung</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nama Ibu</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.namaIbu} onChange={(e) => setFormData({...formData, namaIbu: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">NIK Ibu</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.nikIbu} onChange={(e) => setFormData({...formData, nikIbu: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tahun Lahir Ibu</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.tahunLahirIbu} onChange={(e) => setFormData({...formData, tahunLahirIbu: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Pendidikan Ibu</label>
+                    <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.pendidikanIbu} onChange={(e) => setFormData({...formData, pendidikanIbu: e.target.value})}>
+                      <option value="">Pilih Pendidikan</option>
+                      {pendidikanList.map((p) => <option key={p.id} value={p.nama}>{p.nama}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Pekerjaan Ibu</label>
+                    <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.pekerjaanIbu} onChange={(e) => setFormData({...formData, pekerjaanIbu: e.target.value})}>
+                      <option value="">Pilih Pekerjaan</option>
+                      {pekerjaanList.map((p) => <option key={p.id} value={p.nama}>{p.nama}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Penghasilan Ibu</label>
+                    <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.penghasilanIbu} onChange={(e) => setFormData({...formData, penghasilanIbu: e.target.value})}>
+                      <option value="">Pilih Penghasilan</option>
+                      {penghasilanList.map((p) => <option key={p.id} value={p.nama}>{p.nama}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* D. KONTAK */}
+              <div className="space-y-4 border-b pb-4">
+                <h4 className="text-lg font-semibold text-gray-800">D. Kontak</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Telepon Rumah (Optional)</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.noTelpRumah} onChange={(e) => setFormData({...formData, noTelpRumah: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nomor WA</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.noWA} onChange={(e) => setFormData({...formData, noWA: e.target.value})} />
+                  </div>
+                </div>
+              </div>
+
+              {/* E. DATA SEKOLAH */}
+              <div className="space-y-4 border-b pb-4">
+                <h4 className="text-lg font-semibold text-gray-800">E. Data Sekolah</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Jenjang Usia</label>
+                    <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.jenjangUsia} onChange={(e) => setFormData({...formData, jenjangUsia: e.target.value})}>
+                      <option value="">Pilih Jenjang Usia</option>
+                      {usiaList.map((u) => <option key={u.id} value={u.usia}>{u.usia}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">NISN</label>
+                    <input type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.nisn} onChange={(e) => setFormData({...formData, nisn: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}>
+                      <option value="Aktif">Aktif</option>
+                      <option value="Nonaktif">Nonaktif</option>
+                      <option value="Lulus">Lulus</option>
+                      <option value="Pindah">Pindah</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Cabang</label>
+                    <select required className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.cabang} onChange={(e) => setFormData({...formData, cabang: e.target.value})}>
+                      <option value="">Pilih Cabang</option>
+                      {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Kelas</label>
+                    <select className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.kelas} onChange={(e) => setFormData({...formData, kelas: e.target.value})}>
+                      <option value="">Pilih Kelas</option>
+                      {kelasList.filter((k) => !formData.cabang || k.cabang === formData.cabang).map((k) => <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email (Login)</label>
+                    <input required type="email" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+                  </div>
+                  {!editId && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                        <input required type="text" minLength={6} className="w-full pl-9 border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} placeholder="Min. 6 karakter" />
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
                   <div>
                     <label className="flex items-center cursor-pointer">
@@ -884,28 +1241,41 @@ export default function DataSiswaPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Alamat</label>
-                  <textarea rows={2} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={formData.alamat} onChange={(e) => setFormData({...formData, alamat: e.target.value})} />
-                </div>
-
+              {/* F. UPLOAD DOKUMEN */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-semibold text-gray-800">F. Upload Dokumen</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Foto Siswa</label>
-                  <input 
-                    type="file" 
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-[#581c87] hover:file:bg-purple-100"
-                  />
+                  <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'foto')} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-[#581c87] hover:file:bg-purple-100" />
                   {formData.foto && (
                     <div className="mt-2 relative w-20 h-20">
                       <img src={formData.foto} alt="Preview" className="w-full h-full object-cover rounded-lg border" />
-                      <button type="button" onClick={() => setFormData({...formData, foto: ""})} className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 hover:bg-red-200"><X className="w-3 h-3" /></button>
+                      <button type="button" onClick={() => clearFile('foto')} className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 hover:bg-red-200"><X className="w-3 h-3" /></button>
                     </div>
                   )}
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Upload Foto Akta Kelahiran</label>
+                  <input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileChange(e, 'fotoAktaKelahiran')} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-[#581c87] hover:file:bg-purple-100" />
+                  {formData.fotoAktaKelahiran && (
+                    <div className="mt-2 relative w-20 h-20">
+                      <img src={formData.fotoAktaKelahiran} alt="Preview" className="w-full h-full object-cover rounded-lg border" />
+                      <button type="button" onClick={() => clearFile('fotoAktaKelahiran')} className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 hover:bg-red-200"><X className="w-3 h-3" /></button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Upload Foto Kartu Keluarga</label>
+                  <input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileChange(e, 'fotoKartuKeluarga')} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-[#581c87] hover:file:bg-purple-100" />
+                  {formData.fotoKartuKeluarga && (
+                    <div className="mt-2 relative w-20 h-20">
+                      <img src={formData.fotoKartuKeluarga} alt="Preview" className="w-full h-full object-cover rounded-lg border" />
+                      <button type="button" onClick={() => clearFile('fotoKartuKeluarga')} className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 hover:bg-red-200"><X className="w-3 h-3" /></button>
+                    </div>
+                  )}
+                </div>
+              </div>
               </div>
 
               <button disabled={submitting} type="submit" className="w-full bg-[#581c87] text-white py-2 rounded-lg hover:bg-[#45156b] transition font-medium mt-2">
@@ -953,10 +1323,18 @@ export default function DataSiswaPage() {
                     <div><p className="text-gray-500">Anak Ke</p><p className="font-medium">{viewDetail.anakKe || "-"}</p></div>
                     <div><p className="text-gray-500">Kelas</p><p className="font-medium">{viewDetail.kelas}</p></div>
                     <div><p className="text-gray-500">Cabang</p><p className="font-medium">{viewDetail.cabang}</p></div>
-                    <div><p className="text-gray-500">Nama Ayah</p><p className="font-medium">{viewDetail.namaAyah || "-"}</p></div>
-                    <div><p className="text-gray-500">Nama Ibu</p><p className="font-medium">{viewDetail.namaIbu || "-"}</p></div>
-                    <div className="col-span-2"><p className="text-gray-500">Alamat</p><p className="font-medium">{viewDetail.alamat || "-"}</p></div>
+                    <div className="col-span-2 border-t pt-2 mt-2"><p className="text-gray-500">Nama Ayah</p><p className="font-medium">{viewDetail.namaAyah || "-"}</p></div>
+                    <div><p className="text-gray-500">Pendidikan Ayah</p><p className="font-medium">{viewDetail.pendidikanAyah || "-"}</p></div>
+                    <div><p className="text-gray-500">Pekerjaan Ayah</p><p className="font-medium">{viewDetail.pekerjaanAyah || "-"}</p></div>
+                    <div className="col-span-2 border-t pt-2 mt-2"><p className="text-gray-500">Nama Ibu</p><p className="font-medium">{viewDetail.namaIbu || "-"}</p></div>
+                    <div><p className="text-gray-500">Pendidikan Ibu</p><p className="font-medium">{viewDetail.pendidikanIbu || "-"}</p></div>
+                    <div><p className="text-gray-500">Pekerjaan Ibu</p><p className="font-medium">{viewDetail.pekerjaanIbu || "-"}</p></div>
+                    <div className="col-span-2 border-t pt-2 mt-2"><p className="text-gray-500">Nomor WA</p><p className="font-medium">{viewDetail.noWA || "-"}</p></div>
                     <div className="col-span-2"><p className="text-gray-500">Email</p><p className="font-medium">{viewDetail.email}</p></div>
+                    <div className="col-span-2"><p className="text-gray-500">Alamat</p><p className="font-medium">
+                      {[viewDetail.dusun, `RT ${viewDetail.rt || '-'} / RW ${viewDetail.rw || '-'}`, viewDetail.desaKelurahan, viewDetail.kodePos]
+                        .filter(Boolean).join(', ')}
+                    </p></div>
                   </div>
                 </div>
               </div>

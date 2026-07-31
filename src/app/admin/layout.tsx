@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, Children, cloneElement, isValidElement } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import { auth, db } from "@/lib/firebase";
+import { UserProvider } from "@/contexts/UserContext";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
-import { ChevronDown, ChevronRight, ArrowLeft, Menu, X } from "lucide-react";
+import { ChevronDown, ChevronRight, ArrowLeft, Menu, X, Loader2 } from "lucide-react";
 
 export default function AdminLayout({
   children,
@@ -20,6 +21,7 @@ export default function AdminLayout({
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [pengajuanCount, setPengajuanCount] = useState(0);
+  const [isAuthDataLoaded, setIsAuthDataLoaded] = useState(false); // New state
   const [realisasiCount, setRealisasiCount] = useState(0);
 
   useEffect(() => {
@@ -47,6 +49,9 @@ export default function AdminLayout({
             const data = querySnapshot.docs[0].data();
             setUserData(data);
             localStorage.setItem('user_data', JSON.stringify(data));
+          } else {
+            // User exists in Auth but not in 'guru' collection (e.g., new user, or different collection)
+            // Handle as needed, for now, just mark as loaded.
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
@@ -55,6 +60,7 @@ export default function AdminLayout({
         setUserData(null);
         localStorage.removeItem('user_data');
       }
+      setIsAuthDataLoaded(true); // Mark as loaded after auth state and user data (if any) are processed
     });
     return () => unsubscribe();
   }, []);
@@ -62,11 +68,11 @@ export default function AdminLayout({
   // Redirect dari /admin ke /admin/performance untuk role yang tidak berhak,
   // atau untuk semua role saat pertama kali masuk (jika userData belum siap).
   useEffect(() => {
-    const dashboardRoles = ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"];
+    const dashboardRoles = ["Admin", "Direktur", "Yayasan"];
     // Jika pengguna berada di halaman dashboard (`/admin`):
     // 1. Jika data pengguna sudah ada, periksa perannya. Jika perannya TIDAK diizinkan, alihkan.
     // 2. Jika data pengguna belum ada (misalnya saat awal login), alihkan semua ke performance sebagai halaman default.
-    if (pathname === '/admin' && (!userData || (userData.role && !dashboardRoles.includes(userData.role)))) {
+    if (pathname === '/admin' && (!userData || (userData.role && !dashboardRoles.includes(userData.role)) || (userData.role && ["Kepala Sekolah", "Guru", "Caregiver"].includes(userData.role)))) {
       router.replace('/admin/performance');
     }
   }, [pathname, router, userData]);
@@ -191,7 +197,11 @@ export default function AdminLayout({
         { name: "Pengaturan Cabang", href: "/admin/pengaturan/cabang", roles: ["Admin", "Yayasan"] },
         { name: "Pengaturan Jenjang", href: "/admin/pengaturan/jenjang-kelas", roles: ["Admin", "Yayasan"] },
         { name: "Pengaturan Kelas", href: "/admin/pengaturan/kelas", roles: ["Admin", "Yayasan"] },
-        { name: "Pengaturan Semester", href: "/admin/pengaturan/performance", roles: ["Admin", "Yayasan"] }
+        { name: "Pengaturan Semester", href: "/admin/pengaturan/performance", roles: ["Admin", "Yayasan"] },
+        { name: "Transportasi", href: "/admin/pengaturan/transportasi", roles: ["Admin", "Yayasan"] },
+        { name: "Pendidikan", href: "/admin/pengaturan/pendidikan", roles: ["Admin", "Yayasan"] },
+        { name: "Pekerjaan", href: "/admin/pengaturan/pekerjaan", roles: ["Admin", "Yayasan"] },
+        { name: "Penghasilan", href: "/admin/pengaturan/penghasilan", roles: ["Admin", "Yayasan"] }
       ]
     },
     { 
@@ -378,18 +388,16 @@ export default function AdminLayout({
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-8">
-          {Children.map(children, child => {
-            if (isValidElement(child)) {
-              return cloneElement(child as React.ReactElement<any>, { 
-                userRole: userData?.role,
-                userCabang: userData?.cabang
-              });
-            }
-            return child;
-          })}
-        </main>
+        {/* Page Content wrapped with UserProvider */}
+        <UserProvider value={{ userData, isAuthDataLoaded }}>
+          <main className="flex-1 overflow-y-auto p-8">
+            {isAuthDataLoaded ? (
+              children
+            ) : (
+              <div className="w-full text-center py-20"><Loader2 className="w-8 h-8 animate-spin text-[#581c87] mx-auto" /><p className="text-sm text-gray-500 mt-2">Memuat data pengguna...</p></div>
+            )}
+          </main>
+        </UserProvider>
       </div>
     </div>
   );
