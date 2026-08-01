@@ -181,12 +181,22 @@ export default function EditProfileModal({ user, userData, onClose, onProfileUpd
         </div>
       </div>
 
-      {/* D. UPLOAD DOKUMEN */}
+      {/* D. KONTAK */}
+      <div className="space-y-4 border-b border-gray-200 pb-4">
+        <h4 className="text-md font-semibold text-gray-800">D. Kontak</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-900">
+          <div><label className="block font-medium text-gray-700 mb-1">Nomor Telepon Rumah (Optional)</label><input type="text" name="noTelpRumah" value={formData.noTelpRumah || ''} onChange={handleChange} className="w-full p-2 border rounded-md text-gray-900" /></div>
+          <div><label className="block font-medium text-gray-700 mb-1">Nomor WA</label><input type="text" name="noWA" value={formData.noWA || ''} onChange={handleChange} className="w-full p-2 border rounded-md text-gray-900" /></div>
+        </div>
+      </div>
+
+
+      {/* E. UPLOAD DOKUMEN */}
       <div className="space-y-4">
-        <h4 className="text-md font-semibold text-gray-800">D. Upload Dokumen</h4>
+        <h4 className="text-md font-semibold text-gray-800">E. Upload Dokumen</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-900">
           <div>
-            <label className="block font-medium text-gray-700 mb-1">Foto Akta Kelahiran</label>
+            <label className="block font-medium text-gray-700 mb-1">Foto Akta Kelahiran (Max. 1MB)</label>
             <input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileChange(e, 'fotoAktaKelahiran')} className="w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100" />
             {formData.fotoAktaKelahiran && (
               <div className="mt-2 relative w-20 h-20">
@@ -196,7 +206,7 @@ export default function EditProfileModal({ user, userData, onClose, onProfileUpd
             )}
           </div>
           <div>
-            <label className="block font-medium text-gray-700 mb-1">Foto Kartu Keluarga</label>
+            <label className="block font-medium text-gray-700 mb-1">Foto Kartu Keluarga (Max. 1MB)</label>
             <input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileChange(e, 'fotoKartuKeluarga')} className="w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100" />
             {formData.fotoKartuKeluarga && (
               <div className="mt-2 relative w-20 h-20">

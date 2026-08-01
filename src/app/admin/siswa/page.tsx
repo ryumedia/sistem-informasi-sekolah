@@ -7,7 +7,7 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy,
 import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
 import { Plus, X, Pencil, Trash2, Search, Lock, FileText, Upload, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
-import { Download } from "lucide-react";
+import { Download, FileArchive } from "lucide-react";
 
 interface Siswa {
   id: string;
@@ -148,6 +148,45 @@ export default function DataSiswaPage() {
     noTelpRumah: "",
     noWA: "",
   });
+
+  // Fungsi untuk menghitung progress profil
+  const calculateProfileProgress = (siswa: Siswa) => {
+    const fieldsToCheck = [
+      'nama', 'kelas', 'cabang', 'email', 'status', 'jenisKelamin',
+      'kewarganegaraan', 'nik', 'noKartuKeluarga', 'tempatLahir', 'tanggalLahir',
+      'noAktaLahir', 'agama', 'rt', 'rw', 'dusun', 'desaKelurahan', 'kodePos',
+      'tempatTinggal', 'modaTransportasi', 'anakKe', 'fotoAktaKelahiran',
+      'fotoKartuKeluarga', 'namaAyah', 'nikAyah', 'tahunLahirAyah',
+      'pendidikanAyah', 'pekerjaanAyah', 'penghasilanAyah', 'namaIbu', 'nikIbu',
+      'tahunLahirIbu', 'pendidikanIbu', 'pekerjaanIbu', 'penghasilanIbu',
+      'noTelpRumah', 'noWA', 'jenjangUsia', 'nisn', 'foto'
+    ];
+
+    let filledFields = 0;
+    fieldsToCheck.forEach(field => {
+      const value = siswa[field as keyof Siswa];
+      if (value !== null && value !== undefined && value !== "") {
+        filledFields++;
+      }
+    });
+
+    return Math.round((filledFields / fieldsToCheck.length) * 100);
+  };
+
+  const getProgressBarColor = (percentage: number) => {
+    if (percentage < 40) {
+      return 'bg-red-500';
+    } else if (percentage < 75) {
+      return 'bg-yellow-500';
+    } else {
+      return 'bg-green-500';
+    }
+  };
+
+  const openDocument = (base64Data: string) => {
+    const newWindow = window.open();
+    newWindow?.document.write(`<iframe src="${base64Data}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+  };
 
   // Fetch Data Siswa
   const fetchSiswa = async () => {
@@ -709,16 +748,51 @@ export default function DataSiswaPage() {
       // @ts-ignore
       const XLSX = await import("xlsx");
       // Map data to have user-friendly headers
-      const dataToExport = filteredSiswa.map(siswa => ({
+      const dataToExport = filteredSiswa.map((siswa) => ({
+        // A. DATA PRIBADI
         'Nama Siswa': siswa.nama,
-        'Email': siswa.email,
-        'Status': siswa.status,
-        'Cabang': siswa.cabang,
-        'Kelas': siswa.kelas,
-        'NISN': siswa.nisn,
         'Jenis Kelamin': siswa.jenisKelamin,
+        'Kewarganegaraan': siswa.kewarganegaraan,
+        'NIK': siswa.nik,
+        'No Kartu Keluarga': siswa.noKartuKeluarga,
         'Tempat Lahir': siswa.tempatLahir,
         'Tanggal Lahir': siswa.tanggalLahir,
+        'No Registrasi Akta Lahir': siswa.noAktaLahir,
+        'Agama': siswa.agama,
+        'RT': siswa.rt,
+        'RW': siswa.rw,
+        'Nama Dusun': siswa.dusun,
+        'Desa/Kelurahan': siswa.desaKelurahan,
+        'Kode Pos': siswa.kodePos,
+        'Lintang': siswa.lintang,
+        'Bujur': siswa.bujur,
+        'Tempat Tinggal': siswa.tempatTinggal,
+        'Mode Transportasi': siswa.modaTransportasi,
+        'Anak ke-': siswa.anakKe,
+        // B. DATA AYAH KANDUNG
+        'Nama Ayah': siswa.namaAyah,
+        'NIK Ayah': siswa.nikAyah,
+        'Tahun Lahir Ayah': siswa.tahunLahirAyah,
+        'Pendidikan Ayah': siswa.pendidikanAyah,
+        'Pekerjaan Ayah': siswa.pekerjaanAyah,
+        'Penghasilan Ayah': siswa.penghasilanAyah,
+        // C. DATA IBU KANDUNG
+        'Nama Ibu': siswa.namaIbu,
+        'NIK Ibu': siswa.nikIbu,
+        'Tahun Lahir Ibu': siswa.tahunLahirIbu,
+        'Pendidikan Ibu': siswa.pendidikanIbu,
+        'Pekerjaan Ibu': siswa.pekerjaanIbu,
+        'Penghasilan Ibu': siswa.penghasilanIbu,
+        // D. KONTAK
+        'Nomor Telepon Rumah': siswa.noTelpRumah,
+        'Nomor WA': siswa.noWA,
+        // E. DATA SEKOLAH
+        'Jenjang Usia': siswa.jenjangUsia,
+        'NISN': siswa.nisn,
+        'Status': siswa.status,
+        'Cabang': siswa.cabang,
+        'Email (Login)': siswa.email,
+        'Apakah Siswa Daycare?': siswa.isDaycare ? 'Ya' : 'Tidak',
       }));
       const worksheet = XLSX.utils.json_to_sheet(dataToExport);
       const workbook = XLSX.utils.book_new();
@@ -841,15 +915,16 @@ export default function DataSiswaPage() {
               <th className="p-4">Cabang</th>
               <th className="p-4">Kelas</th>
               <th className="p-4">Email</th>
+              <th className="p-4">Progress</th>
               <th className="p-4">Status</th>
               <th className="p-4">Aksi</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={8} className="p-8 text-center">Memuat data...</td></tr>
+              <tr><td colSpan={9} className="p-8 text-center">Memuat data...</td></tr>
             ) : filteredSiswa.length === 0 ? (
-              <tr><td colSpan={8} className="p-8 text-center">Data tidak ditemukan.</td></tr>
+              <tr><td colSpan={9} className="p-8 text-center">Data tidak ditemukan.</td></tr>
             ) : (
               currentItems.map((siswa, index) => (
                 <tr key={siswa.id} className="hover:bg-gray-50">
@@ -870,6 +945,16 @@ export default function DataSiswaPage() {
                   </td>
                   <td className="p-4 text-gray-500">{siswa.email}</td>
                   <td className="p-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div 
+                          className={`${getProgressBarColor(calculateProfileProgress(siswa))} h-2.5 rounded-full`} 
+                          style={{ width: `${calculateProfileProgress(siswa)}%` }}></div>
+                      </div>
+                      <span className="text-xs font-medium text-gray-600">{calculateProfileProgress(siswa)}%</span>
+                    </div>
+                  </td>
+                  <td className="p-4">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                       siswa.status === 'Aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                     }`}>
@@ -880,6 +965,16 @@ export default function DataSiswaPage() {
                     <button onClick={() => setViewDetail(siswa)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition" title="Lihat Detail">
                       <FileText className="w-4 h-4" />
                     </button>
+                    {siswa.fotoAktaKelahiran && (
+                      <button onClick={() => openDocument(siswa.fotoAktaKelahiran!)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Lihat Akta Kelahiran">
+                        <FileArchive className="w-4 h-4" />
+                      </button>
+                    )}
+                    {siswa.fotoKartuKeluarga && (
+                      <button onClick={() => openDocument(siswa.fotoKartuKeluarga!)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition" title="Lihat Kartu Keluarga">
+                        <FileArchive className="w-4 h-4" />
+                      </button>
+                    )}
                     <button onClick={() => handleEdit(siswa)} className="p-2 text-[#581c87] hover:bg-[#581c87]/10 rounded-lg transition" title="Edit">
                       <Pencil className="w-4 h-4" />
                     </button>
