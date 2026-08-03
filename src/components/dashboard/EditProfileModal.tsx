@@ -1,7 +1,8 @@
 // src/components/dashboard/EditProfileModal.tsx
 import { useState, useEffect } from "react";
 import { doc, updateDoc, collection, query, orderBy, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { db, storage } from "@/lib/firebase";
 import { X, Save, Loader2, Upload } from "lucide-react";
 
 interface EditProfileModalProps {
@@ -20,6 +21,8 @@ export default function EditProfileModal({ user, userData, onClose, onProfileUpd
   const [formData, setFormData] = useState<any>({});
   const [loading, setLoading] = useState(false);
   const [masterDataLoading, setMasterDataLoading] = useState(true);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
   // State for master data dropdowns
@@ -72,11 +75,34 @@ export default function EditProfileModal({ user, userData, onClose, onProfileUpd
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, fieldName: string) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData((prev: any) => ({ ...prev, [fieldName]: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
+      if (file.size > 1024 * 1024) { // Batas 1MB
+        setError(`File ${fieldName} terlalu besar. Ukuran maksimal 1MB.`);
+        return;
+      }
+      setError(null);
+      setUploading(fieldName);
+      setUploadProgress(0);
+
+      const storageRef = ref(storage, `dokumen_siswa/${userData.id}/${fieldName}_${Date.now()}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(progress);
+        },
+        (error) => {
+          console.error("Upload failed:", error);
+          setError(`Gagal mengupload ${fieldName}.`);
+          setUploading(null);
+        },
+        () => {
+          getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
+            setFormData((prev: any) => ({ ...prev, [fieldName]: downloadURL }));
+            setUploading(null);
+          });
+        }
+      );
     }
   };
 
@@ -88,6 +114,10 @@ export default function EditProfileModal({ user, userData, onClose, onProfileUpd
     e.preventDefault();
     if (!user || !userData?.id) {
       setError("Data pengguna tidak valid.");
+      return;
+    }
+    if (uploading) {
+      setError("Harap tunggu hingga proses upload selesai.");
       return;
     }
 
@@ -195,12 +225,21 @@ export default function EditProfileModal({ user, userData, onClose, onProfileUpd
       <div className="space-y-4">
         <h4 className="text-md font-semibold text-gray-800">E. Upload Dokumen</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-900">
-          <div>
+          <div className="space-y-2">
             <label className="block font-medium text-gray-700 mb-1">Foto Akta Kelahiran (Max. 1MB)</label>
             <input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileChange(e, 'fotoAktaKelahiran')} className="w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100" />
+            {uploading === 'fotoAktaKelahiran' && (
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div className="bg-purple-600 h-2.5 rounded-full" style={{ width: `${uploadProgress}%` }}></div>
+              </div>
+            )}
             {formData.fotoAktaKelahiran && (
               <div className="mt-2 relative w-20 h-20">
-                <img src={formData.fotoAktaKelahiran} alt="Preview" className="w-full h-full object-cover rounded-lg border" />
+                {formData.fotoAktaKelahiran.includes('pdf') ? (
+                  <a href={formData.fotoAktaKelahiran} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Lihat PDF</a>
+                ) : (
+                  <img src={formData.fotoAktaKelahiran} alt="Preview" className="w-full h-full object-cover rounded-lg border" />
+                )}
                 <button type="button" onClick={() => clearFile('fotoAktaKelahiran')} className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 hover:bg-red-200"><X className="w-3 h-3" /></button>
               </div>
             )}
@@ -208,9 +247,18 @@ export default function EditProfileModal({ user, userData, onClose, onProfileUpd
           <div>
             <label className="block font-medium text-gray-700 mb-1">Foto Kartu Keluarga (Max. 1MB)</label>
             <input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileChange(e, 'fotoKartuKeluarga')} className="w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100" />
+            {uploading === 'fotoKartuKeluarga' && (
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div className="bg-purple-600 h-2.5 rounded-full" style={{ width: `${uploadProgress}%` }}></div>
+              </div>
+            )}
             {formData.fotoKartuKeluarga && (
               <div className="mt-2 relative w-20 h-20">
-                <img src={formData.fotoKartuKeluarga} alt="Preview" className="w-full h-full object-cover rounded-lg border" />
+                {formData.fotoKartuKeluarga.includes('pdf') ? (
+                  <a href={formData.fotoKartuKeluarga} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Lihat PDF</a>
+                ) : (
+                  <img src={formData.fotoKartuKeluarga} alt="Preview" className="w-full h-full object-cover rounded-lg border" />
+                )}
                 <button type="button" onClick={() => clearFile('fotoKartuKeluarga')} className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 hover:bg-red-200"><X className="w-3 h-3" /></button>
               </div>
             )}
@@ -287,7 +335,7 @@ export default function EditProfileModal({ user, userData, onClose, onProfileUpd
           <button
             type="submit"
             onClick={handleSave}
-            disabled={loading || masterDataLoading}
+            disabled={loading || masterDataLoading || !!uploading}
             className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold text-sm flex items-center gap-2 disabled:bg-purple-300"
           >
             {loading ? (
