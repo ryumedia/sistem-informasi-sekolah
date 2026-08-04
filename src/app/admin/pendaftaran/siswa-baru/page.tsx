@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
-import { collection, query, orderBy, getDocs, deleteDoc, doc, updateDoc, Timestamp } from 'firebase/firestore';
-import { Loader2, Eye, Edit, Trash2, X } from 'lucide-react';
+import { collection, query, orderBy, getDocs, deleteDoc, doc, updateDoc, Timestamp, where } from 'firebase/firestore';
+import { Loader2, Eye, Edit, Trash2, X, Filter, RotateCcw, UserPlus } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 
@@ -25,8 +26,8 @@ interface SiswaBaruDetail {
   noWaAyah: string;
   noWaIbu: string;
   kebutuhanKhusus: 'Ya' | 'Tidak';
-  infoDari: string;
-  statusPendaftaran: 'Baru' | 'Ditinjau' | 'Diterima' | 'Ditolak';
+  infoDari: string; 
+  statusPendaftaran: 'Baru' | 'Sudah Bayar' | 'Sudah Assesment' | 'Sudah Konsultasi' | 'Ditolak';
   createdAt: Timestamp;
 }
 
@@ -41,6 +42,17 @@ export default function SiswaBaruPage() {
   const [selectedRegistration, setSelectedRegistration] = useState<SiswaBaruDetail | null>(null);
   const [modalMode, setModalMode] = useState<ModalMode>('view');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const router = useRouter();
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
+  // Filters
+  const [filterTanggal, setFilterTanggal] = useState<{ start: string; end: string }>({ start: '', end: '' });
+  const [filterCabang, setFilterCabang] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [cabangList, setCabangList] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -62,6 +74,20 @@ export default function SiswaBaruPage() {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const fetchCabang = async () => {
+        try {
+            const q = query(collection(db, "lokasi_pendaftaran"), orderBy("nama", "asc"));
+            const snapshot = await getDocs(q);
+            const list = snapshot.docs.map(doc => doc.data().nama as string);
+            setCabangList(list);
+        } catch (error) {
+            console.error("Error fetching lokasi pendaftaran list: ", error);
+        }
+    };
+    fetchCabang();
+  }, []);
+
   const handleDelete = async (id: string, nama: string) => {
     if (!confirm(`Yakin ingin menghapus pendaftaran untuk "${nama}"?`)) return;
     try {
@@ -76,9 +102,10 @@ export default function SiswaBaruPage() {
 
   const getStatusBadgeColor = (status: SiswaBaruDetail['statusPendaftaran']) => {
     switch (status) {
-      case 'Baru': return 'bg-blue-100 text-blue-800 dark:text-blue-800';
-      case 'Ditinjau': return 'bg-yellow-100 text-yellow-800 dark:text-yellow-800';
-      case 'Diterima': return 'bg-green-100 text-green-800 dark:text-green-800';
+      case 'Baru': return 'bg-blue-100 text-blue-800';
+      case 'Sudah Bayar': return 'bg-purple-100 text-purple-800';
+      case 'Sudah Assesment': return 'bg-yellow-100 text-yellow-800';
+      case 'Sudah Konsultasi': return 'bg-green-100 text-green-800';
       case 'Ditolak': return 'bg-red-100 text-red-800 dark:text-red-800';
       default: return 'bg-gray-100 text-gray-800 dark:text-gray-800';
     }
@@ -120,11 +147,99 @@ export default function SiswaBaruPage() {
     }
   };
 
+  const handleJadikanSiswa = (pendaftar: SiswaBaruDetail) => {
+    if (!confirm(`Anda akan menjadikan "${pendaftar.namaAnak}" sebagai siswa dan diarahkan ke halaman siswa. Lanjutkan?`)) {
+      return;
+    }
+
+    // Data yang akan dikirim ke halaman tambah siswa
+    const dataForSiswa = {
+      nama: pendaftar.namaAnak,
+      namaPanggilan: pendaftar.namaPanggilan,
+      jenisKelamin: pendaftar.jenisKelamin,
+      tempatLahir: pendaftar.tempatLahir,
+      tanggalLahir: pendaftar.tanggalLahir,
+      agama: pendaftar.agama,
+      anakKe: pendaftar.anakKe,
+      namaAyah: pendaftar.namaAyah,
+      namaIbu: pendaftar.namaIbu,
+      email: pendaftar.email,
+      noWA: pendaftar.noWaAyah || pendaftar.noWaIbu,
+      cabang: pendaftar.lokasi,
+    };
+
+    // Simpan data di localStorage untuk diambil oleh halaman selanjutnya
+    localStorage.setItem('newStudentFromRegistration', JSON.stringify(dataForSiswa));
+
+    router.push('/admin/siswa');
+  };
+
+  const filteredAndPaginatedRegistrations = useMemo(() => {
+    const filtered = registrations.filter(p => {
+      const tglDaftar = p.createdAt.toDate();
+      const startDate = filterTanggal.start ? new Date(filterTanggal.start) : null;
+      const endDate = filterTanggal.end ? new Date(filterTanggal.end) : null;
+
+      if (startDate) {
+        startDate.setHours(0, 0, 0, 0);
+        if (tglDaftar < startDate) return false;
+      }
+      if (endDate) {
+        endDate.setHours(23, 59, 59, 999);
+        if (tglDaftar > endDate) return false;
+      }
+      if (filterCabang && p.lokasi !== filterCabang) return false;
+      if (filterStatus && p.statusPendaftaran !== filterStatus) return false;
+
+      return true;
+    });
+
+    const totalPages = Math.ceil(filtered.length / itemsPerPage);
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages);
+    }
+
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+
+    return {
+      paginatedItems: filtered.slice(startIndex, endIndex),
+      totalItems: filtered.length,
+      totalPages: Math.ceil(filtered.length / itemsPerPage)
+    };
+  }, [registrations, filterTanggal, filterCabang, filterStatus, currentPage]);
+
+  const resetFilters = () => {
+    setFilterTanggal({ start: '', end: '' });
+    setFilterCabang('');
+    setFilterStatus('');
+    setCurrentPage(1);
+  };
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-800">Pendaftaran Siswa Baru</h1>
         <p className="text-sm text-gray-500 dark:text-gray-500">Daftar semua calon siswa baru yang telah mendaftar.</p>
+      </div>
+
+      {/* Filter Section */}
+      <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-100 space-y-4">
+        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-700 font-medium"><Filter className="w-5 h-5" /><span>Filter Data</span></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+          <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Dari Tanggal</label><input type="date" value={filterTanggal.start} onChange={e => setFilterTanggal(p => ({...p, start: e.target.value}))} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white" /></div>
+          <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Sampai Tanggal</label><input type="date" value={filterTanggal.end} onChange={e => setFilterTanggal(p => ({...p, end: e.target.value}))} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white" /></div>
+          <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Lokasi Pendaftaran</label><select value={filterCabang} onChange={e => setFilterCabang(e.target.value)} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white"><option value="">Semua Lokasi</option>{cabangList.map(c => <option key={c} value={c}>{c}</option>)}</select></div> 
+          <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Status</label><select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white"><option value="">Semua Status</option><option value="Baru">Baru</option><option value="Sudah Bayar">Sudah Bayar</option><option value="Sudah Assesment">Sudah Assesment</option><option value="Sudah Konsultasi">Sudah Konsultasi</option><option value="Ditolak">Ditolak</option></select></div>
+        </div>
+        <div className="flex justify-end">
+          <button onClick={resetFilters} className="flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-600 hover:text-gray-800 dark:hover:text-gray-800"><RotateCcw className="w-3 h-3" /> Reset Filter</button>
+        </div>
+      </div>
+
+      <div className="bg-purple-50 border border-purple-200 text-purple-800 text-sm font-medium p-3 rounded-lg flex items-center justify-between">
+        <span>Total Pendaftar ditemukan: <span className="font-bold">{filteredAndPaginatedRegistrations.totalItems}</span></span>
+        <span className="text-xs">Menampilkan halaman {currentPage} dari {filteredAndPaginatedRegistrations.totalPages || 1}</span>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -133,8 +248,8 @@ export default function SiswaBaruPage() {
             <thead className="bg-gray-50 text-gray-900 dark:text-gray-900 font-semibold border-b">
               <tr>
                 <th className="p-4 w-12 text-center">No.</th>
-                <th className="p-4">Nama Anak</th>
-                <th className="p-4">Nama Panggilan</th>
+                <th className="p-4">Tanggal Daftar</th>
+                <th className="p-4">Nama Siswa</th>
                 <th className="p-4">Lokasi</th>
                 <th className="p-4">Program</th>
                 <th className="p-4 text-center">Status</th>
@@ -144,14 +259,17 @@ export default function SiswaBaruPage() {
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr><td colSpan={7} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
-              ) : registrations.length === 0 ? (
+              ) : filteredAndPaginatedRegistrations.paginatedItems.length === 0 ? (
                 <tr><td colSpan={7} className="p-8 text-center text-gray-500 dark:text-gray-500">Belum ada pendaftar siswa baru.</td></tr>
               ) : (
-                registrations.map((p, index) => (
+                filteredAndPaginatedRegistrations.paginatedItems.map((p, index) => (
                   <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="p-4 text-center">{index + 1}</td>
-                    <td className="p-4 font-medium text-gray-900 dark:text-gray-900">{p.namaAnak}</td>
-                    <td className="p-4">{p.namaPanggilan}</td>
+                    <td className="p-4 text-center">{(currentPage - 1) * itemsPerPage + index + 1}</td>
+                    <td className="p-4 text-xs text-gray-600">{format(p.createdAt.toDate(), 'dd MMM yyyy', { locale: localeId })}</td>
+                    <td className="p-4">
+                      <div className="font-medium text-gray-900 dark:text-gray-900">{p.namaAnak}</div>
+                      <div className="text-xs text-gray-500">"{p.namaPanggilan}"</div>
+                    </td>
                     <td className="p-4">{p.lokasi}</td>
                     <td className="p-4">{p.program}</td>
                     <td className="p-4 text-center">
@@ -160,6 +278,7 @@ export default function SiswaBaruPage() {
                     <td className="p-4 flex justify-center gap-2">
                       <button onClick={() => openModal(p, 'view')} className="p-2 text-gray-600 dark:text-gray-600 hover:bg-gray-100 rounded-lg transition" title="Lihat Detail"><Eye className="w-4 h-4" /></button>
                       <button onClick={() => openModal(p, 'edit')} className="p-2 text-blue-600 dark:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit Status"><Edit className="w-4 h-4" /></button>
+                      <button onClick={() => handleJadikanSiswa(p)} className="p-2 text-green-600 dark:text-green-600 hover:bg-green-50 rounded-lg transition" title="Jadikan Siswa Diterima"><UserPlus className="w-4 h-4" /></button>
                       <button onClick={() => handleDelete(p.id, p.namaAnak)} className="p-2 text-red-600 dark:text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus"><Trash2 className="w-4 h-4" /></button>
                     </td>
                   </tr>
@@ -168,6 +287,21 @@ export default function SiswaBaruPage() {
             </tbody>
           </table>
         </div>
+        {/* Pagination Controls */}
+        {filteredAndPaginatedRegistrations.totalPages > 1 && (
+          <div className="p-4 border-t flex flex-col sm:flex-row justify-between items-center text-sm text-gray-600 dark:text-gray-600">
+            <div className="mb-2 sm:mb-0">
+              Menampilkan {filteredAndPaginatedRegistrations.paginatedItems.length} dari {filteredAndPaginatedRegistrations.totalItems} data
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-3 py-1 border rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">Sebelumnya</button>
+              <span>
+                Halaman <span className="font-semibold">{currentPage}</span> dari <span className="font-semibold">{filteredAndPaginatedRegistrations.totalPages}</span>
+              </span>
+              <button onClick={() => setCurrentPage(p => Math.min(filteredAndPaginatedRegistrations.totalPages, p + 1))} disabled={currentPage === filteredAndPaginatedRegistrations.totalPages} className="px-3 py-1 border rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">Berikutnya</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal Detail & Edit */}
@@ -235,9 +369,10 @@ export default function SiswaBaruPage() {
                       disabled={isSubmitting}
                       className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm bg-white disabled:bg-gray-100 text-gray-900 dark:text-gray-900"
                     >
-                      <option value="Baru">Baru</option>
-                      <option value="Ditinjau">Ditinjau</option>
-                      <option value="Diterima">Diterima</option>
+                      <option value="Baru">Baru</option> 
+                      <option value="Sudah Bayar">Sudah Bayar</option> 
+                      <option value="Sudah Assesment">Sudah Assesment</option> 
+                      <option value="Sudah Konsultasi">Sudah Konsultasi</option> 
                       <option value="Ditolak">Ditolak</option>
                     </select>
                   </div>

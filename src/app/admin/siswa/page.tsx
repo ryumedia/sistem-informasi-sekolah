@@ -262,6 +262,28 @@ export default function DataSiswaPage() {
     fetchMasterData("penghasilan", setPenghasilanList);
   }, []);
 
+  // Menangani data dari halaman pendaftaran siswa baru
+  useEffect(() => {
+    const newStudentDataString = localStorage.getItem('newStudentFromRegistration');
+    if (newStudentDataString) {
+      try {
+        const newStudentData = JSON.parse(newStudentDataString);
+        
+        // Hapus data dari localStorage agar tidak ter-trigger lagi
+        localStorage.removeItem('newStudentFromRegistration');
+
+        // Isi form dengan data yang diterima dan buka modal
+        setFormData(prev => ({ ...prev, ...newStudentData }));
+        setEditId(null); // Pastikan dalam mode tambah
+        setIsModalOpen(true);
+        alert("Data pendaftar telah dimuat. Silakan lengkapi dan simpan data siswa baru.");
+
+      } catch (error) {
+        console.error("Gagal memproses data pendaftar baru:", error);
+      }
+    }
+  }, []); // Dijalankan sekali saat komponen dimuat
+
   // Cek Role User (Kepala Sekolah hanya bisa lihat cabangnya sendiri)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
