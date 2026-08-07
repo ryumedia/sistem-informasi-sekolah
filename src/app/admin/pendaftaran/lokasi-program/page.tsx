@@ -2,8 +2,8 @@
 
 import { useState, useEffect, FormEvent } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, query, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { Loader2, PlusCircle, Edit, Trash2, X, MapPin, BookOpen } from 'lucide-react';
+import { collection, query, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+import { Loader2, PlusCircle, Edit, Trash2, X, MapPin, BookOpen, CalendarClock } from 'lucide-react';
 
 // --- INTERFACES ---
 interface Lokasi {
@@ -15,6 +15,13 @@ interface Lokasi {
 interface Program {
   id: string;
   nama: string;
+}
+
+interface JadwalTrial {
+  id: string;
+  lokasi: string;
+  tanggal: string; // YYYY-MM-DD
+  waktu: string; // HH:mm
 }
 
 // --- MAIN COMPONENT ---
@@ -31,13 +38,19 @@ export default function LokasiProgramPage() {
   const [isProgramModalOpen, setIsProgramModalOpen] = useState(false);
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
 
+  // State for Jadwal Trial
+  const [jadwalList, setJadwalList] = useState<JadwalTrial[]>([]);
+  const [loadingJadwal, setLoadingJadwal] = useState(true);
+  const [isJadwalModalOpen, setIsJadwalModalOpen] = useState(false);
+  const [editingJadwal, setEditingJadwal] = useState<JadwalTrial | null>(null);
+
   // Fetch Data
   useEffect(() => {
-    const fetchData = async (collectionName: string, setter: Function, loaderSetter: Function) => {
+    const fetchData = async (collectionName: string, setter: Function, loaderSetter: Function, orderByField = "nama") => {
       try {
-        const q = query(collection(db, collectionName), orderBy("nama", "asc"));
+        const q = query(collection(db, collectionName), orderBy(orderByField, "asc"));
         const snapshot = await getDocs(q);
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
         setter(list);
       } catch (error) {
         console.error(`Error fetching ${collectionName}:`, error);
@@ -49,6 +62,7 @@ export default function LokasiProgramPage() {
 
     fetchData("lokasi_pendaftaran", setLokasiList, setLoadingLokasi);
     fetchData("program_pendaftaran", setProgramList, setLoadingProgram);
+    fetchData("jadwal_trial", setJadwalList, setLoadingJadwal, "tanggal");
   }, []);
 
   // --- LOKASI HANDLERS ---
@@ -107,6 +121,35 @@ export default function LokasiProgramPage() {
     }
   };
 
+  // --- JADWAL HANDLERS ---
+  const handleSaveJadwal = async (formData: { lokasi: string; tanggal: string; waktu: string }) => {
+    try {
+      if (editingJadwal) {
+        await updateDoc(doc(db, "jadwal_trial", editingJadwal.id), formData);
+      } else {
+        await addDoc(collection(db, "jadwal_trial"), formData);
+      }
+      // Refresh data
+      const snapshot = await getDocs(query(collection(db, "jadwal_trial"), orderBy("tanggal", "asc")));
+      setJadwalList(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as JadwalTrial)));
+    } catch (error) {
+      console.error("Error saving jadwal:", error);
+      alert("Gagal menyimpan data jadwal.");
+    }
+  };
+
+  const handleDeleteJadwal = async (id: string) => {
+    if (!confirm("Yakin ingin menghapus jadwal ini?")) return;
+    try {
+      await deleteDoc(doc(db, "jadwal_trial", id));
+      setJadwalList(prev => prev.filter(item => item.id !== id));
+    } catch (error) {
+      console.error("Error deleting jadwal:", error);
+      alert("Gagal menghapus jadwal.");
+    }
+  };
+
+
   return (
     <div className="space-y-8">
       {/* SECTION 1: LOKASI */}
@@ -142,6 +185,51 @@ export default function LokasiProgramPage() {
                       <td className="p-4 flex justify-center gap-2">
                         <button onClick={() => { setEditingLokasi(item); setIsLokasiModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit"><Edit className="w-4 h-4" /></button>
                         <button onClick={() => handleDeleteLokasi(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus"><Trash2 className="w-4 h-4" /></button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 2: JADWAL TRIAL */}
+      <section>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><CalendarClock className="w-5 h-5" /> Kelola Jadwal Trial</h2>
+          <button onClick={() => { setEditingJadwal(null); setIsJadwalModalOpen(true); }} className="inline-flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition text-sm">
+            <PlusCircle className="w-4 h-4" /> Tambah Jadwal
+          </button>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-gray-600">
+              <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
+                <tr>
+                  <th className="p-4 w-12 text-center">No.</th>
+                  <th className="p-4">Lokasi</th>
+                  <th className="p-4">Tanggal</th>
+                  <th className="p-4">Waktu</th>
+                  <th className="p-4 w-32 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loadingJadwal ? (
+                  <tr><td colSpan={5} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" /></td></tr>
+                ) : jadwalList.length === 0 ? (
+                  <tr><td colSpan={5} className="p-8 text-center text-gray-500">Belum ada jadwal trial.</td></tr>
+                ) : (
+                  jadwalList.map((item, index) => (
+                    <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="p-4 text-center">{index + 1}</td>
+                      <td className="p-4 font-medium text-gray-900">{item.lokasi}</td>
+                      <td className="p-4">{new Date(item.tanggal + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</td>
+                      <td className="p-4">{item.waktu}</td>
+                      <td className="p-4 flex justify-center gap-2">
+                        <button onClick={() => { setEditingJadwal(item); setIsJadwalModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit"><Edit className="w-4 h-4" /></button>
+                        <button onClick={() => handleDeleteJadwal(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus"><Trash2 className="w-4 h-4" /></button>
                       </td>
                     </tr>
                   ))
@@ -196,6 +284,7 @@ export default function LokasiProgramPage() {
       {/* MODALS */}
       {isLokasiModalOpen && <LokasiModal data={editingLokasi} onClose={() => setIsLokasiModalOpen(false)} onSave={handleSaveLokasi} />}
       {isProgramModalOpen && <ProgramModal data={editingProgram} onClose={() => setIsProgramModalOpen(false)} onSave={handleSaveProgram} />}
+      {isJadwalModalOpen && <JadwalModal data={editingJadwal} lokasiOptions={lokasiList} onClose={() => setIsJadwalModalOpen(false)} onSave={handleSaveJadwal} />}
     </div>
   );
 }
@@ -233,6 +322,59 @@ function LokasiModal({ data, onClose, onSave }: { data: Lokasi | null, onClose: 
           <div className="pt-2 flex justify-end gap-3">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-200">Batal</button>
             <button type="submit" disabled={isSubmitting} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition disabled:opacity-50">
+              {isSubmitting ? 'Menyimpan...' : 'Simpan'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function JadwalModal({ data, lokasiOptions, onClose, onSave }: { data: JadwalTrial | null, lokasiOptions: Lokasi[], onClose: () => void, onSave: (formData: { lokasi: string, tanggal: string, waktu: string }) => void }) {
+  const [formData, setFormData] = useState({
+    lokasi: data?.lokasi || '',
+    tanggal: data?.tanggal || '',
+    waktu: data?.waktu || ''
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    await onSave(formData);
+    setIsSubmitting(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="p-4 border-b flex justify-between items-center">
+          <h3 className="font-bold text-gray-800">{data ? 'Edit' : 'Tambah'} Jadwal Trial</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Lokasi</label>
+            <select required value={formData.lokasi} onChange={e => setFormData({ ...formData, lokasi: e.target.value })} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-purple-500 outline-none bg-white">
+              <option value="" disabled>-- Pilih Lokasi --</option>
+              {lokasiOptions.map(opt => <option key={opt.id} value={opt.nama}>{opt.nama}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Tanggal</label>
+              <input type="date" required value={formData.tanggal} onChange={e => setFormData({ ...formData, tanggal: e.target.value })} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-purple-500 outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Waktu</label>
+              <input type="time" required value={formData.waktu} onChange={e => setFormData({ ...formData, waktu: e.target.value })} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-purple-500 outline-none" />
+            </div>
+          </div>
+          <div className="pt-2 flex justify-end gap-3">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-200">Batal</button>
+            <button type="submit" disabled={isSubmitting} className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700 transition disabled:opacity-50">
               {isSubmitting ? 'Menyimpan...' : 'Simpan'}
             </button>
           </div>
