@@ -61,8 +61,12 @@ export default function AdminDashboard() {
   // Fetch Cabang List for Filter
   useEffect(() => {
     const fetchCabang = async () => {
-      const snapCabang = await getDocs(query(collection(db, "cabang"), orderBy("nama", "asc")));
-      setCabangList(snapCabang.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      try {
+        const snapCabang = await getDocs(query(collection(db, "cabang"), orderBy("nama", "asc")));
+        setCabangList(snapCabang.docs.map(doc => ({ id: doc.id, ...doc.data() } as CabangItem)));
+      } catch (err) {
+        console.error("Error fetching cabang list:", err);
+      }
     };
     fetchCabang();
   }, []);
