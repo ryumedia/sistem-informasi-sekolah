@@ -10,6 +10,14 @@ import { onAuthStateChanged } from "firebase/auth";
 import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { ChevronDown, ChevronRight, ArrowLeft, Menu, X, Loader2 } from "lucide-react";
 
+interface AdminUserData {
+  id?: string;
+  nama?: string;
+  email?: string;
+  role?: string;
+  cabang?: string;
+}
+
 export default function AdminLayout({
   children,
 }: {
@@ -17,7 +25,7 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [userData, setUserData] = useState<Record<string, unknown> | null>(null);
+  const [userData, setUserData] = useState<AdminUserData | null>(null);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [pengajuanCount, setPengajuanCount] = useState(0);
@@ -40,11 +48,11 @@ export default function AdminLayout({
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         // Set data minimal dari Auth object secara INSTAN jika belum ada userData
-        setUserData((prev: Record<string, unknown> | null) => {
+        setUserData((prev: AdminUserData | null) => {
           if (prev) return prev;
           return {
             nama: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
-            email: currentUser.email,
+            email: currentUser.email || "",
             role: ""
           };
         });
@@ -80,7 +88,8 @@ export default function AdminLayout({
 
     const dashboardRoles = ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"];
     if (pathname === '/admin') {
-      if (userData && userData.role && !dashboardRoles.includes(userData.role)) {
+      const role = userData?.role;
+      if (role && !dashboardRoles.includes(role)) {
         router.replace('/admin/performance');
       }
     }
@@ -98,11 +107,11 @@ export default function AdminLayout({
     const qRealisasi = query(collection(db, "pengajuan"), where("status", "==", "Disetujui"));
     const unsubRealisasi = onSnapshot(qRealisasi, (snap) => {
       // Filter hanya yang belum memiliki data realisasi (field realisasi kosong/0)
-        const belumRealisasi = snap.docs.filter(doc => {
-          const data = doc.data();
-          return !data.realisasi;
-        }).length;
-        setRealisasiCount(belumRealisasi);
+      const belumRealisasi = snap.docs.filter(doc => {
+        const data = doc.data();
+        return !data.realisasi;
+      }).length;
+      setRealisasiCount(belumRealisasi);
     });
 
     return () => {
@@ -127,7 +136,7 @@ export default function AdminLayout({
       submenu: [
         { name: "Tahap Perkembangan", href: "/admin/Akademik/perkembangan", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
         { name: "Indikator", href: "/admin/Akademik/indikator", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
-        { name: "Area", href: "/admin/Akademik/7habits", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"]},
+        { name: "Area", href: "/admin/Akademik/7habits", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
         { name: "Trilogi Mainriang", href: "/admin/Akademik/trilogi", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
         { name: "RPPH", href: "/admin/Akademik/rpph", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
       ]
@@ -235,13 +244,14 @@ export default function AdminLayout({
   ];
 
   // Filter menu items based on user's role
+  const currentRole = userData?.role || "";
   const menuItems = allMenuItems
-    .filter(item => !userData || userData.role === "" ? true : (item.roles && item.roles.includes(userData.role)))
+    .filter(item => !currentRole ? true : (item.roles && item.roles.includes(currentRole)))
     .map(item => {
       if (item.submenu) {
         return {
           ...item,
-          submenu: item.submenu.filter(subItem => !userData || userData.role === "" ? true : (subItem.roles && subItem.roles.includes(userData.role)))
+          submenu: item.submenu.filter(subItem => !currentRole ? true : (subItem.roles && subItem.roles.includes(currentRole)))
         };
       }
       return item;
@@ -293,9 +303,8 @@ export default function AdminLayout({
                 <div key={item.name}>
                   <button
                     onClick={() => toggleMenu(item.name)}
-                    className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition ${
-                       isActiveParent || isExpanded ? "text-white" : "text-purple-100 hover:bg-[#45156b]"
-                    }`}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition ${isActiveParent || isExpanded ? "text-white" : "text-purple-100 hover:bg-[#45156b]"
+                      }`}
                   >
                     <span>{item.name}</span>
                     <div className="flex items-center gap-2">
@@ -323,9 +332,8 @@ export default function AdminLayout({
                             key={subItem.name}
                             href={subItem.href}
                             onClick={() => setIsMobileMenuOpen(false)} // Tutup menu saat link diklik
-                            className={`flex items-center justify-between px-4 py-2 rounded-lg text-sm transition ${
-                              isSubActive ? "bg-[#ff984e] text-white shadow-sm" : "text-purple-200 hover:text-white hover:bg-[#45156b]"
-                            }`}
+                            className={`flex items-center justify-between px-4 py-2 rounded-lg text-sm transition ${isSubActive ? "bg-[#ff984e] text-white shadow-sm" : "text-purple-200 hover:text-white hover:bg-[#45156b]"
+                              }`}
                           >
                             <span>{subItem.name}</span>
                             {badge > 0 && (
@@ -352,11 +360,10 @@ export default function AdminLayout({
                 key={item.name}
                 href={item.href}
                 onClick={() => setIsMobileMenuOpen(false)} // Tutup menu saat link diklik
-                className={`block px-4 py-3 rounded-lg text-sm font-medium transition ${
-                  isActive
+                className={`block px-4 py-3 rounded-lg text-sm font-medium transition ${isActive
                     ? "bg-[#ff984e] text-white shadow-sm"
                     : "hover:bg-[#45156b] text-purple-100"
-                }`}
+                  }`}
               >
                 {item.name}
               </Link>
