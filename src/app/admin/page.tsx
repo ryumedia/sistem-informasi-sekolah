@@ -63,7 +63,14 @@ export default function AdminDashboard() {
     const fetchCabang = async () => {
       try {
         const snapCabang = await getDocs(query(collection(db, "cabang"), orderBy("nama", "asc")));
-        setCabangList(snapCabang.docs.map(doc => ({ id: doc.id, ...doc.data() } as CabangItem)));
+        setCabangList(snapCabang.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            nama: (data.nama as string) || "",
+            ...data
+          };
+        }));
       } catch (err) {
         console.error("Error fetching cabang list:", err);
       }
