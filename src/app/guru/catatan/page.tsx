@@ -4,391 +4,549 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, query, where, getDocs, addDoc, deleteDoc, doc, serverTimestamp, Timestamp, orderBy } from "firebase/firestore";
-import { ArrowLeft, Loader2, Plus, Trash2, Save, X, FileText, User, BarChart, Baby, Ruler, Scaling } from "lucide-react";
+import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, Timestamp, orderBy } from "firebase/firestore";
+import { ArrowLeft, Loader2, Plus, Pencil, Trash2, Save, X, FileText, User, BarChart, Baby, Ruler, Scaling } from "lucide-react";
 import { format } from "date-fns";
 
 interface GrowthData {
-  id: string;
-  tanggal: Timestamp;
-  siswaId: string;
-  siswaNama?: string;
-  lingkarKepala: number;
-  tinggiBadan: number;
-  beratBadan: number;
+    id: string;
+    tanggal: any;
+    siswaId: string;
+    siswaNama?: string;
+    kelas?: string;
+    cabang?: string;
+    guruId?: string;
+    guruNama?: string;
+    lingkarKepala: number;
+    tinggiBadan: number;
+    beratBadan: number;
+    createdAt?: any;
+    updatedAt?: any;
+}
+
+interface CatatanData {
+    id: string;
+    guruId: string;
+    guruNama: string;
+    siswaId: string;
+    siswaNama: string;
+    catatan: string;
+    cabang: string;
+    createdAt?: any;
+    updatedAt?: any;
+}
+
+interface SiswaData {
+    id: string;
+    nama: string;
+    cabang?: string;
+    kelas?: string;
+    [key: string]: any;
+}
+
+interface GuruData {
+    id: string;
+    nama: string;
+    email: string;
+    cabang: string;
+    [key: string]: any;
 }
 
 export default function CatatanGuruPage() {
-  const router = useRouter();
-  const [guruData, setGuruData] = useState<any>(null);
-  const [siswaList, setSiswaList] = useState<any[]>([]);
-  const [catatanList, setCatatanList] = useState<any[]>([]);
-  const [growthList, setGrowthList] = useState<GrowthData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("catatan");
-  
-  const [isCatatanModalOpen, setIsCatatanModalOpen] = useState(false);
-  const [isPertumbuhanModalOpen, setIsPertumbuhanModalOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    siswaId: "",
-    catatan: ""
-  });
+    const router = useRouter();
+    const [guruData, setGuruData] = useState<GuruData | null>(null);
+    const [siswaList, setSiswaList] = useState<SiswaData[]>([]);
+    const [catatanList, setCatatanList] = useState<CatatanData[]>([]);
+    const [growthList, setGrowthList] = useState<GrowthData[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState("catatan");
 
-  // 1. Auth & Get Guru Data
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (!currentUser) {
-        router.push("/login");
-        return;
-      }
+    const [isCatatanModalOpen, setIsCatatanModalOpen] = useState(false);
+    const [editingCatatan, setEditingCatatan] = useState<CatatanData | null>(null);
 
-      try {
-        const qGuru = query(collection(db, "guru"), where("email", "==", currentUser.email));
-        const snapshotGuru = await getDocs(qGuru);
+    const [isPertumbuhanModalOpen, setIsPertumbuhanModalOpen] = useState(false);
+    const [editingGrowth, setEditingGrowth] = useState<GrowthData | null>(null);
 
-        if (!snapshotGuru.empty) {
-          const data = snapshotGuru.docs[0].data();
-          setGuruData({ id: snapshotGuru.docs[0].id, ...data });
-        } else {
-          router.push("/");
-        }
-      } catch (error) {
-        console.error("Error fetching guru data:", error);
-        router.push("/");
-      }
+    const [submitting, setSubmitting] = useState(false);
+    const [formData, setFormData] = useState({
+        siswaId: "",
+        catatan: ""
     });
-    return () => unsubscribe();
-  }, [router]);
 
-  // 2. Fetch Siswa & Catatan based on Guru
-  useEffect(() => {
-    if (!guruData) return;
+    // 1. Auth & Get Guru Data
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            if (!currentUser) {
+                router.push("/login");
+                return;
+            }
 
-    const fetchData = async () => {
-      try {
-        // A. Fetch Siswa (Logic from daftar-siswa)
-        // Cari kelas dimana guru ini terdaftar
-        const qKelas = query(
-          collection(db, "kelas"),
-          where("cabang", "==", guruData.cabang),
-          where("guruKelas", "array-contains", guruData.nama)
-        );
-        const kelasSnap = await getDocs(qKelas);
-        const classes = kelasSnap.docs.map(doc => doc.data().namaKelas);
-        let list: any[] = []; // Deklarasikan list di sini
+            try {
+                const qGuru = query(collection(db, "guru"), where("email", "==", currentUser.email));
+                const snapshotGuru = await getDocs(qGuru);
 
-        if (classes.length > 0) {
-          const qSiswa = query(
-            collection(db, "siswa"),
-            where("cabang", "==", guruData.cabang),
-            where("kelas", "in", classes)
-          );
-          const siswaSnap = await getDocs(qSiswa);
-          list = siswaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          // Sort client-side
-          list.sort((a: any, b: any) => (a.nama || "").localeCompare(b.nama || ""));
-          setSiswaList(list);
-        }
-
-        // B. Fetch Catatan Guru (Notes created by this teacher)
-        const qCatatan = query(
-            collection(db, "catatan_guru"), 
-            where("guruId", "==", guruData.id)
-        );
-        const catatanSnap = await getDocs(qCatatan);
-        const notes = catatanSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-        // Client side sort by date desc
-        notes.sort((a: any, b: any) => {
-            const dateA = a.createdAt?.seconds || 0;
-            const dateB = b.createdAt?.seconds || 0;
-            return dateB - dateA;
+                if (!snapshotGuru.empty) {
+                    const data = snapshotGuru.docs[0].data();
+                    setGuruData({ id: snapshotGuru.docs[0].id, nama: data.nama || "", email: data.email || "", cabang: data.cabang || "", ...data });
+                } else {
+                    router.push("/");
+                }
+            } catch (error) {
+                console.error("Error fetching guru data:", error);
+                router.push("/");
+            }
         });
-        
-        setCatatanList(notes);
+        return () => unsubscribe();
+    }, [router]);
 
-        // C. Fetch Pertumbuhan Anak (Growth data for the students of this teacher)
-        const siswaIds = list.map((s: any) => s.id);
-        if (siswaIds.length > 0) {
-            const qGrowth = query(
-                collection(db, "pertumbuhan_anak"),
-                where("siswaId", "in", siswaIds),
-                orderBy("tanggal", "desc")
-            );
-            const growthSnap = await getDocs(qGrowth);
-            const growthData = growthSnap.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            } as GrowthData));
-            setGrowthList(growthData);
-        }
-      } catch (error) {
-        console.error("Error fetching data:", error);
-      } finally {
-        setLoading(false);
-      }
+    // 2. Fetch Siswa & Catatan based on Guru
+    useEffect(() => {
+        if (!guruData) return;
+
+        const fetchData = async () => {
+            try {
+                // A. Fetch Siswa (Logic from daftar-siswa)
+                // Cari kelas dimana guru ini terdaftar
+                const qKelas = query(
+                    collection(db, "kelas"),
+                    where("cabang", "==", guruData.cabang),
+                    where("guruKelas", "array-contains", guruData.nama)
+                );
+                const kelasSnap = await getDocs(qKelas);
+                const classes = kelasSnap.docs.map(doc => doc.data().namaKelas);
+                let list: any[] = []; // Deklarasikan list di sini
+
+                if (classes.length > 0) {
+                    const qSiswa = query(
+                        collection(db, "siswa"),
+                        where("cabang", "==", guruData.cabang),
+                        where("kelas", "in", classes)
+                    );
+                    const siswaSnap = await getDocs(qSiswa);
+                    list = siswaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    // Sort client-side
+                    list.sort((a: any, b: any) => (a.nama || "").localeCompare(b.nama || ""));
+                    setSiswaList(list);
+                }
+
+                // B. Fetch Catatan Guru (Notes created by this teacher)
+                const qCatatan = query(
+                    collection(db, "catatan_guru"),
+                    where("guruId", "==", guruData.id)
+                );
+                const catatanSnap = await getDocs(qCatatan);
+                const notes = catatanSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as CatatanData));
+
+                // Client side sort by date desc
+                notes.sort((a: any, b: any) => {
+                    const dateA = a.createdAt?.seconds || 0;
+                    const dateB = b.createdAt?.seconds || 0;
+                    return dateB - dateA;
+                });
+
+                setCatatanList(notes);
+
+                // C. Fetch Pertumbuhan Anak (Growth data for the students of this teacher)
+                const siswaIds = list.map((s: any) => s.id);
+                if (siswaIds.length > 0) {
+                    const qGrowth = query(
+                        collection(db, "pertumbuhan_anak"),
+                        where("siswaId", "in", siswaIds),
+                        orderBy("tanggal", "desc")
+                    );
+                    const growthSnap = await getDocs(qGrowth);
+                    const growthData = growthSnap.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    } as GrowthData));
+                    setGrowthList(growthData);
+                }
+            } catch (error) {
+                console.error("Error fetching data:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, [guruData]);
+
+    const handleOpenAddCatatan = () => {
+        setEditingCatatan(null);
+        setFormData({ siswaId: "", catatan: "" });
+        setIsCatatanModalOpen(true);
     };
 
-    fetchData();
-  }, [guruData]);
+    const handleOpenEditCatatan = (item: CatatanData) => {
+        setEditingCatatan(item);
+        setFormData({ siswaId: item.siswaId, catatan: item.catatan });
+        setIsCatatanModalOpen(true);
+    };
 
-  const handleSaveCatatan = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.siswaId || !formData.catatan) return;
-    
-    setSubmitting(true);
-    try {
-        const selectedSiswa = siswaList.find(s => s.id === formData.siswaId);
-        
-        const newNote = {
-            guruId: guruData.id,
-            guruNama: guruData.nama,
-            siswaId: formData.siswaId,
-            siswaNama: selectedSiswa?.nama || "Unknown",
-            catatan: formData.catatan,
-            cabang: guruData.cabang,
-            createdAt: serverTimestamp()
-        };
+    const handleOpenAddPertumbuhan = () => {
+        setEditingGrowth(null);
+        setIsPertumbuhanModalOpen(true);
+    };
 
-        const docRef = await addDoc(collection(db, "catatan_guru"), newNote);
+    const handleOpenEditPertumbuhan = (item: GrowthData) => {
+        setEditingGrowth(item);
+        setIsPertumbuhanModalOpen(true);
+    };
 
-        // Update local state immediately for better UX
-        setCatatanList(prev => [{ id: docRef.id, ...newNote, createdAt: { seconds: Date.now() / 1000 } }, ...prev]);
+    const handleSaveCatatan = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!formData.siswaId || !formData.catatan || !guruData) return;
 
-        setIsCatatanModalOpen(false);
-        setFormData({ siswaId: "", catatan: "" });
-    } catch (error) {
-        console.error("Error saving note:", error);
-        alert("Gagal menyimpan catatan.");
-    } finally {
-        setSubmitting(false);
+        setSubmitting(true);
+        try {
+            const selectedSiswa = siswaList.find(s => s.id === formData.siswaId);
+
+            if (editingCatatan) {
+                const updatedData = {
+                    siswaId: formData.siswaId,
+                    siswaNama: selectedSiswa?.nama || editingCatatan.siswaNama || "Unknown",
+                    catatan: formData.catatan,
+                    updatedAt: serverTimestamp()
+                };
+
+                await updateDoc(doc(db, "catatan_guru", editingCatatan.id), updatedData);
+                setCatatanList(prev => prev.map(item => item.id === editingCatatan.id ? { ...item, ...updatedData } : item));
+            } else {
+                const newNote = {
+                    guruId: guruData.id,
+                    guruNama: guruData.nama,
+                    siswaId: formData.siswaId,
+                    siswaNama: selectedSiswa?.nama || "Unknown",
+                    catatan: formData.catatan,
+                    cabang: guruData.cabang,
+                    createdAt: serverTimestamp()
+                };
+
+                const docRef = await addDoc(collection(db, "catatan_guru"), newNote);
+                setCatatanList(prev => [{ id: docRef.id, ...newNote, createdAt: { seconds: Date.now() / 1000 } } as CatatanData, ...prev]);
+            }
+
+            setIsCatatanModalOpen(false);
+            setEditingCatatan(null);
+            setFormData({ siswaId: "", catatan: "" });
+        } catch (error) {
+            console.error("Error saving note:", error);
+            alert(editingCatatan ? "Gagal memperbarui catatan." : "Gagal menyimpan catatan.");
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleSavePertumbuhan = async (e: React.FormEvent, growthFormData: any) => {
+        e.preventDefault();
+        if (!growthFormData.siswaId || !guruData) {
+            alert("Harap pilih siswa.");
+            return;
+        }
+        setSubmitting(true);
+        try {
+            const selectedSiswa = siswaList.find(s => s.id === growthFormData.siswaId);
+            const dateObj = new Date(growthFormData.tanggal + (growthFormData.tanggal.includes('T') ? '' : 'T12:00:00'));
+            const timestampDate = Timestamp.fromDate(dateObj);
+
+            if (editingGrowth) {
+                const dataToUpdate = {
+                    siswaId: growthFormData.siswaId,
+                    siswaNama: selectedSiswa?.nama || editingGrowth.siswaNama || "Unknown",
+                    kelas: selectedSiswa?.kelas || editingGrowth.kelas || "Unknown",
+                    tanggal: timestampDate,
+                    lingkarKepala: parseFloat(growthFormData.lingkarKepala) || 0,
+                    tinggiBadan: parseFloat(growthFormData.tinggiBadan) || 0,
+                    beratBadan: parseFloat(growthFormData.beratBadan) || 0,
+                    updatedAt: serverTimestamp()
+                };
+
+                await updateDoc(doc(db, "pertumbuhan_anak", editingGrowth.id), dataToUpdate);
+                setGrowthList(prev => prev.map(item => item.id === editingGrowth.id ? { ...item, ...dataToUpdate } : item));
+            } else {
+                const dataToSave = {
+                    guruId: guruData.id,
+                    guruNama: guruData.nama,
+                    siswaId: growthFormData.siswaId,
+                    siswaNama: selectedSiswa?.nama || "Unknown",
+                    cabang: guruData.cabang,
+                    kelas: selectedSiswa?.kelas || "Unknown",
+                    tanggal: timestampDate,
+                    lingkarKepala: parseFloat(growthFormData.lingkarKepala) || 0,
+                    tinggiBadan: parseFloat(growthFormData.tinggiBadan) || 0,
+                    beratBadan: parseFloat(growthFormData.beratBadan) || 0,
+                    createdAt: serverTimestamp()
+                };
+                const docRef = await addDoc(collection(db, "pertumbuhan_anak"), dataToSave);
+                setGrowthList(prev => [{ id: docRef.id, ...dataToSave } as GrowthData, ...prev]);
+            }
+
+            setIsPertumbuhanModalOpen(false);
+            setEditingGrowth(null);
+        } catch (error) {
+            console.error("Error saving growth data:", error);
+            alert(editingGrowth ? "Gagal memperbarui data pertumbuhan." : "Gagal menyimpan data pertumbuhan.");
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleDeleteCatatan = async (id: string) => {
+        if (!confirm("Hapus catatan ini?")) return;
+        try {
+            await deleteDoc(doc(db, "catatan_guru", id));
+            setCatatanList(prev => prev.filter(n => n.id !== id));
+        } catch (error) {
+            console.error("Error deleting:", error);
+            alert("Gagal menghapus catatan.");
+        }
     }
-  };
 
-  const handleSavePertumbuhan = async (e: React.FormEvent, growthFormData: any) => {
-    e.preventDefault();
-    if (!growthFormData.siswaId) {
-        alert("Harap pilih siswa.");
-        return;
+    const handleDeletePertumbuhan = async (id: string) => {
+        if (!confirm("Hapus data pertumbuhan ini?")) return;
+        try {
+            await deleteDoc(doc(db, "pertumbuhan_anak", id));
+            setGrowthList(prev => prev.filter(g => g.id !== id));
+        } catch (error) {
+            console.error("Error deleting growth data:", error);
+            alert("Gagal menghapus data.");
+        }
     }
-    setSubmitting(true);
-    try {
-        const selectedSiswa = siswaList.find(s => s.id === growthFormData.siswaId);
-        const dataToSave = {
-            guruId: guruData.id,
-            guruNama: guruData.nama,
-            siswaId: growthFormData.siswaId,
-            siswaNama: selectedSiswa?.nama || "Unknown",
-            cabang: guruData.cabang,
-            kelas: selectedSiswa?.kelas || "Unknown",
-            tanggal: Timestamp.fromDate(new Date(growthFormData.tanggal)),
-            lingkarKepala: parseFloat(growthFormData.lingkarKepala) || 0,
-            tinggiBadan: parseFloat(growthFormData.tinggiBadan) || 0,
-            beratBadan: parseFloat(growthFormData.beratBadan) || 0,
-            createdAt: serverTimestamp()
-        };
-        const docRef = await addDoc(collection(db, "pertumbuhan_anak"), dataToSave);
-        setGrowthList(prev => [{ id: docRef.id, ...dataToSave }, ...prev]);
-        setIsPertumbuhanModalOpen(false);
-    } catch (error) {
-        console.error("Error saving growth data:", error);
-        alert("Gagal menyimpan data pertumbuhan.");
-    } finally {
-        setSubmitting(false);
-    }
-  };
 
-  const handleDeleteCatatan = async (id: string) => {
-      if(!confirm("Hapus catatan ini?")) return;
-      try {
-          await deleteDoc(doc(db, "catatan_guru", id));
-          setCatatanList(prev => prev.filter(n => n.id !== id));
-      } catch (error) {
-          console.error("Error deleting:", error);
-          alert("Gagal menghapus catatan.");
-      }
-  }
+    const formatGrowthDate = (dateVal: any) => {
+        if (!dateVal) return "-";
+        try {
+            if (typeof dateVal.toDate === "function") {
+                return format(dateVal.toDate(), "dd MMM yyyy");
+            }
+            if (dateVal.seconds) {
+                return format(new Date(dateVal.seconds * 1000), "dd MMM yyyy");
+            }
+            return format(new Date(dateVal), "dd MMM yyyy");
+        } catch {
+            return "-";
+        }
+    };
 
-  const handleDeletePertumbuhan = async (id: string) => {
-    if(!confirm("Hapus data pertumbuhan ini?")) return;
-    try {
-        await deleteDoc(doc(db, "pertumbuhan_anak", id));
-        setGrowthList(prev => prev.filter(g => g.id !== id));
-    } catch (error) {
-        console.error("Error deleting growth data:", error);
-        alert("Gagal menghapus data.");
-    }
-  }
+    if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="w-8 h-8 animate-spin text-[#581c87]" /></div>;
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="w-8 h-8 animate-spin text-[#581c87]" /></div>;
-
-  return (
-    <div className="min-h-screen bg-gray-50 flex justify-center">
-      <div className="w-full max-w-lg bg-white min-h-screen shadow-xl flex flex-col">
-        {/* Header */}
-        <header className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.push("/?tab=akademik")} className="p-2 hover:bg-gray-100 rounded-full transition">
-                <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-            <h1 className="text-lg font-bold text-gray-800">Catatan Guru</h1>
-          </div>
-          <button
-            onClick={() => {
-              if (activeTab === 'catatan') {
-                setIsCatatanModalOpen(true);
-              } else {
-                setIsPertumbuhanModalOpen(true);
-              }
-            }}
-            className="bg-[#581c87] text-white p-2 rounded-full hover:bg-[#45156b] transition shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
-        </header>
-
-        {/* Content List */}
-        <div className="flex-1">
-            <div className="p-4 border-b border-gray-200">
-                <nav className="flex space-x-4" aria-label="Tabs">
-                    <button onClick={() => setActiveTab("catatan")} className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-lg ${activeTab === "catatan" ? "bg-purple-100 text-purple-700" : "text-gray-500 hover:text-gray-700"}`}>
-                        <FileText className="w-4 h-4" /> Catatan
+    return (
+        <div className="min-h-screen bg-gray-50 flex justify-center">
+            <div className="w-full max-w-lg bg-white min-h-screen shadow-xl flex flex-col">
+                {/* Header */}
+                <header className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => router.push("/?tab=akademik")} className="p-2 hover:bg-gray-100 rounded-full transition">
+                            <ArrowLeft className="w-5 h-5 text-gray-600" />
+                        </button>
+                        <h1 className="text-lg font-bold text-gray-800">Catatan Guru</h1>
+                    </div>
+                    <button
+                        onClick={() => {
+                            if (activeTab === 'catatan') {
+                                handleOpenAddCatatan();
+                            } else {
+                                handleOpenAddPertumbuhan();
+                            }
+                        }}
+                        className="bg-[#581c87] text-white p-2 rounded-full hover:bg-[#45156b] transition shadow-sm"
+                    >
+                        <Plus className="w-5 h-5" />
                     </button>
-                    <button onClick={() => setActiveTab("pertumbuhan")} className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-lg ${activeTab === "pertumbuhan" ? "bg-purple-100 text-purple-700" : "text-gray-500 hover:text-gray-700"}`}>
-                        <BarChart className="w-4 h-4" /> Pertumbuhan Anak
-                    </button>
-                </nav>
-            </div>
+                </header>
 
-            <div className="p-4 space-y-4 pb-20">
-                {activeTab === 'catatan' && (
-                    catatanList.length === 0 ? (
-                        <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                            <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                            <h3 className="font-semibold text-gray-700">Belum Ada Catatan</h3>
-                            <p className="text-gray-500 text-sm mt-1">Tekan tombol + untuk membuat catatan baru.</p>
-                        </div>
-                    ) : (
-                        catatanList.map(item => (
-                            <div key={item.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow-md transition relative group">
-                                <div className="flex justify-between items-start mb-2">
-                                    <div className="flex items-center gap-2">
-                                        <div className="bg-purple-100 p-1.5 rounded-full text-purple-600">
-                                            <User className="w-3 h-3" />
-                                        </div>
-                                        <span className="font-bold text-gray-800 text-sm">{item.siswaNama}</span>
-                                    </div>
-                                    <span className="text-[10px] text-gray-400">
-                                        {item.createdAt?.seconds ? new Date(item.createdAt.seconds * 1000).toLocaleDateString("id-ID") : "-"}
-                                    </span>
+                {/* Content List */}
+                <div className="flex-1">
+                    <div className="p-4 border-b border-gray-200">
+                        <nav className="flex space-x-4" aria-label="Tabs">
+                            <button onClick={() => setActiveTab("catatan")} className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-lg ${activeTab === "catatan" ? "bg-purple-100 text-purple-700" : "text-gray-500 hover:text-gray-700"}`}>
+                                <FileText className="w-4 h-4" /> Catatan
+                            </button>
+                            <button onClick={() => setActiveTab("pertumbuhan")} className={`flex items-center gap-2 px-3 py-2 font-medium text-sm rounded-lg ${activeTab === "pertumbuhan" ? "bg-purple-100 text-purple-700" : "text-gray-500 hover:text-gray-700"}`}>
+                                <BarChart className="w-4 h-4" /> Pertumbuhan Anak
+                            </button>
+                        </nav>
+                    </div>
+
+                    <div className="p-4 space-y-4 pb-20">
+                        {activeTab === 'catatan' && (
+                            catatanList.length === 0 ? (
+                                <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                    <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                                    <h3 className="font-semibold text-gray-700">Belum Ada Catatan</h3>
+                                    <p className="text-gray-500 text-sm mt-1">Tekan tombol + untuk membuat catatan baru.</p>
                                 </div>
-                                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{item.catatan}</p>
-                                
-                                <button 
-                                    onClick={() => handleDeleteCatatan(item.id)}
-                                    className="absolute top-3 right-3 p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition"
+                            ) : (
+                                catatanList.map(item => (
+                                    <div key={item.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow-md transition relative group">
+                                        <div className="flex justify-between items-start mb-2 pr-16">
+                                            <div className="flex items-center gap-2">
+                                                <div className="bg-purple-100 p-1.5 rounded-full text-purple-600">
+                                                    <User className="w-3 h-3" />
+                                                </div>
+                                                <div>
+                                                    <span className="font-bold text-gray-800 text-sm">{item.siswaNama}</span>
+                                                    <span className="text-[10px] text-gray-400 block">
+                                                        {item.createdAt?.seconds ? new Date(item.createdAt.seconds * 1000).toLocaleDateString("id-ID") : "-"}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{item.catatan}</p>
+
+                                        <div className="absolute top-3 right-3 flex items-center gap-1">
+                                            <button
+                                                onClick={() => handleOpenEditCatatan(item)}
+                                                className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition"
+                                                title="Edit Catatan"
+                                            >
+                                                <Pencil className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteCatatan(item.id)}
+                                                className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
+                                                title="Hapus Catatan"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )
+                        )}
+
+                        {activeTab === 'pertumbuhan' && (
+                            growthList.length === 0 ? (
+                                <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                    <BarChart className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                                    <h3 className="font-semibold text-gray-700">Belum Ada Data Pertumbuhan</h3>
+                                    <p className="text-gray-500 text-sm mt-1">Tekan tombol + untuk menambah data baru.</p>
+                                </div>
+                            ) : (
+                                growthList.map(item => (
+                                    <div key={item.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow-md transition relative group">
+                                        <div className="flex justify-between items-start mb-3 pr-16">
+                                            <div className="flex items-center gap-2">
+                                                <div className="bg-purple-100 p-1.5 rounded-full text-purple-600"><User className="w-3 h-3" /></div>
+                                                <div>
+                                                    <span className="font-bold text-gray-800 text-sm">{item.siswaNama}</span>
+                                                    <span className="text-[10px] text-gray-400 block">{formatGrowthDate(item.tanggal)}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <ul className="space-y-2 text-sm bg-gray-50/70 p-3 rounded-lg border border-gray-100">
+                                            <li className="flex items-center justify-between"><span className="flex items-center text-gray-600"><Baby className="w-4 h-4 mr-2 text-gray-400" />Lingkar Kepala</span><span className="font-semibold text-gray-800">{item.lingkarKepala} cm</span></li>
+                                            <li className="flex items-center justify-between"><span className="flex items-center text-gray-600"><Ruler className="w-4 h-4 mr-2 text-gray-400" />Tinggi Badan</span><span className="font-semibold text-gray-800">{item.tinggiBadan} cm</span></li>
+                                            <li className="flex items-center justify-between"><span className="flex items-center text-gray-600"><Scaling className="w-4 h-4 mr-2 text-gray-400" />Berat Badan</span><span className="font-semibold text-gray-800">{item.beratBadan} kg</span></li>
+                                        </ul>
+                                        <div className="absolute top-3 right-3 flex items-center gap-1">
+                                            <button
+                                                onClick={() => handleOpenEditPertumbuhan(item)}
+                                                className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition"
+                                                title="Edit Data Pertumbuhan"
+                                            >
+                                                <Pencil className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeletePertumbuhan(item.id)}
+                                                className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
+                                                title="Hapus Data Pertumbuhan"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )
+                        )}
+                    </div>
+                </div>
+
+                {/* Modal Catatan */}
+                {isCatatanModalOpen && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+                            <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
+                                <h3 className="font-bold text-gray-800">{editingCatatan ? "Edit Catatan" : "Tambah Catatan"}</h3>
+                                <button
+                                    onClick={() => {
+                                        setIsCatatanModalOpen(false);
+                                        setEditingCatatan(null);
+                                    }}
+                                    className="text-gray-400 hover:text-gray-600"
                                 >
-                                    <Trash2 className="w-4 h-4" />
+                                    <X className="w-5 h-5" />
                                 </button>
                             </div>
-                        ))
-                    )
+                            <form onSubmit={handleSaveCatatan} className="p-4 space-y-4">
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Pilih Siswa</label>
+                                    <select
+                                        required
+                                        className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[#581c87] outline-none bg-white"
+                                        value={formData.siswaId}
+                                        onChange={(e) => setFormData({ ...formData, siswaId: e.target.value })}
+                                    >
+                                        <option value="">-- Pilih Siswa --</option>
+                                        {siswaList.map(s => (
+                                            <option key={s.id} value={s.id}>{s.nama}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Isi Catatan</label>
+                                    <textarea
+                                        required
+                                        rows={5}
+                                        className="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-[#581c87] outline-none resize-none"
+                                        placeholder="Tulis catatan perkembangan atau kejadian penting..."
+                                        value={formData.catatan}
+                                        onChange={(e) => setFormData({ ...formData, catatan: e.target.value })}
+                                    />
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={submitting}
+                                    className="w-full bg-[#581c87] text-white py-2.5 rounded-lg hover:bg-[#45156b] transition font-medium flex items-center justify-center gap-2 disabled:opacity-70"
+                                >
+                                    {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                    {editingCatatan ? "Perbarui Catatan" : "Simpan Catatan"}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
                 )}
 
-                {activeTab === 'pertumbuhan' && (
-                    growthList.length === 0 ? (
-                        <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                            <BarChart className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                            <h3 className="font-semibold text-gray-700">Belum Ada Data Pertumbuhan</h3>
-                            <p className="text-gray-500 text-sm mt-1">Tekan tombol + untuk menambah data baru.</p>
-                        </div>
-                    ) : (
-                        growthList.map(item => (
-                            <div key={item.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow-md transition relative group">
-                                <div className="flex justify-between items-start mb-3">
-                                    <div className="flex items-center gap-2">
-                                        <div className="bg-purple-100 p-1.5 rounded-full text-purple-600"><User className="w-3 h-3" /></div>
-                                        <span className="font-bold text-gray-800 text-sm">{item.siswaNama}</span>
-                                    </div>
-                                    <span className="text-[10px] text-gray-400">{format(item.tanggal.toDate(), 'dd MMM yyyy')}</span>
-                                </div>
-                                <ul className="space-y-2 text-sm">
-                                    <li className="flex items-center justify-between"><span className="flex items-center text-gray-600"><Baby className="w-4 h-4 mr-2 text-gray-400"/>Lingkar Kepala</span><span className="font-semibold text-gray-800">{item.lingkarKepala} cm</span></li>
-                                    <li className="flex items-center justify-between"><span className="flex items-center text-gray-600"><Ruler className="w-4 h-4 mr-2 text-gray-400"/>Tinggi Badan</span><span className="font-semibold text-gray-800">{item.tinggiBadan} cm</span></li>
-                                    <li className="flex items-center justify-between"><span className="flex items-center text-gray-600"><Scaling className="w-4 h-4 mr-2 text-gray-400"/>Berat Badan</span><span className="font-semibold text-gray-800">{item.beratBadan} kg</span></li>
-                                </ul>
-                                <button 
-                                    onClick={() => handleDeletePertumbuhan(item.id)}
-                                    className="absolute top-3 right-3 p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
-                            </div>
-                        ))
-                    )
+                {isPertumbuhanModalOpen && (
+                    <PertumbuhanModal
+                        siswaList={siswaList}
+                        editingData={editingGrowth}
+                        onClose={() => {
+                            setIsPertumbuhanModalOpen(false);
+                            setEditingGrowth(null);
+                        }}
+                        onSave={handleSavePertumbuhan}
+                        submitting={submitting}
+                    />
                 )}
             </div>
         </div>
-
-        {/* Modal Tambah Catatan */}
-        {isCatatanModalOpen && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
-                    <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
-                        <h3 className="font-bold text-gray-800">Tambah Catatan</h3>
-                        <button onClick={() => setIsCatatanModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                            <X className="w-5 h-5" />
-                        </button>
-                    </div>
-                    <form onSubmit={handleSaveCatatan} className="p-4 space-y-4">
-                        <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Pilih Siswa</label>
-                            <select 
-                                required
-                                className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[#581c87] outline-none bg-white"
-                                value={formData.siswaId}
-                                onChange={(e) => setFormData({...formData, siswaId: e.target.value})}
-                            >
-                                <option value="">-- Pilih Siswa --</option>
-                                {siswaList.map(s => (
-                                    <option key={s.id} value={s.id}>{s.nama}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">Isi Catatan</label>
-                            <textarea 
-                                required
-                                rows={5}
-                                className="w-full border rounded-lg p-3 text-sm focus:ring-2 focus:ring-[#581c87] outline-none resize-none"
-                                placeholder="Tulis catatan perkembangan atau kejadian penting..."
-                                value={formData.catatan}
-                                onChange={(e) => setFormData({...formData, catatan: e.target.value})}
-                            />
-                        </div>
-                        <button 
-                            type="submit" 
-                            disabled={submitting}
-                            className="w-full bg-[#581c87] text-white py-2.5 rounded-lg hover:bg-[#45156b] transition font-medium flex items-center justify-center gap-2 disabled:opacity-70"
-                        >
-                            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                            Simpan Catatan
-                        </button>
-                    </form>
-                </div>
-            </div>
-        )}
-
-        {isPertumbuhanModalOpen && (
-            <PertumbuhanModal siswaList={siswaList} onClose={() => setIsPertumbuhanModalOpen(false)} onSave={handleSavePertumbuhan} submitting={submitting} />
-        )}
-      </div>
-    </div>
-  );
+    );
 }
 
-function PertumbuhanModal({ siswaList, onClose, onSave, submitting }: { siswaList: any[], onClose: () => void, onSave: (e: React.FormEvent, data: any) => void, submitting: boolean }) {
+function PertumbuhanModal({
+    siswaList,
+    editingData,
+    onClose,
+    onSave,
+    submitting
+}: {
+    siswaList: SiswaData[],
+    editingData: GrowthData | null,
+    onClose: () => void,
+    onSave: (e: React.FormEvent, data: any) => void,
+    submitting: boolean
+}) {
     const [growthFormData, setGrowthFormData] = useState({
         siswaId: "",
         tanggal: new Date().toISOString().split('T')[0],
@@ -397,11 +555,48 @@ function PertumbuhanModal({ siswaList, onClose, onSave, submitting }: { siswaLis
         beratBadan: '',
     });
 
+    useEffect(() => {
+        if (editingData) {
+            let formattedDate = new Date().toISOString().split('T')[0];
+            if (editingData.tanggal) {
+                if (typeof editingData.tanggal.toDate === "function") {
+                    formattedDate = format(editingData.tanggal.toDate(), "yyyy-MM-dd");
+                } else if (editingData.tanggal instanceof Date) {
+                    formattedDate = format(editingData.tanggal, "yyyy-MM-dd");
+                } else if (editingData.tanggal.seconds) {
+                    formattedDate = format(new Date(editingData.tanggal.seconds * 1000), "yyyy-MM-dd");
+                } else {
+                    try {
+                        formattedDate = format(new Date(editingData.tanggal), "yyyy-MM-dd");
+                    } catch {
+                        formattedDate = new Date().toISOString().split('T')[0];
+                    }
+                }
+            }
+
+            setGrowthFormData({
+                siswaId: editingData.siswaId || "",
+                tanggal: formattedDate,
+                lingkarKepala: editingData.lingkarKepala !== undefined && editingData.lingkarKepala !== null ? editingData.lingkarKepala.toString() : "",
+                tinggiBadan: editingData.tinggiBadan !== undefined && editingData.tinggiBadan !== null ? editingData.tinggiBadan.toString() : "",
+                beratBadan: editingData.beratBadan !== undefined && editingData.beratBadan !== null ? editingData.beratBadan.toString() : "",
+            });
+        } else {
+            setGrowthFormData({
+                siswaId: "",
+                tanggal: new Date().toISOString().split('T')[0],
+                lingkarKepala: '',
+                tinggiBadan: '',
+                beratBadan: '',
+            });
+        }
+    }, [editingData]);
+
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
                 <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-xl">
-                    <h3 className="font-bold text-gray-800">Tambah Data Pertumbuhan</h3>
+                    <h3 className="font-bold text-gray-800">{editingData ? "Edit Data Pertumbuhan" : "Tambah Data Pertumbuhan"}</h3>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
                         <X className="w-5 h-5" />
                     </button>
@@ -409,30 +604,30 @@ function PertumbuhanModal({ siswaList, onClose, onSave, submitting }: { siswaLis
                 <form onSubmit={(e) => onSave(e, growthFormData)} className="p-4 space-y-4">
                     <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Pilih Siswa</label>
-                        <select required className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[#581c87] outline-none bg-white" value={growthFormData.siswaId} onChange={(e) => setGrowthFormData({...growthFormData, siswaId: e.target.value})}>
+                        <select required className="w-full border rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-[#581c87] outline-none bg-white" value={growthFormData.siswaId} onChange={(e) => setGrowthFormData({ ...growthFormData, siswaId: e.target.value })}>
                             <option value="">-- Pilih Siswa --</option>
                             {siswaList.map(s => (<option key={s.id} value={s.id}>{s.nama}</option>))}
                         </select>
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Tanggal</label>
-                        <input required type="date" value={growthFormData.tanggal} onChange={(e) => setGrowthFormData({...growthFormData, tanggal: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none" />
+                        <input required type="date" value={growthFormData.tanggal} onChange={(e) => setGrowthFormData({ ...growthFormData, tanggal: e.target.value })} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none" />
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Lingkar Kepala (cm)</label>
-                        <input type="number" step="0.1" value={growthFormData.lingkarKepala} onChange={(e) => setGrowthFormData({...growthFormData, lingkarKepala: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none" placeholder="Contoh: 45.5" />
+                        <input type="number" step="0.1" value={growthFormData.lingkarKepala} onChange={(e) => setGrowthFormData({ ...growthFormData, lingkarKepala: e.target.value })} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none" placeholder="Contoh: 45.5" />
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Tinggi Badan (cm)</label>
-                        <input type="number" step="0.1" value={growthFormData.tinggiBadan} onChange={(e) => setGrowthFormData({...growthFormData, tinggiBadan: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none" placeholder="Contoh: 90.2" />
+                        <input type="number" step="0.1" value={growthFormData.tinggiBadan} onChange={(e) => setGrowthFormData({ ...growthFormData, tinggiBadan: e.target.value })} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none" placeholder="Contoh: 90.2" />
                     </div>
                     <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Berat Badan (kg)</label>
-                        <input type="number" step="0.1" value={growthFormData.beratBadan} onChange={(e) => setGrowthFormData({...growthFormData, beratBadan: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none" placeholder="Contoh: 12.3" />
+                        <input type="number" step="0.1" value={growthFormData.beratBadan} onChange={(e) => setGrowthFormData({ ...growthFormData, beratBadan: e.target.value })} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none" placeholder="Contoh: 12.3" />
                     </div>
                     <button type="submit" disabled={submitting} className="w-full bg-[#581c87] text-white py-2.5 rounded-lg hover:bg-[#45156b] transition font-medium flex items-center justify-center gap-2 disabled:opacity-70">
                         {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                        Simpan Data
+                        {editingData ? "Perbarui Data" : "Simpan Data"}
                     </button>
                 </form>
             </div>

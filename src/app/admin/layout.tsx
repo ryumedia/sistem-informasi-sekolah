@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
@@ -17,7 +17,7 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [userData, setUserData] = useState<any>(null);
+  const [userData, setUserData] = useState<Record<string, unknown> | null>(null);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [pengajuanCount, setPengajuanCount] = useState(0);
@@ -25,57 +25,66 @@ export default function AdminLayout({
   const [realisasiCount, setRealisasiCount] = useState(0);
 
   useEffect(() => {
-    // Ambil data user dari cache lokal segera
+    // 1. Ambil data user dari cache lokal (localStorage) segera untuk instant loading
     const cachedUser = localStorage.getItem('user_data');
     if (cachedUser) {
-      setUserData(JSON.parse(cachedUser));
+      try {
+        const parsed = JSON.parse(cachedUser);
+        setUserData(parsed);
+        setIsAuthDataLoaded(true); // Langsung tandai auth data siap jika cache ada!
+      } catch (e) {
+        console.error("Error parsing cached user_data:", e);
+      }
     }
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        // Set data minimal dari Auth object secara INSTAN
-        setUserData({ 
-          nama: currentUser.displayName || currentUser.email?.split('@')[0] || "User", 
-          email: currentUser.email,
-          role: "" // Role akan diupdate kemudian setelah query DB selesai
+        // Set data minimal dari Auth object secara INSTAN jika belum ada userData
+        setUserData((prev: Record<string, unknown> | null) => {
+          if (prev) return prev;
+          return {
+            nama: currentUser.displayName || currentUser.email?.split('@')[0] || "User",
+            email: currentUser.email,
+            role: ""
+          };
         });
+        setIsAuthDataLoaded(true); // Buka layar langsung tanpa menunggu query Firestore
 
-        // Ambil data detail user dari Firestore
+        // Ambil data detail user dari Firestore di background
         try {
           const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
           const querySnapshot = await getDocs(q);
-          
+
           if (!querySnapshot.empty) {
             const data = querySnapshot.docs[0].data();
             setUserData(data);
             localStorage.setItem('user_data', JSON.stringify(data));
-          } else {
-            // User exists in Auth but not in 'guru' collection (e.g., new user, or different collection)
-            // Handle as needed, for now, just mark as loaded.
           }
         } catch (error) {
-          console.error("Error fetching user data:", error);
+          console.error("Error fetching user data from Firestore:", error);
+        } finally {
+          setIsAuthDataLoaded(true);
         }
       } else {
         setUserData(null);
         localStorage.removeItem('user_data');
+        setIsAuthDataLoaded(true);
       }
-      setIsAuthDataLoaded(true); // Mark as loaded after auth state and user data (if any) are processed
     });
     return () => unsubscribe();
   }, []);
 
-  // Redirect dari /admin ke /admin/performance untuk role yang tidak berhak,
-  // atau untuk semua role saat pertama kali masuk (jika userData belum siap).
+  // Redirect dari /admin ke /admin/performance untuk role yang tidak berhak
   useEffect(() => {
-    const dashboardRoles = ["Admin", "Direktur", "Yayasan"];
-    // Jika pengguna berada di halaman dashboard (`/admin`):
-    // 1. Jika data pengguna sudah ada, periksa perannya. Jika perannya TIDAK diizinkan, alihkan.
-    // 2. Jika data pengguna belum ada (misalnya saat awal login), alihkan semua ke performance sebagai halaman default.
-    if (pathname === '/admin' && (!userData || (userData.role && !dashboardRoles.includes(userData.role)) || (userData.role && ["Kepala Sekolah", "Guru", "Caregiver"].includes(userData.role)))) {
-      router.replace('/admin/performance');
+    if (!isAuthDataLoaded) return;
+
+    const dashboardRoles = ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"];
+    if (pathname === '/admin') {
+      if (userData && userData.role && !dashboardRoles.includes(userData.role)) {
+        router.replace('/admin/performance');
+      }
     }
-  }, [pathname, router, userData]);
+  }, [pathname, router, userData, isAuthDataLoaded]);
 
   // Realtime Listener untuk Badge Notifikasi
   useEffect(() => {
@@ -91,7 +100,7 @@ export default function AdminLayout({
       // Filter hanya yang belum memiliki data realisasi (field realisasi kosong/0)
         const belumRealisasi = snap.docs.filter(doc => {
           const data = doc.data();
-          return !data.realisasi; 
+          return !data.realisasi;
         }).length;
         setRealisasiCount(belumRealisasi);
     });
@@ -111,9 +120,9 @@ export default function AdminLayout({
     { name: "Data Siswa", href: "/admin/siswa", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"] },
     { name: "Data Guru", href: "/admin/guru", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
     { name: "Performance", href: "/admin/performance", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"] },
-    { 
-      name: "Akademik", 
-      href: "#", 
+    {
+      name: "Akademik",
+      href: "#",
       roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"],
       submenu: [
         { name: "Tahap Perkembangan", href: "/admin/Akademik/perkembangan", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
@@ -123,9 +132,9 @@ export default function AdminLayout({
         { name: "RPPH", href: "/admin/Akademik/rpph", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
       ]
     },
-    { 
-      name: "Penilaian", 
-      href: "#", 
+    {
+      name: "Penilaian",
+      href: "#",
       roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"],
       submenu: [
         { name: "Kategori Penilaian", href: "/admin/penilaian/kategori-penilaian", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
@@ -137,9 +146,9 @@ export default function AdminLayout({
         { name: "Rapor", href: "/admin/penilaian/rapor", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan"] },
       ]
     },
-    { 
-      name: "Daycare", 
-      href: "#", 
+    {
+      name: "Daycare",
+      href: "#",
       roles: ["Admin", "Kepala Sekolah", "Caregiver", "Direktur", "Yayasan"],
       submenu: [
         { name: "Data Aktivitas", href: "/admin/daycare/data-aktivitas", roles: ["Admin", "Kepala Sekolah", "Caregiver", "Direktur", "Yayasan"] },
@@ -147,9 +156,9 @@ export default function AdminLayout({
         { name: "Pertumbuhan Anak", href: "/admin/daycare/pertumbuhan-anak", roles: ["Admin", "Kepala Sekolah", "Caregiver", "Direktur", "Yayasan"] },
       ]
     },
-    {   
-      name: "Informasi", 
-      href: "#", 
+    {
+      name: "Informasi",
+      href: "#",
       roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan", "Caregiver"],
       submenu: [
         { name: "Jadwal", href: "/admin/informasi/jadwal", roles: ["Admin", "Kepala Sekolah", "Guru", "Direktur", "Yayasan", "Caregiver"] },
@@ -159,16 +168,16 @@ export default function AdminLayout({
         { name: "Dokumen", href: "/admin/informasi/dokumen", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
       ]
     },
-    { 
-      name: "Laporan", 
+    {
+      name: "Laporan",
       href: "#",
       roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"],
       submenu: [
         { name: "Laporan Bulanan", href: "/admin/laporan/bulanan", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
       ]
     },
-    { 
-      name: "Keuangan", 
+    {
+      name: "Keuangan",
       href: "#",
       roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"],
       submenu: [
@@ -178,8 +187,8 @@ export default function AdminLayout({
         { name: "Arus Kas", href: "/admin/keuangan/aruskas", roles: ["Admin", "Direktur"] },
       ]
     },
-    { 
-      name: "Biaya Sekolah", 
+    {
+      name: "Biaya Sekolah",
       href: "#",
       roles: ["Admin", "Direktur", "Yayasan"], // Sesuaikan dengan role yang berhak mengakses
       submenu: [
@@ -188,8 +197,8 @@ export default function AdminLayout({
         { name: "Penerimaan", href: "/admin/biaya/penerimaan", roles: ["Admin", "Direktur", "Yayasan"] },
       ]
     },
-    { 
-      name: "Pengaturan", 
+    {
+      name: "Pengaturan",
       href: "#",
       roles: ["Admin", "Yayasan"],
       submenu: [
@@ -204,8 +213,8 @@ export default function AdminLayout({
         { name: "Penghasilan", href: "/admin/pengaturan/penghasilan", roles: ["Admin", "Yayasan"] }
       ]
     },
-    { 
-      name: "Rekrutmen", 
+    {
+      name: "Rekrutmen",
       href: "#",
       roles: ["Admin", "Direktur", "Yayasan", "Kepala Sekolah"],
       submenu: [
@@ -213,8 +222,8 @@ export default function AdminLayout({
         { name: "Pelamar", href: "/admin/rekrutmen/pelamar", roles: ["Admin", "Direktur", "Yayasan", "Kepala Sekolah"] },
       ]
     },
-    { 
-      name: "Pendaftaran", 
+    {
+      name: "Pendaftaran",
       href: "#",
       roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"],
       submenu: [
@@ -242,7 +251,7 @@ export default function AdminLayout({
     <div className="flex h-screen bg-gray-100 font-sans">
       {/* Mobile Overlay (Background Gelap saat menu terbuka) */}
       {isMobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
@@ -266,14 +275,14 @@ export default function AdminLayout({
           <h2 className="text-xl font-bold tracking-tight">{userData?.role || "SIS Admin"}</h2>
           <p className="text-xs text-purple-200 mt-1">{userData?.cabang || "Sistem Informasi Sekolah"}</p>
         </div>
-        
+
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {menuItems.map((item) => {
             // Logika untuk Menu dengan Submenu
             if (item.submenu) {
               const isExpanded = expandedMenu === item.name;
               const isActiveParent = item.submenu.some(sub => pathname === sub.href);
-              
+
               // Hitung Badge Parent (Khusus Keuangan)
               let parentBadge = 0;
               if (item.name === "Keuangan") {
@@ -298,12 +307,12 @@ export default function AdminLayout({
                       {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </div>
                   </button>
-                  
+
                   {isExpanded && (
                     <div className="ml-4 mt-1 space-y-1 border-l border-[#45156b] pl-2">
                       {item.submenu.map((subItem) => {
                         const isSubActive = pathname === subItem.href;
-                        
+
                         // Logic Badge
                         let badge = 0;
                         if (subItem.name === "Pengajuan") badge = pengajuanCount;
@@ -334,18 +343,18 @@ export default function AdminLayout({
             }
 
             // Logika untuk Menu Biasa
-            const isActive = item.href === "/admin" 
-              ? pathname === "/admin" 
+            const isActive = item.href === "/admin"
+              ? pathname === "/admin"
               : item.href !== "#" && pathname.startsWith(item.href);
 
             return (
-              <Link 
+              <Link
                 key={item.name}
-                href={item.href} 
+                href={item.href}
                 onClick={() => setIsMobileMenuOpen(false)} // Tutup menu saat link diklik
                 className={`block px-4 py-3 rounded-lg text-sm font-medium transition ${
-                  isActive 
-                    ? "bg-[#ff984e] text-white shadow-sm" 
+                  isActive
+                    ? "bg-[#ff984e] text-white shadow-sm"
                     : "hover:bg-[#45156b] text-purple-100"
                 }`}
               >
@@ -363,7 +372,7 @@ export default function AdminLayout({
         <header className="h-16 bg-white shadow-sm flex items-center justify-between px-4 md:px-8">
           <div className="flex items-center gap-3">
             {/* Tombol Hamburger (Hanya muncul di Mobile) */}
-            <button 
+            <button
               onClick={() => setIsMobileMenuOpen(true)}
               className="md:hidden p-1 text-gray-600 hover:bg-gray-100 rounded-lg"
             >

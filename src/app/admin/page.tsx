@@ -2,35 +2,48 @@
 
 import { useState, useEffect } from 'react';
 import { useUser } from '@/contexts/UserContext'; // Import the hook
-import { db, auth } from '@/lib/firebase';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  orderBy, 
-  collectionGroup, 
+import { db } from '@/lib/firebase';
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  orderBy,
+  collectionGroup,
   getCountFromServer,
   getAggregateFromServer,
   sum,
-  average 
+  average
 } from 'firebase/firestore';
 import { Building, Users, UserSquare, Star, ArrowDown, ArrowUp, Scale, Loader2, PieChart, BarChart3, Wallet } from 'lucide-react';
 
 type TabName = 'umum' | 'keuangan' | 'kelas';
+
+interface CabangItem {
+  id: string;
+  nama: string;
+  [key: string]: unknown;
+}
+
+interface KelasStatItem {
+  id: string;
+  namaKelas: string;
+  cabang: string;
+  laki: number;
+  perempuan: number;
+  jumlah: number;
+}
+
 export default function AdminDashboard() {
   const { userData, isAuthDataLoaded } = useUser();
   const { role: userRole, cabang: userCabang } = userData || {};
   console.log("[AdminDashboard] Rendered with context:", { userRole, userCabang, isAuthDataLoaded });
-  const [cabangList, setCabangList] = useState<any[]>([]);
+  const [cabangList, setCabangList] = useState<CabangItem[]>([]);
   const [selectedCabang, setSelectedCabang] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-  const [loadingTable, setLoadingTable] = useState(false);
-  const [kelasStatsList, setKelasStatsList] = useState<any[]>([]);
+  const [kelasStatsList, setKelasStatsList] = useState<KelasStatItem[]>([]);
 
   const [activeTab, setActiveTab] = useState<TabName>('umum');
   const [loadingTab, setLoadingTab] = useState(false);
-  const [fetchedTabs, setFetchedTabs] = useState<Partial<Record<TabName, boolean>>>({});
 
   const [stats, setStats] = useState({
     kelas: 0,
@@ -63,81 +76,112 @@ export default function AdminDashboard() {
   // Fetch data when activeTab or selectedCabang changes
   useEffect(() => {
     if (!isAuthDataLoaded || (userRole && ["Guru", "Caregiver"].includes(userRole))) {
-      console.log(`[Dashboard useEffect] Returning early. isAuthDataLoaded: ${isAuthDataLoaded}, userRole: ${userRole}`);
       return;
     }
 
-    console.log(`[Dashboard] Fetching data for tab: ${activeTab}, cabang: '${selectedCabang}'`);
     const getBaseQuery = (col: string) => selectedCabang ? query(collection(db, col), where("cabang", "==", selectedCabang)) : collection(db, col);
 
     const fetchGeneralStats = async () => {
-      const pQuery = selectedCabang
-        ? query(collectionGroup(db, 'kpi_guru'), where('cabang', '==', selectedCabang))
-        : collectionGroup(db, 'kpi_guru');
+      try {
+        const kelasPromise = getCountFromServer(getBaseQuery("kelas")).catch(e => { console.error(e); return { data: () => ({ count: 0 }) }; });
+        const siswaPromise = getCountFromServer(query(getBaseQuery("siswa"), where("status", "==", "Aktif"))).catch(e => { console.error(e); return { data: () => ({ count: 0 }) }; });
+        const guruPromise = getCountFromServer(getBaseQuery("guru")).catch(e => { console.error(e); return { data: () => ({ count: 0 }) }; });
 
-      const [kelasCountSnap, siswaAktifCountSnap, guruCountSnap, perfAgg] = await Promise.all([
-        getCountFromServer(getBaseQuery("kelas")),
-        getCountFromServer(query(getBaseQuery("siswa"), where("status", "==", "Aktif"))),
-        getCountFromServer(getBaseQuery("guru")),
-        getAggregateFromServer(pQuery, { avg: average('persentase') })
-      ]);
+        const pQuery = selectedCabang
+          ? query(collectionGroup(db, 'kpi_guru'), where('cabang', '==', selectedCabang))
+          : collectionGroup(db, 'kpi_guru');
 
-        console.log("[Dashboard] General Stats Raw:", { kelasCount: kelasCountSnap.data().count, siswaCount: siswaAktifCountSnap.data().count, guruCount: guruCountSnap.data().count, perfAvg: perfAgg.data().avg });
-      const avgPerformance = perfAgg.data().avg || 0;
-      setStats({
-        kelas: kelasCountSnap.data().count,
-        siswa: siswaAktifCountSnap.data().count,
-        guru: guruCountSnap.data().count,
-        performance: parseFloat(avgPerformance.toFixed(2)),
-      });
+        const perfPromise = getAggregateFromServer(pQuery, { avg: average('persentase') }).catch(e => {
+          console.warn("KPI aggregation skipped or failed:", e);
+          return { data: () => ({ avg: 0 }) };
+        });
+
+        const [kelasCountSnap, siswaAktifCountSnap, guruCountSnap, perfAgg] = await Promise.all([
+          kelasPromise,
+          siswaPromise,
+          guruPromise,
+          perfPromise
+        ]);
+
+        const avgPerformance = perfAgg.data().avg || 0;
+        setStats({
+          kelas: kelasCountSnap.data().count,
+          siswa: siswaAktifCountSnap.data().count,
+          guru: guruCountSnap.data().count,
+          performance: parseFloat(avgPerformance.toFixed(2)),
+        });
+      } catch (err) {
+        console.error("Error fetching general stats:", err);
+      }
     };
 
     const fetchKeuanganStats = async () => {
-      const qPemasukan = query(collection(db, "arus_kas"), ...(selectedCabang ? [where("cabang", "==", selectedCabang)] : []), where("jenis", "==", "Masuk"));
-      const qPengeluaran = query(collection(db, "arus_kas"), ...(selectedCabang ? [where("cabang", "==", selectedCabang)] : []), where("jenis", "==", "Keluar"));
+      try {
+        const qPemasukan = query(collection(db, "arus_kas"), ...(selectedCabang ? [where("cabang", "==", selectedCabang)] : []), where("jenis", "==", "Masuk"));
+        const qPengeluaran = query(collection(db, "arus_kas"), ...(selectedCabang ? [where("cabang", "==", selectedCabang)] : []), where("jenis", "==", "Keluar"));
 
-      const [pemasukanAgg, pengeluaranAgg] = await Promise.all([
-        getAggregateFromServer(qPemasukan, { total: sum("nominal") }),
-        getAggregateFromServer(qPengeluaran, { total: sum("nominal") }),
-      ]);
+        const [pemasukanAgg, pengeluaranAgg] = await Promise.all([
+          getAggregateFromServer(qPemasukan, { total: sum("nominal") }).catch(() => ({ data: () => ({ total: 0 }) })),
+          getAggregateFromServer(qPengeluaran, { total: sum("nominal") }).catch(() => ({ data: () => ({ total: 0 }) })),
+        ]);
 
-      console.log("[Dashboard] Keuangan Stats Raw:", { pemasukanTotal: pemasukanAgg.data().total, pengeluaranTotal: pengeluaranAgg.data().total });
-      const pemasukan = pemasukanAgg.data().total || 0;
-      const pengeluaran = pengeluaranAgg.data().total || 0;
-      setKeuangan({ pemasukan, pengeluaran, saldo: pemasukan - pengeluaran });
+        const pemasukan = pemasukanAgg.data().total || 0;
+        const pengeluaran = pengeluaranAgg.data().total || 0;
+        setKeuangan({ pemasukan, pengeluaran, saldo: pemasukan - pengeluaran });
+      } catch (err) {
+        console.error("Error fetching keuangan stats:", err);
+      }
     };
 
     const fetchKelasStats = async () => {
-      const kelasSnap = await getDocs(getBaseQuery("kelas"));
-      const classes = kelasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      try {
+        // 1. Fetch kumpul kelas (1 query)
+        const kelasSnap = await getDocs(getBaseQuery("kelas"));
+        const classes = kelasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as { id: string; namaKelas?: string; cabang?: string }));
 
-      const kelasStatPromises = classes.map(async (cls) => {
-        const baseSiswaQuery = query(
-          collection(db, "siswa"),
-          where("cabang", "==", cls.cabang),
-          where("kelas", "==", cls.namaKelas),
-          where("status", "==", "Aktif")
-        );
-        const lakiQuery = query(baseSiswaQuery, where("jenisKelamin", "==", "Laki-laki"));
-        const perempuanQuery = query(baseSiswaQuery, where("jenisKelamin", "==", "Perempuan"));
+        // 2. Fetch seluruh siswa aktif dalam 1 QUERY tunggal (bukan N*2 query!)
+        const siswaQuery = query(getBaseQuery("siswa"), where("status", "==", "Aktif"));
+        const siswaSnap = await getDocs(siswaQuery);
 
-        const [lakiSnap, perempuanSnap] = await Promise.all([
-          getCountFromServer(lakiQuery),
-          getCountFromServer(perempuanQuery)
-        ]);
+        // 3. Kelompokkan jumlah siswa per kelas & jenis kelamin di memori (Sangat Cepat!)
+        const genderCounts: Record<string, { laki: number; perempuan: number }> = {};
 
-          console.log(`[Dashboard] Kelas ${cls.namaKelas} (${cls.cabang}) - Laki: ${lakiSnap.data().count}, Perempuan: ${perempuanSnap.data().count}`);
-        const laki = lakiSnap.data().count;
-        const perempuan = perempuanSnap.data().count;
-        return { id: cls.id, namaKelas: cls.namaKelas, cabang: cls.cabang, laki, perempuan, jumlah: laki + perempuan };
-      });
+        siswaSnap.docs.forEach(doc => {
+          const data = doc.data() as { cabang?: string; kelas?: string; jenisKelamin?: string };
+          const key = `${data.cabang || ''}_${data.kelas || ''}`;
+          if (!genderCounts[key]) {
+            genderCounts[key] = { laki: 0, perempuan: 0 };
+          }
+          if (data.jenisKelamin === 'Laki-laki') {
+            genderCounts[key].laki += 1;
+          } else if (data.jenisKelamin === 'Perempuan') {
+            genderCounts[key].perempuan += 1;
+          }
+        });
 
-      let processedKelasStats = await Promise.all(kelasStatPromises);
-      processedKelasStats.sort((a: any, b: any) => {
-        if (a.cabang !== b.cabang) return a.cabang.localeCompare(b.cabang);
-        return a.namaKelas.localeCompare(b.namaKelas);
-      });
-      setKelasStatsList(processedKelasStats);
+        // 4. Susun hasil
+        const processedKelasStats: KelasStatItem[] = classes.map(cls => {
+          const key = `${cls.cabang || ''}_${cls.namaKelas || ''}`;
+          const counts = genderCounts[key] || { laki: 0, perempuan: 0 };
+          return {
+            id: cls.id,
+            namaKelas: cls.namaKelas || '',
+            cabang: cls.cabang || '',
+            laki: counts.laki,
+            perempuan: counts.perempuan,
+            jumlah: counts.laki + counts.perempuan
+          };
+        });
+
+        processedKelasStats.sort((a, b) => {
+          if (a.cabang !== b.cabang) return a.cabang.localeCompare(b.cabang);
+          return a.namaKelas.localeCompare(b.namaKelas);
+        });
+
+        setKelasStatsList(processedKelasStats);
+      } catch (err) {
+        console.error("Error fetching kelas stats:", err);
+      }
     };
 
     const loadTabData = async () => {
@@ -146,23 +190,15 @@ export default function AdminDashboard() {
         if (activeTab === 'umum') await fetchGeneralStats();
         if (activeTab === 'keuangan') await fetchKeuanganStats();
         if (activeTab === 'kelas') await fetchKelasStats();
-        console.log(`[Dashboard] Finished fetching for tab: ${activeTab}`);
-        setFetchedTabs(prev => ({ ...prev, [activeTab]: true }));
       } catch (error) {
         console.error(`Error fetching data for tab ${activeTab}:`, error);
       } finally {
         setLoadingTab(false);
-        setLoading(false); // Matikan loading utama setelah tab pertama selesai
       }
     };
 
     loadTabData();
   }, [activeTab, selectedCabang, isAuthDataLoaded, userRole]);
-
-  // Reset fetched status when cabang changes
-  useEffect(() => {
-    setFetchedTabs({});
-  }, [selectedCabang]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
@@ -174,7 +210,7 @@ export default function AdminDashboard() {
         <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
         <div>
           <label className="text-xs font-medium text-gray-500 mr-2">Filter Cabang:</label>
-          <select 
+          <select
             value={selectedCabang}
             onChange={(e) => setSelectedCabang(e.target.value)}
             disabled={userRole === "Kepala Sekolah"}
@@ -264,7 +300,7 @@ export default function AdminDashboard() {
 }
 
 const StatCard = ({ icon, title, value, color, suffix }: { icon: React.ReactNode, title: string, value: number, color: string, suffix?: string }) => {
-  const colors: { [key: string]: string } = {
+  const colors: Record<string, string> = {
     blue: 'bg-blue-100 text-blue-600',
     green: 'bg-green-100 text-green-600',
     orange: 'bg-orange-100 text-orange-600',
@@ -272,7 +308,7 @@ const StatCard = ({ icon, title, value, color, suffix }: { icon: React.ReactNode
   };
   return (
     <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-5">
-      <div className={`p-3 rounded-full ${colors[color]}`}>
+      <div className={`p-3 rounded-full ${colors[color] || 'bg-gray-100 text-gray-600'}`}>
         {icon}
       </div>
       <div>
