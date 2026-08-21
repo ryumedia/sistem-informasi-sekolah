@@ -238,6 +238,7 @@ export default function AdminLayout({
       submenu: [
         { name: "Trial Class", href: "/admin/pendaftaran/trial-class", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
         { name: "Siswa Baru", href: "/admin/pendaftaran/siswa-baru", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
+        { name: "Kelas Tematik", href: "/admin/pendaftaran/tematik", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
         { name: "Lokasi Program", href: "/admin/pendaftaran/lokasi-program", roles: ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"] },
       ]
     },

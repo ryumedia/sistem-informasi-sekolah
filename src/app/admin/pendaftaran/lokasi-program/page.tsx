@@ -2,8 +2,8 @@
 
 import { useState, useEffect, FormEvent } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, query, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
-import { Loader2, PlusCircle, Edit, Trash2, X, MapPin, BookOpen, CalendarClock } from 'lucide-react';
+import { collection, query, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { Loader2, PlusCircle, Edit, Trash2, X, MapPin, BookOpen, CalendarClock, Users } from 'lucide-react';
 
 // --- INTERFACES ---
 interface Lokasi {
@@ -22,6 +22,13 @@ interface JadwalTrial {
   lokasi: string;
   tanggal: string; // YYYY-MM-DD
   waktu: string; // HH:mm
+}
+
+interface KuotaTematik {
+  id: string;
+  lokasi: string;
+  bulan: string;
+  kuota: number;
 }
 
 // --- MAIN COMPONENT ---
@@ -44,13 +51,24 @@ export default function LokasiProgramPage() {
   const [isJadwalModalOpen, setIsJadwalModalOpen] = useState(false);
   const [editingJadwal, setEditingJadwal] = useState<JadwalTrial | null>(null);
 
+  // State for Kuota Tematik
+  const [kuotaTematikList, setKuotaTematikList] = useState<KuotaTematik[]>([]);
+  const [loadingKuotaTematik, setLoadingKuotaTematik] = useState(true);
+  const [isKuotaTematikModalOpen, setIsKuotaTematikModalOpen] = useState(false);
+  const [editingKuotaTematik, setEditingKuotaTematik] = useState<KuotaTematik | null>(null);
+
   // Fetch Data
   useEffect(() => {
-    const fetchData = async (collectionName: string, setter: Function, loaderSetter: Function, orderByField = "nama") => {
+    const fetchData = async <T,>(
+      collectionName: string,
+      setter: (list: T[]) => void,
+      loaderSetter: (loading: boolean) => void,
+      orderByField = "nama"
+    ) => {
       try {
         const q = query(collection(db, collectionName), orderBy(orderByField, "asc"));
         const snapshot = await getDocs(q);
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+        const list = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as T));
         setter(list);
       } catch (error) {
         console.error(`Error fetching ${collectionName}:`, error);
@@ -63,6 +81,7 @@ export default function LokasiProgramPage() {
     fetchData("lokasi_pendaftaran", setLokasiList, setLoadingLokasi);
     fetchData("program_pendaftaran", setProgramList, setLoadingProgram);
     fetchData("jadwal_trial", setJadwalList, setLoadingJadwal, "tanggal");
+    fetchData("kuota_tematik", setKuotaTematikList, setLoadingKuotaTematik, "lokasi");
   }, []);
 
   // --- LOKASI HANDLERS ---
@@ -149,11 +168,61 @@ export default function LokasiProgramPage() {
     }
   };
 
+  // --- KUOTA TEMATIK HANDLERS ---
+  const handleSaveKuotaTematik = async (formData: { lokasi: string; bulan: string; kuota: number }) => {
+    try {
+      if (editingKuotaTematik) {
+        await updateDoc(doc(db, "kuota_tematik", editingKuotaTematik.id), formData);
+      } else {
+        await addDoc(collection(db, "kuota_tematik"), formData);
+      }
+      // Refresh data
+      const snapshot = await getDocs(query(collection(db, "kuota_tematik"), orderBy("lokasi", "asc")));
+      setKuotaTematikList(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as KuotaTematik)));
+    } catch (error) {
+      console.error("Error saving kuota tematik:", error);
+      alert("Gagal menyimpan data kuota tematik.");
+    }
+  };
+
+  const handleDeleteKuotaTematik = async (id: string) => {
+    if (!confirm("Yakin ingin menghapus kuota tematik ini?")) return;
+    try {
+      await deleteDoc(doc(db, "kuota_tematik", id));
+      setKuotaTematikList(prev => prev.filter(item => item.id !== id));
+    } catch (error) {
+      console.error("Error deleting kuota tematik:", error);
+      alert("Gagal menghapus kuota tematik.");
+    }
+  };
+
 
   return (
     <div className="space-y-8">
+      {/* HEADER & QUICK NAV */}
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Pengaturan Lokasi, Program & Kuota</h1>
+          <p className="text-sm text-gray-500">Kelola lokasi pendaftaran, jadwal trial, kuota kelas tematik, dan program pendaftaran.</p>
+        </div>
+        <div className="flex flex-wrap gap-2 pb-2 border-b border-gray-200">
+          <a href="#lokasi" className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition flex items-center gap-1.5">
+            <MapPin className="w-4 h-4" /> Lokasi
+          </a>
+          <a href="#jadwal-trial" className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-100 transition flex items-center gap-1.5">
+            <CalendarClock className="w-4 h-4" /> Jadwal Trial
+          </a>
+          <a href="#kuota-tematik" className="px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-100 transition flex items-center gap-1.5">
+            <Users className="w-4 h-4" /> Kuota Kelas Tematik
+          </a>
+          <a href="#program" className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-sm font-medium hover:bg-green-100 transition flex items-center gap-1.5">
+            <BookOpen className="w-4 h-4" /> Program
+          </a>
+        </div>
+      </div>
+
       {/* SECTION 1: LOKASI */}
-      <section>
+      <section id="lokasi">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><MapPin className="w-5 h-5" /> Kelola Lokasi</h2>
           <button onClick={() => { setEditingLokasi(null); setIsLokasiModalOpen(true); }} className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm">
@@ -196,7 +265,7 @@ export default function LokasiProgramPage() {
       </section>
 
       {/* SECTION 2: JADWAL TRIAL */}
-      <section>
+      <section id="jadwal-trial">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><CalendarClock className="w-5 h-5" /> Kelola Jadwal Trial</h2>
           <button onClick={() => { setEditingJadwal(null); setIsJadwalModalOpen(true); }} className="inline-flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition text-sm">
@@ -240,8 +309,60 @@ export default function LokasiProgramPage() {
         </div>
       </section>
 
-      {/* SECTION 2: PROGRAM */}
-      <section>
+      {/* SECTION 3: KUOTA KELAS TEMATIK */}
+      <section id="kuota-tematik" className="scroll-mt-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Users className="w-5 h-5" /> Kelola Kuota Kelas Tematik</h2>
+          <button onClick={() => { setEditingKuotaTematik(null); setIsKuotaTematikModalOpen(true); }} className="inline-flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition text-sm">
+            <PlusCircle className="w-4 h-4" /> Tambah Kuota
+          </button>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-gray-600">
+              <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
+                <tr>
+                  <th className="p-4 w-12 text-center">No.</th>
+                  <th className="p-4">Lokasi</th>
+                  <th className="p-4">Bulan</th>
+                  <th className="p-4">Kuota</th>
+                  <th className="p-4 w-32 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loadingKuotaTematik ? (
+                  <tr><td colSpan={5} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" /></td></tr>
+                ) : kuotaTematikList.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-gray-500">
+                      <p className="mb-3">Belum ada data kuota kelas tematik.</p>
+                      <button onClick={() => { setEditingKuotaTematik(null); setIsKuotaTematikModalOpen(true); }} className="inline-flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition text-sm font-medium shadow-sm">
+                        <PlusCircle className="w-4 h-4" /> Tambah Kuota Baru
+                      </button>
+                    </td>
+                  </tr>
+                ) : (
+                  kuotaTematikList.map((item, index) => (
+                    <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="p-4 text-center">{index + 1}</td>
+                      <td className="p-4 font-medium text-gray-900">{item.lokasi}</td>
+                      <td className="p-4">{item.bulan}</td>
+                      <td className="p-4 font-semibold text-amber-700">{item.kuota}</td>
+                      <td className="p-4 flex justify-center gap-2">
+                        <button onClick={() => { setEditingKuotaTematik(item); setIsKuotaTematikModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit"><Edit className="w-4 h-4" /></button>
+                        <button onClick={() => handleDeleteKuotaTematik(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus"><Trash2 className="w-4 h-4" /></button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 4: PROGRAM */}
+      <section id="program">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><BookOpen className="w-5 h-5" /> Kelola Program</h2>
           <button onClick={() => { setEditingProgram(null); setIsProgramModalOpen(true); }} className="inline-flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition text-sm">
@@ -285,6 +406,7 @@ export default function LokasiProgramPage() {
       {isLokasiModalOpen && <LokasiModal data={editingLokasi} onClose={() => setIsLokasiModalOpen(false)} onSave={handleSaveLokasi} />}
       {isProgramModalOpen && <ProgramModal data={editingProgram} onClose={() => setIsProgramModalOpen(false)} onSave={handleSaveProgram} />}
       {isJadwalModalOpen && <JadwalModal data={editingJadwal} lokasiOptions={lokasiList} onClose={() => setIsJadwalModalOpen(false)} onSave={handleSaveJadwal} />}
+      {isKuotaTematikModalOpen && <KuotaTematikModal data={editingKuotaTematik} lokasiOptions={lokasiList} onClose={() => setIsKuotaTematikModalOpen(false)} onSave={handleSaveKuotaTematik} />}
     </div>
   );
 }
@@ -411,6 +533,61 @@ function ProgramModal({ data, onClose, onSave }: { data: Program | null, onClose
           <div className="pt-2 flex justify-end gap-3">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-200">Batal</button>
             <button type="submit" disabled={isSubmitting} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 transition disabled:opacity-50">
+              {isSubmitting ? 'Menyimpan...' : 'Simpan'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function KuotaTematikModal({ data, lokasiOptions, onClose, onSave }: { data: KuotaTematik | null, lokasiOptions: Lokasi[], onClose: () => void, onSave: (formData: { lokasi: string; bulan: string; kuota: number }) => void }) {
+  const [formData, setFormData] = useState({
+    lokasi: data?.lokasi || '',
+    bulan: data?.bulan || '',
+    kuota: data?.kuota !== undefined ? data.kuota : 0,
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    await onSave({
+      lokasi: formData.lokasi,
+      bulan: formData.bulan,
+      kuota: Number(formData.kuota)
+    });
+    setIsSubmitting(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="p-4 border-b flex justify-between items-center">
+          <h3 className="font-bold text-gray-800">{data ? 'Edit' : 'Tambah'} Kuota Kelas Tematik</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Lokasi</label>
+            <select required value={formData.lokasi} onChange={e => setFormData({ ...formData, lokasi: e.target.value })} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-amber-500 outline-none bg-white">
+              <option value="" disabled>-- Pilih Lokasi --</option>
+              {lokasiOptions.map(opt => <option key={opt.id} value={opt.nama}>{opt.nama}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Bulan</label>
+            <input required type="text" placeholder="Contoh: Januari 2025" value={formData.bulan} onChange={e => setFormData({ ...formData, bulan: e.target.value })} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-amber-500 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Kuota</label>
+            <input required type="number" min="0" value={formData.kuota} onChange={e => setFormData({ ...formData, kuota: Number(e.target.value) })} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-amber-500 outline-none" />
+          </div>
+          <div className="pt-2 flex justify-end gap-3">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-200">Batal</button>
+            <button type="submit" disabled={isSubmitting} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition disabled:opacity-50">
               {isSubmitting ? 'Menyimpan...' : 'Simpan'}
             </button>
           </div>
