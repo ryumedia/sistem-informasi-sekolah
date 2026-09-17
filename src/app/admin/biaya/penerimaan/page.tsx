@@ -8,6 +8,7 @@ import {
   orderBy,
   addDoc,
   getDocs,
+  onSnapshot,
   doc,
   updateDoc,
   where,
@@ -84,57 +85,77 @@ export default function PenerimaanPage() {
 
   // --- DATA FETCHING ---
   useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        // Fetch all necessary data in parallel for efficiency
-        const [pembayaranSnap, siswaSnap, tagihanSnap, cabangSnap, nomenklaturSnap] = await Promise.all([
-          getDocs(query(collection(db, "pembayaran"), orderBy("tanggalBayar", "desc"))),
-          getDocs(collection(db, "siswa")),
-          getDocs(collection(db, "tagihan_siswa")),
-          getDocs(query(collection(db, "cabang"), orderBy("nama", "asc"))),
-          getDocs(query(collection(db, "nomenklatur_keuangan"), where("kategori", "==", "Pemasukan"), orderBy("nama", "asc"))),
-        ]);
+    setLoading(true);
+    // Gunakan real-time listener agar perubahan status dari webhook Midtrans
+    // langsung tampil tanpa perlu reload halaman.
+    const unsubscribe = onSnapshot(
+      query(collection(db, "pembayaran"), orderBy("tanggalBayar", "desc")),
+      async (pembayaranSnap) => {
+        try {
+          // Cek transaksi pending: minta backend sinkronkan dengan Midtrans
+          // (cadangan jika webhook tidak tiba). Maksimal 5 terbaru agar ringan.
+          const pendingToSync = pembayaranSnap.docs
+            .filter(d => d.data().status === 'pending' && d.data().transactionId)
+            .slice(0, 5);
+          if (pendingToSync.length > 0) {
+            await Promise.all(pendingToSync.map(d =>
+              fetch('/api/midtrans/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order_id: d.data().transactionId }),
+              }).catch(() => null)
+            ));
+          }
 
-        // Create maps for quick lookups to avoid N+1 query problem
-        const siswaMap = new Map(siswaSnap.docs.map(doc => [doc.id, doc.data() as Siswa]));
-        const tagihanMap = new Map(tagihanSnap.docs.map(doc => [doc.id, doc.data() as Tagihan]));
+          const [siswaSnap, tagihanSnap, cabangSnap, nomenklaturSnap] = await Promise.all([
+            getDocs(collection(db, "siswa")),
+            getDocs(collection(db, "tagihan_siswa")),
+            getDocs(query(collection(db, "cabang"), orderBy("nama", "asc"))),
+            getDocs(query(collection(db, "nomenklatur_keuangan"), where("kategori", "==", "Pemasukan"), orderBy("nama", "asc"))),
+          ]);
 
-        const cabangData = cabangSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabang));
-        setCabangList(cabangData);
+          // Create maps for quick lookups to avoid N+1 query problem
+          const siswaMap = new Map(siswaSnap.docs.map(doc => [doc.id, doc.data() as Siswa]));
+          const tagihanMap = new Map(tagihanSnap.docs.map(doc => [doc.id, doc.data() as Tagihan]));
 
-        const nomenklaturData = nomenklaturSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Nomenklatur));
-        setNomenklaturPemasukanList(nomenklaturData);
+          const cabangData = cabangSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabang));
+          setCabangList(cabangData);
 
-        // Process and join data
-        const laporanData = pembayaranSnap.docs.map(doc => {
-          const pembayaran = { id: doc.id, ...doc.data() } as Pembayaran;
-          const siswa = siswaMap.get(pembayaran.siswaId);
-          const tagihan = tagihanMap.get(pembayaran.tagihanId);
+          const nomenklaturData = nomenklaturSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Nomenklatur));
+          setNomenklaturPemasukanList(nomenklaturData);
 
-          return {
-            ...pembayaran,
-            namaSiswa: siswa?.nama || "Siswa Dihapus",
-            cabangSiswa: siswa?.cabang || "N/A",
-            transactionId: pembayaran.transactionId, // Gunakan transactionId dari pembayaran
-            kelasSiswa: siswa?.kelas || "N/A",
-            jenisBiaya: tagihan 
-              ? `${tagihan.jenisBiaya} ${tagihan.bulan} ${tagihan.tahun}` 
-              : "Tagihan Dihapus",
-          };
-        });
+          // Process and join data
+          const laporanData = pembayaranSnap.docs.map(doc => {
+            const pembayaran = { id: doc.id, ...doc.data() } as Pembayaran;
+            const siswa = siswaMap.get(pembayaran.siswaId);
+            const tagihan = tagihanMap.get(pembayaran.tagihanId);
 
-        setLaporanList(laporanData);
+            return {
+              ...pembayaran,
+              namaSiswa: siswa?.nama || "Siswa Dihapus",
+              cabangSiswa: siswa?.cabang || "N/A",
+              transactionId: pembayaran.transactionId, // Gunakan transactionId dari pembayaran
+              kelasSiswa: siswa?.kelas || "N/A",
+              jenisBiaya: tagihan
+                ? `${tagihan.jenisBiaya} ${tagihan.bulan} ${tagihan.tahun}`
+                : "Tagihan Dihapus",
+            };
+          });
 
-      } catch (error) {
-        console.error("Error fetching data: ", error);
-        alert("Gagal memuat data laporan. Silakan coba lagi.");
-      } finally {
+          setLaporanList(laporanData);
+        } catch (error) {
+          console.error("Error fetching data: ", error);
+        } finally {
+          setLoading(false);
+        }
+      },
+      (error) => {
+        console.error("Error listening to pembayaran:", error);
         setLoading(false);
       }
-    };
+    );
 
-    fetchData();
+    return () => unsubscribe();
   }, []);
 
   // --- FILTERING LOGIC ---
