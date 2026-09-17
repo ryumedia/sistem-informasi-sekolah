@@ -20,6 +20,17 @@ function StatusContent() {
     }
   }, [transactionStatus, router]);
 
+  useEffect(() => {
+    // Sinkronisasi cadangan: minta backend mengecek status terbaru dari Midtrans
+    // dan memperbarui Firestore, untuk jaga-jaga jika webhook tidak tiba.
+    if (!orderId) return;
+    fetch('/api/midtrans/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id: orderId }),
+    }).catch((err) => console.error('Gagal sinkronisasi status:', err));
+  }, [orderId]);
+
   const getStatusInfo = () => {
     switch (transactionStatus) {
       case 'settlement':

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import midtransClient from 'midtrans-client';
 import { randomUUID } from 'crypto';
-import { db as adminDb } from '@/lib/firebase-admin';
 
 // Ambil server key dari environment variable dan pastikan tidak undefined
 const serverKey = process.env.MIDTRANS_SERVER_KEY;
@@ -33,53 +32,6 @@ export async function GET(request: Request) {
     // untuk transaksi yang berstatus pending.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const transaction = await (snap as any).transaction.status(orderId);
-
-    // --- SINKRONISASI CADANGAN ---
-    // Pastikan status di Firestore mengikuti status terbaru dari Midtrans.
-    // Ini menangani kasus di mana webhook Midtrans gagal/terlambat tiba.
-    try {
-      const pembayaranSnap = await adminDb
-        .collection("pembayaran")
-        .where("transactionId", "==", orderId)
-        .limit(1)
-        .get();
-
-      if (!pembayaranSnap.empty) {
-        const pembayaranDoc = pembayaranSnap.docs[0];
-        const pembayaranData = pembayaranDoc.data();
-        const statusMidtrans = transaction.transaction_status;
-        const fraudStatus = transaction.fraud_status;
-
-        if (pembayaranData.status !== statusMidtrans) {
-          await pembayaranDoc.ref.update({ status: statusMidtrans });
-
-          // Jika pembayaran sukses, update juga data tagihan (logika sama dengan webhook)
-          if (
-            (statusMidtrans === "settlement" || statusMidtrans === "capture") &&
-            (!fraudStatus || fraudStatus === "accept")
-          ) {
-            const tagihanRef = adminDb.collection("tagihan_siswa").doc(pembayaranData.tagihanId);
-            const tagihanDoc = await tagihanRef.get();
-
-            if (tagihanDoc.exists) {
-              const tagihanData = tagihanDoc.data();
-              const nominalDibayarSebelumnya = tagihanData?.dibayar || 0;
-              const nominalPembayaranIni = pembayaranData.jumlahBayar;
-              const totalDibayar = nominalDibayarSebelumnya + nominalPembayaranIni;
-              const sisaTagihan = (tagihanData?.nominal || 0) - totalDibayar;
-
-              await tagihanRef.update({
-                dibayar: totalDibayar,
-                status: sisaTagihan <= 0 ? "Lunas" : "Belum Lunas",
-              });
-            }
-          }
-        }
-      }
-    } catch (syncError: any) {
-      // Sinkronisasi gagal tidak boleh menggagalkan pengambilan token
-      console.error("Gagal sinkronisasi status ke Firestore:", syncError.message);
-    }
 
     return NextResponse.json({
       token: transaction.token,
