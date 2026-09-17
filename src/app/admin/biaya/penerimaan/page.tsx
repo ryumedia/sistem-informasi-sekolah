@@ -14,7 +14,7 @@ import {
   where,
   Timestamp,
 } from "firebase/firestore";
-import { Loader2, PlusCircle, X } from 'lucide-react';
+import { Loader2, PlusCircle, X, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 
 // --- INTERFACES ---
@@ -79,6 +79,10 @@ export default function PenerimaanPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPenerimaan, setSelectedPenerimaan] = useState<LaporanPenerimaan | null>(null);
   const [selectedNomenklatur, setSelectedNomenklatur] = useState<string>("");
+
+  // State sinkronisasi manual dengan Midtrans
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
+  const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [selectedCabangInModal, setSelectedCabangInModal] = useState<string>("");
   const [nomenklaturPemasukanList, setNomenklaturPemasukanList] = useState<Nomenklatur[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -234,10 +238,10 @@ export default function PenerimaanPage() {
       });
 
       // 2. Perbarui state lokal agar UI langsung berubah tanpa perlu refresh
-      setFilteredLaporanList(prevList => 
-        prevList.map(item => 
-          item.id === selectedPenerimaan.id 
-            ? { ...item, sudahMasukArusKas: true } 
+      setFilteredLaporanList(prevList =>
+        prevList.map(item =>
+          item.id === selectedPenerimaan.id
+            ? { ...item, sudahMasukArusKas: true }
             : item
         )
       );
@@ -253,10 +257,69 @@ export default function PenerimaanPage() {
     }
   };
 
+  // --- SINKRONISASI MANUAL DENGAN MIDTRANS ---
+  const syncPembayaran = async (transactionIds: string[]) => {
+    const results = await Promise.allSettled(
+      transactionIds.map(orderId =>
+        fetch('/api/midtrans/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: orderId }),
+        }).then(async (res) => {
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+          return data;
+        })
+      )
+    );
+    const gagal = results.filter(r => r.status === 'rejected').length;
+    if (gagal > 0) {
+      alert(`${gagal} transaksi gagal disinkronkan. Cek log server untuk detail.`);
+    }
+    // Status di Firestore terupdate otomatis via onSnapshot listener
+  };
+
+  const handleSyncAll = async () => {
+    const pendingIds = laporanList
+      .filter(item => item.status === 'pending' && item.transactionId)
+      .map(item => item.transactionId!);
+    if (pendingIds.length === 0) {
+      alert('Tidak ada transaksi tertunda yang perlu disinkronkan.');
+      return;
+    }
+    setIsSyncingAll(true);
+    await syncPembayaran(pendingIds);
+    setIsSyncingAll(false);
+  };
+
+  const handleSyncOne = async (item: LaporanPenerimaan) => {
+    if (!item.transactionId) return;
+    setSyncingIds(prev => new Set(prev).add(item.id));
+    await syncPembayaran([item.transactionId]);
+    setSyncingIds(prev => {
+      const next = new Set(prev);
+      next.delete(item.id);
+      return next;
+    });
+  };
+
   // --- RENDER ---
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-800">Laporan Penerimaan</h1>
+
+      {/* Tombol Sinkronisasi Manual */}
+      <div className="flex justify-end">
+        <button
+          onClick={handleSyncAll}
+          disabled={isSyncingAll}
+          className="flex items-center gap-2 bg-[#581c87] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#45156b] transition disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Tarik status terbaru semua transaksi tertunda dari Midtrans"
+        >
+          {isSyncingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          {isSyncingAll ? 'Menyinkronkan...' : 'Sinkronkan dengan Midtrans'}
+        </button>
+      </div>
 
       {/* Filters & Total */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100 items-end">
@@ -340,6 +403,16 @@ export default function PenerimaanPage() {
                       <td className="p-4 text-center">{getStatusPill(item.status)}</td>
                       <td className="p-4">{item.dicatatOleh}</td>
                       <td className="p-4 text-center">
+                        {item.status === 'pending' && item.transactionId && (
+                          <button
+                            onClick={() => handleSyncOne(item)}
+                            disabled={syncingIds.has(item.id)}
+                            className="text-[#581c87] hover:text-[#45156b] mr-2 disabled:opacity-50"
+                            title="Tarik status terbaru dari Midtrans"
+                          >
+                            {syncingIds.has(item.id) ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+                          </button>
+                        )}
                         <button 
                           onClick={() => openModal(item)}
                           disabled={item.sudahMasukArusKas || item.status !== 'settlement'}
