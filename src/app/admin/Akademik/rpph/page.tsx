@@ -47,6 +47,8 @@ interface RPPH {
   tahapPerkembangan: string[]; // Array of IDs or Strings
   indikator: string[];
   trilogi: string[];
+  intiAwal?: string;  // Isian mandiri guru (opsional)
+  intiUtama?: string; // Isian mandiri guru (opsional)
   content: string; // Hasil generate AI
   createdAt: any;
 }
@@ -102,6 +104,8 @@ export default function RPPHPage() {
     tahapPerkembangan: [] as string[],
     indikator: [] as string[],
     trilogi: [] as string[],
+    intiAwal: "",
+    intiUtama: "",
   };
 
   const [formData, setFormData] = useState(initialFormState);
@@ -147,7 +151,7 @@ export default function RPPHPage() {
 
       // 2. Ambil semua Sub Indikator
       const subIndikatorSnap = await getDocs(collection(db, "sub_indikators"));
-      
+
       // 3. Gabungkan data: tambahkan properti 'jenjang' ke setiap sub-indikator
       const indikatorData = subIndikatorSnap.docs.map((d) => {
         const subIndikator = { id: d.id, ...d.data() } as DataMaster;
@@ -156,7 +160,7 @@ export default function RPPHPage() {
       });
 
       // Sort natural (numeric: true) agar 1.1, 1.2, ... 1.10, 2.1 urut benar
-      indikatorData.sort((a, b) => 
+      indikatorData.sort((a, b) =>
         (a.kode || "").localeCompare(b.kode || "", undefined, { numeric: true })
       );
       setIndikatorList(indikatorData);
@@ -164,7 +168,7 @@ export default function RPPHPage() {
       // Trilogi (Sub)
       const trilogiSnap = await getDocs(collection(db, "sub_trilogi"));
       const trilogiData = trilogiSnap.docs.map((d) => ({ id: d.id, ...d.data() } as DataMaster));
-      trilogiData.sort((a, b) => 
+      trilogiData.sort((a, b) =>
         (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true })
       );
       setTrilogiList(trilogiData);
@@ -234,8 +238,13 @@ export default function RPPHPage() {
 
     const kegiatanPembukaan = generateKegiatan("pembukaan");
     const kegiatanRutinitas = generateKegiatan("rutinitas_islami");
-    const kegiatanIntiAwal = generateKegiatan("inti_awal");
-    const kegiatanIntiUtama = generateKegiatan("inti_utama");
+    // Gunakan isian mandiri guru jika tersedia, jika tidak pakai template AI
+    const kegiatanIntiAwal = data.intiAwal?.trim()
+      ? data.intiAwal.trim()
+      : generateKegiatan("inti_awal");
+    const kegiatanIntiUtama = data.intiUtama?.trim()
+      ? data.intiUtama.trim()
+      : generateKegiatan("inti_utama");
     const kegiatanIstirahat = generateKegiatan("istirahat");
     const kegiatanPenutup = generateKegiatan("penutup");
 
@@ -245,7 +254,7 @@ export default function RPPHPage() {
           <h2 style="margin: 0; text-transform: uppercase; font-size: 1.2em;">Rencana Pelaksanaan Pembelajaran Harian (RPPH)</h2>
           <h3 style="margin: 0; text-transform: uppercase; font-size: 1.1em; color: #555;">Main Riang Islamic Preschool</h3>
         </div>
-        
+
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
           <tbody style="vertical-align: top;">
             <tr><td style="width: 150px; font-weight: bold;">Kelompok Usia</td><td>: ${data.kelompokUsia}</td></tr>
@@ -294,7 +303,7 @@ export default function RPPHPage() {
           <h4 style="margin-bottom: 5px; color: #444;">Penutup:</h4>
           <div style="white-space: pre-line; margin-bottom: 15px; padding-left: 20px;">${kegiatanPenutup}</div>
         </div>
-        
+
         <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 25px;">E. Golden Rule Guru</h3>
         <p style="font-style: italic;">${generateGoldenRule()}</p>
 
@@ -326,7 +335,7 @@ export default function RPPHPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!generatedContent) {
       alert("Silakan klik tombol 'Generate AI' terlebih dahulu untuk membuat konten RPPH.");
       return;
@@ -395,6 +404,8 @@ export default function RPPHPage() {
       tahapPerkembangan: item.tahapPerkembangan,
       indikator: item.indikator,
       trilogi: item.trilogi,
+      intiAwal: item.intiAwal || "",
+      intiUtama: item.intiUtama || "",
     });
     setGeneratedContent(item.content); // Load konten yang sudah ada untuk diedit
     setActiveTab("preview");
@@ -499,7 +510,7 @@ export default function RPPHPage() {
             <option key={j.id} value={j.nama}>{j.nama}</option>
           ))}
         </select>
-        
+
         <select
           className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87]"
           value={filterUsia}
@@ -790,6 +801,33 @@ export default function RPPHPage() {
                         })
                     )}
                   </div>
+                </div>
+              </div>
+
+              {/* Isian Mandiri Kegiatan Inti */}
+              <div className="border-t pt-4 space-y-4">
+                <p className="text-xs text-gray-500">
+                  Isi kolom di bawah untuk menentukan sendiri kegiatan inti. Jika dibiarkan kosong, isi kegiatan dibuat otomatis oleh AI. (Satu baris = satu poin kegiatan)
+                </p>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Kegiatan Inti Awal (opsional)</label>
+                  <textarea
+                    rows={3}
+                    className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none"
+                    placeholder="Contoh:\n• Membaca buku cerita tentang matahari\n• Tanya jawab tentang cahaya siang dan malam"
+                    value={formData.intiAwal}
+                    onChange={(e) => setFormData({ ...formData, intiAwal: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Kegiatan Inti Utama (opsional)</label>
+                  <textarea
+                    rows={3}
+                    className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none"
+                    placeholder="Contoh:\n• Sentra seni: membuat kolase bentuk bintang\n• Sentra balok: membangun menara masjid"
+                    value={formData.intiUtama}
+                    onChange={(e) => setFormData({ ...formData, intiUtama: e.target.value })}
+                  />
                 </div>
               </div>
 

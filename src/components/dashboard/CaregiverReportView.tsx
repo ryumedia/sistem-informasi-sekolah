@@ -73,6 +73,9 @@ function LaporanHarianModal({
   selectedDate: Date;
 }) {
   const [formData, setFormData] = useState<any>({ hasil: {} });
+  // Teks keterangan "Lainnya" disimpan di state terpisah agar input berfungsi normal.
+  // Baru digabungkan ke hasil saat submit.
+  const [lainnyaTexts, setLainnyaTexts] = useState<{ [subAktivitasId: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -81,6 +84,13 @@ function LaporanHarianModal({
         ...laporanToEdit,
         tanggal: laporanToEdit.tanggal.toDate(),
       });
+      // Pulihkan teks "Lainnya" yang tersimpan ke state terpisah
+      const restoredTexts: { [subId: string]: string } = {};
+      Object.entries(laporanToEdit.hasil || {}).forEach(([subId, options]) => {
+        const lainnya = (options as string[]).find(o => o.startsWith("Lainnya:"));
+        if (lainnya) restoredTexts[subId] = lainnya.substring("Lainnya:".length).trimStart();
+      });
+      setLainnyaTexts(restoredTexts);
     } else {
       setFormData({
         tanggal: selectedDate,
@@ -89,31 +99,44 @@ function LaporanHarianModal({
         siswaId: student.id,
         hasil: {},
       });
+      setLainnyaTexts({});
     }
   }, [laporanToEdit, student, selectedDate]);
 
   const handleCheckboxChange = (subAktivitasId: string, option: string, isChecked: boolean) => {
     setFormData((prev: any) => {
-      const currentOptions = prev.hasil[subAktivitasId] || [];
+      const currentOptions = (prev.hasil[subAktivitasId] || []).filter((o: string) => !o.startsWith("Lainnya:"));
       const newOptions = isChecked ? [...currentOptions, option] : currentOptions.filter((o: string) => o !== option);
       return { ...prev, hasil: { ...prev.hasil, [subAktivitasId]: newOptions } };
     });
   };
 
   const handleLainnyaTextChange = (subAktivitasId: string, text: string) => {
-    setFormData((prev: any) => {
-      const currentOptions = prev.hasil[subAktivitasId] || [];
-      const filteredOptions = currentOptions.filter((o: string) => !o.startsWith("Lainnya:"));
-      const newOptions = text ? [...filteredOptions, `Lainnya: ${text}`] : filteredOptions;
-      return { ...prev, hasil: { ...prev.hasil, [subAktivitasId]: newOptions } };
-    });
+    // Cukup simpan teksnya apa adanya — tanpa prefix, tanpa manipulasi string.
+    setLainnyaTexts(prev => ({ ...prev, [subAktivitasId]: text }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+
+    // Gabungkan teks "Lainnya" ke hasil final sebelum disimpan
+    const hasilFinal: { [key: string]: string[] } = {};
+    Object.entries(formData.hasil || {}).forEach(([subId, options]) => {
+      let opts = (options as string[]).filter(o => !o.startsWith("Lainnya:"));
+      const lainnyaChecked = opts.includes("Lainnya");
+      const teks = (lainnyaTexts[subId] || "").trim();
+      if (lainnyaChecked && teks) {
+        opts = [...opts, `Lainnya: ${teks}`];
+      } else if (!lainnyaChecked) {
+        opts = opts.filter(o => o !== "Lainnya");
+      }
+      if (opts.length > 0) hasilFinal[subId] = opts;
+    });
+
     const dataToSave = {
       ...formData,
+      hasil: hasilFinal,
       tanggal: Timestamp.fromDate(formData.tanggal),
       cabangId: student.cabangId, // Tambahkan cabangId dari data siswa
       kelasId: student.kelasId,   // Tambahkan kelasId dari data siswa
@@ -151,7 +174,7 @@ function LaporanHarianModal({
                 <div className="space-y-4">
                   {aktivitas.subAktivitas.map(sub => {
                     const lainnyaChecked = formData.hasil[sub.id]?.includes('Lainnya');
-                    const lainnyaText = formData.hasil[sub.id]?.find((o: string) => o.startsWith('Lainnya:'))?.substring(8) || '';
+                    const lainnyaText = lainnyaTexts[sub.id] || '';
                     return (
                       <div key={sub.id}>
                         <p className="font-semibold text-gray-700 mb-2">{sub.deskripsi}</p>
