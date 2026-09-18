@@ -21,6 +21,7 @@ interface JenisBiaya {
   id: string;
   nama: string;
   nominal: number;
+  diskon?: number; // Persentase diskon (0-100)
   // Struktur baru untuk penerapan
   penerapan: 'semua' | 'cabang_tertentu' | 'kelas_tertentu';
   cabangIds?: string[];
@@ -42,9 +43,16 @@ interface Kelas {
 const initialFormData = {
   nama: "",
   nominal: 0,
+  diskon: 0,
   penerapan: 'semua' as 'semua' | 'cabang_tertentu' | 'kelas_tertentu',
   cabangIds: [] as string[],
   kelasIds: [] as string[],
+};
+
+// Hitung nominal setelah diskon
+const hitungSetelahDiskon = (nominal: number, diskon?: number) => {
+  const nilaiDiskon = Math.min(Math.max(diskon || 0, 0), 100);
+  return Math.round(nominal * (1 - nilaiDiskon / 100));
 };
 
 export default function JenisBiayaPage() {
@@ -98,10 +106,10 @@ export default function JenisBiayaPage() {
 
         const cabangData = cabangSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabang));
         const kelasData = kelasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kelas));
-        
+
         setCabangList(cabangData);
         setKelasList(kelasData);
-        
+
         const jenisBiayaData = jenisBiayaSnap.docs.map(doc => {
           const data = doc.data() as JenisBiaya;
           return {
@@ -167,6 +175,14 @@ export default function JenisBiayaPage() {
     setFormData(prev => ({ ...prev, nominal: numericValue }));
   };
 
+  const handleDiskonChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value.replace(/[^0-9]/g, '');
+    let numericValue = rawValue ? parseInt(rawValue, 10) : 0;
+    // Batasi diskon maksimal 100%
+    if (numericValue > 100) numericValue = 100;
+    setFormData(prev => ({ ...prev, diskon: numericValue }));
+  };
+
   const handleMultiSelectChange = (e: React.ChangeEvent<HTMLSelectElement>, field: 'cabangIds' | 'kelasIds') => {
     const options = Array.from(e.target.selectedOptions, option => option.value);
     setFormData(prev => ({ ...prev, [field]: options }));
@@ -178,6 +194,7 @@ export default function JenisBiayaPage() {
       setFormData({
         nama: item.nama,
         nominal: item.nominal,
+        diskon: item.diskon || 0,
         penerapan: item.penerapan,
         cabangIds: item.cabangIds || [],
         kelasIds: item.kelasIds || [],
@@ -203,6 +220,7 @@ export default function JenisBiayaPage() {
     const dataToSave: any = {
       nama: formData.nama,
       nominal: formData.nominal,
+      diskon: formData.diskon || 0,
       penerapan: formData.penerapan,
     };
     if (formData.penerapan === 'cabang_tertentu') {
@@ -287,6 +305,8 @@ export default function JenisBiayaPage() {
                 <th className="p-4">Jenis Biaya</th>
                 <th className="p-4">Berlaku Untuk</th>
                 <th className="p-4">Nominal</th>
+                <th className="p-4">Diskon</th>
+                <th className="p-4">Nilai Setelah Diskon</th>
                 <th className="p-4 w-32 text-center">Aksi</th>
               </tr>
             </thead>
@@ -313,7 +333,25 @@ export default function JenisBiayaPage() {
                         </div>
                       )}
                     </td>
-                    <td className="p-4">{formatCurrency(item.nominal)}</td>
+                    <td className="p-4">
+                      {formatCurrency(item.nominal)}
+                      {(item.diskon || 0) > 0 && (
+                        <span className="block text-xs text-gray-400 line-through">{formatCurrency(item.nominal)}</span>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      {(item.diskon || 0) > 0 ? (
+                        <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full font-medium">-{item.diskon}%</span>
+                      ) : (
+                        <span className="text-xs text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="p-4 font-semibold text-gray-900">
+                      {formatCurrency(hitungSetelahDiskon(item.nominal, item.diskon))}
+                      {(item.diskon || 0) > 0 && (
+                        <span className="block text-xs text-green-600">Hemat {formatCurrency(item.nominal - hitungSetelahDiskon(item.nominal, item.diskon))}</span>
+                      )}
+                    </td>
                     <td className="p-4 flex justify-center gap-2">
                       <button onClick={() => openModal(item)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit"><Pencil className="w-4 h-4" /></button>
                       <button onClick={() => handleDelete(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus"><Trash2 className="w-4 h-4" /></button>
@@ -381,6 +419,24 @@ export default function JenisBiayaPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nominal</label>
                 <input type="text" name="nominal" value={new Intl.NumberFormat('id-ID').format(formData.nominal)} onChange={handleNominalChange} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" required />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Diskon (%)</label>
+                <input
+                  type="text"
+                  name="diskon"
+                  value={formData.diskon > 0 ? formData.diskon : ''}
+                  onChange={handleDiskonChange}
+                  placeholder="0"
+                  className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"
+                />
+                <p className="text-xs text-gray-500 mt-1">Kosongkan atau isi 0 jika tidak ada diskon. Maksimal 100%.</p>
+              </div>
+              {formData.diskon > 0 && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm flex justify-between items-center">
+                  <span className="text-orange-800">Nilai setelah diskon ({formData.diskon}%):</span>
+                  <span className="font-bold text-orange-900">{formatCurrency(hitungSetelahDiskon(formData.nominal, formData.diskon))}</span>
+                </div>
+              )}
               <div className="pt-4 flex justify-end gap-3">
                 <button type="button" onClick={closeModal} className="px-4 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-200">Batal</button>
                 <button type="submit" disabled={isSubmitting} className="bg-[#581c87] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#45156b] transition disabled:opacity-50">

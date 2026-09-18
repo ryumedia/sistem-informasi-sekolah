@@ -53,11 +53,18 @@ interface JenisBiaya {
   id: string;
   nama: string;
   nominal: number;
+  diskon?: number; // Persentase diskon (0-100)
   // Struktur baru untuk penerapan
   penerapan: 'semua' | 'cabang_tertentu' | 'kelas_tertentu';
   cabangIds?: string[];
   kelasIds?: string[];
 }
+
+// Hitung nominal setelah diskon
+const hitungSetelahDiskon = (nominal: number, diskon?: number) => {
+  const nilaiDiskon = Math.min(Math.max(diskon || 0, 0), 100);
+  return Math.round(nominal * (1 - nilaiDiskon / 100));
+};
 
 const initialTagihanItem = {
   jenisBiayaId: "",
@@ -128,7 +135,7 @@ export default function DetailPenagihanPage() {
 
         if (siswaCabang && siswaKelas) {
           const allJenisBiaya = jenisBiayaSnap.docs.map(d => ({ id: d.id, ...d.data() } as JenisBiaya)) as JenisBiaya[];
-          
+
           // --- LOGIKA FILTER DIPERBARUI ---
           const filteredJenisBiaya = allJenisBiaya.filter(jb => {
             // 1. Jika berlaku untuk semua, langsung tampilkan
@@ -137,7 +144,7 @@ export default function DetailPenagihanPage() {
             if (jb.penerapan === 'cabang_tertentu' && jb.cabangIds?.includes(siswaCabang.id)) return true;
             // 3. Jika berlaku untuk kelas tertentu, cek apakah kelas siswa termasuk
             if (jb.penerapan === 'kelas_tertentu' && jb.kelasIds?.includes(siswaKelas.id)) return true;
-            
+
             return false;
           });
           setAvailableJenisBiaya(filteredJenisBiaya);
@@ -173,7 +180,7 @@ export default function DetailPenagihanPage() {
 
     setFilteredTagihanList(filtered);
   }, [tagihanList, filterTahun, filterStatus]);
-  
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
   };
@@ -198,7 +205,7 @@ export default function DetailPenagihanPage() {
     }
     setIsModalOpen(true);
   };
-  
+
   const closeModal = () => {
     setIsModalOpen(false);
     setIsPaymentModalOpen(false);
@@ -209,7 +216,8 @@ export default function DetailPenagihanPage() {
 
     if (field === 'jenisBiayaId') {
       const selected = availableJenisBiaya.find(jb => jb.id === value);
-      updatedItem.nominal = selected ? selected.nominal : 0;
+      // Terapkan diskon dari jenis biaya (jika ada) ke nominal tagihan
+      updatedItem.nominal = selected ? hitungSetelahDiskon(selected.nominal, selected.diskon) : 0;
     }
     setCurrentItem(updatedItem);
   };
@@ -458,7 +466,7 @@ export default function DetailPenagihanPage() {
                     <td className="p-4">
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
                         sisa <= 0
-                        ? 'bg-green-100 text-green-800' 
+                        ? 'bg-green-100 text-green-800'
                         : 'bg-yellow-100 text-yellow-800'
                       }`}>
                         {sisa <= 0 ? 'Lunas' : 'Belum Lunas'}
@@ -485,7 +493,7 @@ export default function DetailPenagihanPage() {
               <h3 className="font-bold text-gray-800">{editingTagihan ? 'Edit' : 'Tambah'} Tagihan untuk {siswa?.nama}</h3>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
-            
+
             <div className="p-6 flex-1 overflow-y-auto space-y-6">
               {/* Input Form */}
               <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end p-3 border rounded-lg bg-gray-50">
@@ -493,7 +501,11 @@ export default function DetailPenagihanPage() {
                   <label className="text-xs font-medium text-gray-600">Jenis Biaya</label>
                   <select value={currentItem.jenisBiayaId} onChange={e => handleItemChange('jenisBiayaId', e.target.value)} className="w-full border rounded-lg p-2 text-sm mt-1">
                     <option value="">Pilih Jenis Biaya</option>
-                    {availableJenisBiaya.map(jb => <option key={jb.id} value={jb.id}>{jb.nama}</option>)}
+                    {availableJenisBiaya.map(jb => (
+                      <option key={jb.id} value={jb.id}>
+                        {jb.nama}{(jb.diskon || 0) > 0 ? ` (diskon ${jb.diskon}%: ${formatCurrency(hitungSetelahDiskon(jb.nominal, jb.diskon))})` : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -538,6 +550,7 @@ export default function DetailPenagihanPage() {
                       <tr>
                         <th className="p-2 text-left">Jenis Biaya</th>
                         <th className="p-2 text-left">Periode</th>
+                        <th className="p-2 text-left">Diskon</th>
                         <th className="p-2 text-right">Nominal</th>
                         <th className="p-2 w-16 text-center">Aksi</th>
                       </tr>
@@ -546,16 +559,32 @@ export default function DetailPenagihanPage() {
                       {newTagihanItems.length === 0 ? (
                         <tr><td colSpan={4} className="p-4 text-center text-gray-500">Belum ada item yang ditambahkan.</td></tr>
                       ) : (
-                        newTagihanItems.map((item, index) => (
+                        newTagihanItems.map((item, index) => {
+                          const selectedJb = availableJenisBiaya.find(jb => jb.id === item.jenisBiayaId);
+                          const diskon = selectedJb?.diskon || 0;
+                          return (
                           <tr key={item.tempId} className="border-b">
                             <td className="p-2">{item.jenisBiaya}</td>
                             <td className="p-2">{item.bulan} {item.tahun}</td>
-                            <td className="p-2 text-right">{formatCurrency(item.nominal)}</td>
+                            <td className="p-2">
+                              {diskon > 0 ? (
+                                <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full font-medium">-{diskon}%</span>
+                              ) : (
+                                <span className="text-xs text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="p-2 text-right">
+                              {diskon > 0 && (
+                                <span className="block text-xs text-gray-400 line-through">{formatCurrency(selectedJb?.nominal || 0)}</span>
+                              )}
+                              {formatCurrency(item.nominal)}
+                            </td>
                             <td className="p-2 text-center">
                               <button onClick={() => handleRemoveItem(index)} className="text-red-500 hover:text-red-700"><Trash2 className="w-4 h-4" /></button>
                             </td>
                           </tr>
-                        ))
+                          );
+                        })
                       )}
                     </tbody>
                   </table>

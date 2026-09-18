@@ -46,10 +46,17 @@ interface JenisBiaya {
   id: string;
   nama: string;
   nominal: number;
+  diskon?: number; // Persentase diskon (0-100)
   penerapan: 'semua' | 'cabang_tertentu' | 'kelas_tertentu';
   cabangIds?: string[];
   kelasIds?: string[];
 }
+
+// Hitung nominal setelah diskon
+const hitungSetelahDiskon = (nominal: number, diskon?: number) => {
+  const nilaiDiskon = Math.min(Math.max(diskon || 0, 0), 100);
+  return Math.round(nominal * (1 - nilaiDiskon / 100));
+};
 
 interface SiswaWithStatus extends Siswa {
   statusPembayaran: 'Lunas' | 'Belum Lunas';
@@ -107,7 +114,7 @@ export default function PenagihanPage() {
         const siswaData = siswaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Siswa));
         const tagihanData = tagihanSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tagihan));
         const jenisBiayaData = jenisBiayaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as JenisBiaya));
-        
+
         setTagihanList(tagihanData);
         setCabangList(cabangData);
         setKelasList(kelasData);
@@ -141,7 +148,7 @@ export default function PenagihanPage() {
   useEffect(() => {
     // Proses siswa untuk menambahkan status pembayaran
     const siswaWithStatus: SiswaWithStatus[] = siswaList.map(siswa => {
-      const hasUnpaidBill = tagihanList.some(tagihan => 
+      const hasUnpaidBill = tagihanList.some(tagihan =>
         tagihan.siswaId === siswa.id &&
         tagihan.tahun === filterTahun &&
         tagihan.bulan === filterBulan &&
@@ -254,8 +261,8 @@ export default function PenagihanPage() {
                     <td className="p-4">{siswa.kelas}</td>
                     <td className="p-4">
                       <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                        siswa.statusPembayaran === 'Lunas' 
-                        ? 'bg-green-100 text-green-800' 
+                        siswa.statusPembayaran === 'Lunas'
+                        ? 'bg-green-100 text-green-800'
                         : 'bg-yellow-100 text-yellow-800'
                       }`}>
                         {siswa.statusPembayaran}
@@ -305,6 +312,9 @@ interface BulkModalProps {
 }
 
 function BulkTagihanModal({ cabangList, kelasList, jenisBiayaList, siswaList, onClose, onSuccess }: BulkModalProps) {
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
+  };
   const [formData, setFormData] = useState({
     cabangId: "",
     kelasId: "",
@@ -331,12 +341,18 @@ function BulkTagihanModal({ cabangList, kelasList, jenisBiayaList, siswaList, on
     });
   }, [formData.cabangId, formData.kelasId, jenisBiayaList]);
 
+  const selectedJenisBiayaDiskon = useMemo(() => {
+    const selected = jenisBiayaList.find(jb => jb.id === formData.jenisBiayaId);
+    return selected?.diskon || 0;
+  }, [formData.jenisBiayaId, jenisBiayaList]);
+
   const handleJenisBiayaChange = (id: string) => {
     const selected = jenisBiayaList.find(jb => jb.id === id);
+    // Terapkan diskon dari jenis biaya (jika ada) ke nominal tagihan
     setFormData(prev => ({
       ...prev,
       jenisBiayaId: id,
-      nominal: selected?.nominal || 0,
+      nominal: selected ? hitungSetelahDiskon(selected.nominal, selected.diskon) : 0,
     }));
   };
 
@@ -404,7 +420,13 @@ function BulkTagihanModal({ cabangList, kelasList, jenisBiayaList, siswaList, on
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Pilih Cabang</label><select required value={formData.cabangId} onChange={e => setFormData(prev => ({ ...prev, cabangId: e.target.value, kelasId: "" }))} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none"><option value="">Pilih Cabang</option>{cabangList.map(c => <option key={c.id} value={c.id}>{c.nama}</option>)}</select></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Pilih Kelas</label><select required value={formData.kelasId} onChange={e => setFormData(prev => ({ ...prev, kelasId: e.target.value }))} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" disabled={!formData.cabangId}><option value="">Pilih Kelas</option>{filteredKelas.map(k => <option key={k.id} value={k.id}>{k.namaKelas}</option>)}</select></div>
           </div>
-          <div><label className="block text-sm font-medium text-gray-700 mb-1">Jenis Biaya</label><select required value={formData.jenisBiayaId} onChange={e => handleJenisBiayaChange(e.target.value)} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" disabled={!formData.kelasId}><option value="">Pilih Jenis Biaya</option>{filteredJenisBiaya.map(jb => <option key={jb.id} value={jb.id}>{jb.nama}</option>)}</select></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-1">Jenis Biaya</label><select required value={formData.jenisBiayaId} onChange={e => handleJenisBiayaChange(e.target.value)} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none" disabled={!formData.kelasId}><option value="">Pilih Jenis Biaya</option>{filteredJenisBiaya.map(jb => <option key={jb.id} value={jb.id}>{jb.nama}{(jb.diskon || 0) > 0 ? ` (diskon ${jb.diskon}%)` : ''}</option>)}</select></div>
+          {selectedJenisBiayaDiskon > 0 && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm flex justify-between items-center">
+              <span className="text-orange-800">Diskon diterapkan: <strong>{selectedJenisBiayaDiskon}%</strong></span>
+              <span className="text-orange-900">Nilai setelah diskon: <strong>{formatCurrency(formData.nominal)}</strong></span>
+            </div>
+          )}
           <div><label className="block text-sm font-medium text-gray-700 mb-1">Nominal</label><input type="text" readOnly value={`Rp ${formData.nominal.toLocaleString('id-ID')}`} className="w-full border rounded-lg p-2 bg-gray-100" /></div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Bulan</label><select required value={formData.bulan} onChange={e => setFormData(prev => ({ ...prev, bulan: e.target.value }))} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none">{months.map(m => <option key={m} value={m}>{m}</option>)}</select></div>

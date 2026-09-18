@@ -11,6 +11,12 @@ interface Option {
   nama: string;
 }
 
+interface InfoBiaya {
+  nama: string;
+  nominal: number;
+  diskon?: number;
+}
+
 export default function PendaftaranSiswaBaruPage() {
   const [lokasiOptions, setLokasiOptions] = useState<Option[]>([]);
   const [programOptions, setProgramOptions] = useState<Option[]>([]);
@@ -39,6 +45,8 @@ export default function PendaftaranSiswaBaruPage() {
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [infoBiaya, setInfoBiaya] = useState<InfoBiaya[]>([]);
+  const [loadingBiaya, setLoadingBiaya] = useState(false);
 
   useEffect(() => {
     const fetchOptions = async () => {
@@ -62,6 +70,54 @@ export default function PendaftaranSiswaBaruPage() {
     };
     fetchOptions();
   }, []);
+
+  // Ambil info biaya (Pendaftaran & Assesment) sesuai lokasi yang dipilih
+  useEffect(() => {
+    if (!formData.lokasi) {
+      setInfoBiaya([]);
+      return;
+    }
+    const fetchBiaya = async () => {
+      setLoadingBiaya(true);
+      try {
+        const [cabangSnap, jenisBiayaSnap] = await Promise.all([
+          getDocs(collection(db, 'cabang')),
+          getDocs(collection(db, 'jenis_biaya')),
+        ]);
+
+        // Cocokkan nama lokasi yang dipilih dengan nama cabang
+        const cabangDipilih = cabangSnap.docs.find(d => d.data().nama === formData.lokasi);
+        if (!cabangDipilih) {
+          setInfoBiaya([]);
+          return;
+        }
+        const cabangId = cabangDipilih.id;
+
+        const daftarBiaya = jenisBiayaSnap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter((jb: any) => {
+            const nama = (jb.nama || '').toLowerCase();
+            const isTarget = nama.includes('pendaftaran') || nama.includes('assesmen');
+            if (!isTarget) return false;
+            if (jb.penerapan === 'semua') return true;
+            if (jb.penerapan === 'cabang_tertentu') return jb.cabangIds?.includes(cabangId) || false;
+            return false;
+          })
+          .map((jb: any) => ({
+            nama: jb.nama as string,
+            nominal: jb.nominal as number,
+            diskon: jb.diskon as number | undefined,
+          }));
+
+        setInfoBiaya(daftarBiaya);
+      } catch (error) {
+        console.error('Error fetching info biaya:', error);
+      } finally {
+        setLoadingBiaya(false);
+      }
+    };
+    fetchBiaya();
+  }, [formData.lokasi]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -156,6 +212,46 @@ export default function PendaftaranSiswaBaruPage() {
               </select>
             </div>
           </div>
+
+          {/* Info Biaya Pendaftaran sesuai lokasi */}
+          {formData.lokasi && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+              <h4 className="text-sm font-semibold text-[#581c87] mb-2">Informasi Biaya di Lokasi {formData.lokasi}</h4>
+              {loadingBiaya ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Memuat informasi biaya...
+                </div>
+              ) : infoBiaya.length === 0 ? (
+                <p className="text-sm text-gray-500">Belum ada informasi biaya untuk lokasi ini.</p>
+              ) : (
+                <div className="space-y-1">
+                  {infoBiaya.map(b => {
+                    const setelahDiskon = b.diskon && b.diskon > 0
+                      ? Math.round(b.nominal * (1 - b.diskon / 100))
+                      : b.nominal;
+                    const format = (v: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v);
+                    return (
+                      <div key={b.nama} className="flex justify-between text-sm">
+                        <span className="text-gray-700">{b.nama}</span>
+                        <span className="font-semibold text-gray-800">
+                          {b.diskon && b.diskon > 0 ? (
+                            <>
+                              <span className="line-through text-gray-400 mr-2">{format(b.nominal)}</span>
+                              {format(setelahDiskon)}
+                              <span className="ml-2 text-xs font-medium text-purple-700">(diskon {b.diskon}%)</span>
+                            </>
+                          ) : (
+                            format(b.nominal)
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  <p className="text-xs text-gray-500 mt-2">Biaya di atas akan ditagihkan setelah pendaftaran diverifikasi oleh pihak sekolah.</p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Data Siswa */}
           <div className="space-y-4 pt-4 border-t">
