@@ -8,14 +8,17 @@ import { getApps, getApp } from 'firebase-admin/app';
  */
 
 function getServiceAccount(): admin.ServiceAccount {
-  const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   // Saat menyimpan private key di .env, ganti newline asli (\n) dengan literal "\\n"
   // Kode di bawah akan mengubahnya kembali ke format yang benar.
   const privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
 
+  // FIREBASE_PROJECT_ID bersifat opsional: jika tidak diatur, ekstrak dari clientEmail
+  // (format: firebase-adminsdk-xxxx@<PROJECT_ID>.iam.gserviceaccount.com)
+  let projectId = process.env.FIREBASE_PROJECT_ID;
+
   const missing: string[] = [];
-  if (!projectId) missing.push('FIREBASE_PROJECT_ID');
+  if (!projectId && !clientEmail) missing.push('FIREBASE_PROJECT_ID (atau FIREBASE_CLIENT_EMAIL sebagai fallback)');
   if (!clientEmail) missing.push('FIREBASE_CLIENT_EMAIL');
   if (!privateKey) missing.push('FIREBASE_PRIVATE_KEY');
 
@@ -26,7 +29,18 @@ function getServiceAccount(): admin.ServiceAccount {
     );
   }
 
-  return { projectId, clientEmail, privateKey };
+  if (!projectId && clientEmail) {
+    const match = clientEmail.match(/@(.+?)\.iam\.gserviceaccount\.com/);
+    projectId = match?.[1];
+  }
+
+  if (!projectId) {
+    throw new Error(
+      `Gagal menentukan Project ID. Set FIREBASE_PROJECT_ID secara eksplisit di environment variable server.`
+    );
+  }
+
+  return { projectId, clientEmail: clientEmail!, privateKey };
 }
 
 function ensureInitialized() {
