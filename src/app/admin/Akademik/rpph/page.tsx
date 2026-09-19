@@ -49,6 +49,7 @@ interface RPPH {
   trilogi: string[];
   intiAwal?: string;  // Isian mandiri guru (opsional)
   intiUtama?: string; // Isian mandiri guru (opsional)
+  alatBahan?: string; // Isian mandiri guru (opsional)
   content: string; // Hasil generate AI
   createdAt: any;
 }
@@ -106,6 +107,7 @@ export default function RPPHPage() {
     trilogi: [] as string[],
     intiAwal: "",
     intiUtama: "",
+    alatBahan: "",
   };
 
   const [formData, setFormData] = useState(initialFormState);
@@ -245,6 +247,10 @@ export default function RPPHPage() {
     const kegiatanIntiUtama = data.intiUtama?.trim()
       ? data.intiUtama.trim()
       : generateKegiatan("inti_utama");
+    // Gunakan isian mandiri guru jika tersedia, jika tidak pakai template AI
+    const alatBahanFinal = data.alatBahan?.trim()
+      ? data.alatBahan.trim().split("\n").map(s => s.trim()).filter(Boolean).join(", ")
+      : generateAlatBahan();
     const kegiatanIstirahat = generateKegiatan("istirahat");
     const kegiatanPenutup = generateKegiatan("penutup");
 
@@ -279,7 +285,7 @@ export default function RPPHPage() {
         </div>
 
         <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 25px;">C. Alat dan Bahan (Preparation List)</h3>
-        <p>${generateAlatBahan()}</p>
+        <p>${alatBahanFinal}</p>
 
         <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 25px;">D. Struktur & Langkah Kegiatan (${alokasiWaktu})</h3>
         <div style="padding-left: 15px;">
@@ -406,6 +412,7 @@ export default function RPPHPage() {
       trilogi: item.trilogi,
       intiAwal: item.intiAwal || "",
       intiUtama: item.intiUtama || "",
+      alatBahan: item.alatBahan || "",
     });
     setGeneratedContent(item.content); // Load konten yang sudah ada untuk diedit
     setActiveTab("preview");
@@ -725,6 +732,17 @@ export default function RPPHPage() {
                   value={formData.deskripsi}
                   onChange={(e) => setFormData({ ...formData, deskripsi: e.target.value })}
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Alat dan Bahan (opsional)</label>
+                <textarea
+                  rows={3}
+                  className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none"
+                  placeholder="Contoh:\n• Buku cerita sesuai tema\n• Kertas origami\n• Lem dan gunting"
+                  value={formData.alatBahan}
+                  onChange={(e) => setFormData({ ...formData, alatBahan: e.target.value })}
+                />
+                <p className="text-xs text-gray-500 mt-1">Jika dibiarkan kosong, daftar alat & bahan dibuat otomatis oleh AI. (Satu baris = satu item)</p>
               </div>
 
               {/* Multi Select Sections */}

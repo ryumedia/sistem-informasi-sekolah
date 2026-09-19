@@ -423,13 +423,16 @@ export default function CatatanGuruPage() {
                                     <p className="text-gray-500 text-sm mt-1">Tekan tombol + untuk menambah data baru.</p>
                                 </div>
                             ) : (
-                                growthList.map(item => (
+                                growthList.map(item => {
+                                    // Fallback: jika siswaNama kosong, cari dari daftar siswa berdasarkan siswaId
+                                    const namaSiswa = item.siswaNama || siswaList.find(s => s.id === item.siswaId)?.nama || "Siswa Tidak Diketahui";
+                                    return (
                                     <div key={item.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow-md transition relative group">
                                         <div className="flex justify-between items-start mb-3 pr-16">
                                             <div className="flex items-center gap-2">
                                                 <div className="bg-purple-100 p-1.5 rounded-full text-purple-600"><User className="w-3 h-3" /></div>
                                                 <div>
-                                                    <span className="font-bold text-gray-800 text-sm">{item.siswaNama}</span>
+                                                    <span className="font-bold text-gray-800 text-sm">{namaSiswa}</span>
                                                     <span className="text-[10px] text-gray-400 block">{formatGrowthDate(item.tanggal)}</span>
                                                 </div>
                                             </div>
@@ -456,7 +459,8 @@ export default function CatatanGuruPage() {
                                             </button>
                                         </div>
                                     </div>
-                                ))
+                                    );
+                                })
                             )
                         )}
                     </div>
