@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { db } from '@/lib/firebase';
+import { db, storage } from '@/lib/firebase';
 import { collection, getDocs, addDoc, Timestamp, orderBy, query } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Loader2 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -14,6 +15,15 @@ interface Option {
 interface InfoBiaya {
   nama: string;
   nominal: number;
+  diskon?: number;
+}
+
+interface JenisBiayaDoc {
+  id: string;
+  nama?: string;
+  penerapan?: string;
+  cabangIds?: string[];
+  nominal?: number;
   diskon?: number;
 }
 
@@ -47,6 +57,24 @@ export default function PendaftaranSiswaBaruPage() {
   const [submitting, setSubmitting] = useState(false);
   const [infoBiaya, setInfoBiaya] = useState<InfoBiaya[]>([]);
   const [loadingBiaya, setLoadingBiaya] = useState(false);
+  const [buktiTransfer, setBuktiTransfer] = useState<File | null>(null);
+
+  const MAX_FILE_SIZE = 1 * 1024 * 1024; // 1 MB
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setBuktiTransfer(null);
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      alert('Ukuran file maksimal 1 MB. Silakan pilih file yang lebih kecil.');
+      e.target.value = '';
+      setBuktiTransfer(null);
+      return;
+    }
+    setBuktiTransfer(file);
+  };
 
   useEffect(() => {
     const fetchOptions = async () => {
@@ -86,7 +114,7 @@ export default function PendaftaranSiswaBaruPage() {
         ]);
 
         // Cocokkan nama lokasi yang dipilih dengan nama cabang
-        const cabangDipilih = cabangSnap.docs.find(d => d.data().nama === formData.lokasi);
+        const cabangDipilih = cabangSnap.docs.find(d => (d.data() as { nama?: string }).nama === formData.lokasi);
         if (!cabangDipilih) {
           setInfoBiaya([]);
           return;
@@ -94,8 +122,8 @@ export default function PendaftaranSiswaBaruPage() {
         const cabangId = cabangDipilih.id;
 
         const daftarBiaya = jenisBiayaSnap.docs
-          .map(d => ({ id: d.id, ...d.data() }))
-          .filter((jb: any) => {
+          .map(d => ({ id: d.id, ...(d.data() as Omit<JenisBiayaDoc, 'id'>) }))
+          .filter((jb: JenisBiayaDoc) => {
             const nama = (jb.nama || '').toLowerCase();
             const isTarget = nama.includes('pendaftaran') || nama.includes('assesmen');
             if (!isTarget) return false;
@@ -103,7 +131,7 @@ export default function PendaftaranSiswaBaruPage() {
             if (jb.penerapan === 'cabang_tertentu') return jb.cabangIds?.includes(cabangId) || false;
             return false;
           })
-          .map((jb: any) => ({
+          .map((jb: JenisBiayaDoc) => ({
             nama: jb.nama as string,
             nominal: jb.nominal as number,
             diskon: jb.diskon as number | undefined,
@@ -130,18 +158,32 @@ export default function PendaftaranSiswaBaruPage() {
 
     setSubmitting(true);
     try {
+      // Upload bukti transfer ke Firebase Storage (wajib)
+      if (!buktiTransfer) {
+        alert('Mohon upload Bukti Transfer Pendaftaran / DP terlebih dahulu.');
+        setSubmitting(false);
+        return;
+      }
       const infoDetail = formData.infoDari === 'Lainnya' ? formData.infoLainnya : formData.infoDari;
+
+      const storageRef = ref(storage, `bukti_transfer/${Date.now()}_${buktiTransfer.name}`);
+      await uploadBytes(storageRef, buktiTransfer);
+      const buktiTransferUrl = await getDownloadURL(storageRef);
 
       await addDoc(collection(db, "siswa_baru_registrations"), {
         ...formData,
         anakKe: formData.anakKe ? parseInt(formData.anakKe) : 0,
         infoDari: infoDetail,
+        buktiTransferUrl,
         statusPendaftaran: 'Baru',
         createdAt: Timestamp.now(),
       });
 
       alert("Pendaftaran berhasil dikirim! Terima kasih telah mendaftar di Main Riang.");
       // Reset form
+      setBuktiTransfer(null);
+      const fileInput = document.getElementById('buktiTransfer') as HTMLInputElement | null;
+      if (fileInput) fileInput.value = '';
       setFormData({
         lokasi: '',
         program: '',
@@ -183,7 +225,7 @@ export default function PendaftaranSiswaBaruPage() {
     <div className="bg-gray-50 min-h-screen py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
         <div className="text-center">
-            <Image 
+            <Image
                 src="/logo.png" // Pastikan path logo benar dan ada di folder /public
                 alt="Logo Main Riang"
                 width={150}
@@ -195,6 +237,13 @@ export default function PendaftaranSiswaBaruPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="mt-8 bg-white p-8 rounded-2xl shadow-lg space-y-6">
+          {/* Informasi Pembayaran */}
+          <div className="bg-yellow-50 border border-yellow-300 rounded-xl p-4">
+            <p className="text-sm text-gray-800">
+              <span className="font-semibold">Penting:</span> Sebelum melanjutkan pendaftaran, mohon siapkan Bukti Transfer Pendaftaran / DP sebesar <span className="font-semibold">Rp 300.000</span> ke No. Rekening <span className="font-semibold">Bank Permata 4177384114 a.n Yayasan Teman Ilmu Indonesia</span>. Ukuran gambar tidak lebih dari 1 MB.
+            </p>
+          </div>
+
           {/* Pilihan Lokasi & Program */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -214,9 +263,9 @@ export default function PendaftaranSiswaBaruPage() {
           </div>
 
           {/* Info Biaya Pendaftaran sesuai lokasi */}
-          {formData.lokasi && (
+          {/*formData.lokasi && (
             <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-              <h4 className="text-sm font-semibold text-[#581c87] mb-2">Informasi Biaya di Lokasi {formData.lokasi}</h4>
+              <h4 className="text-sm font-semibold text-[#581c87] mb-2">Informasi Biaya Pendaftaran di {formData.lokasi}</h4>
               {loadingBiaya ? (
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <Loader2 className="w-4 h-4 animate-spin" /> Memuat informasi biaya...
@@ -247,11 +296,11 @@ export default function PendaftaranSiswaBaruPage() {
                       </div>
                     );
                   })}
-                  <p className="text-xs text-gray-500 mt-2">Biaya di atas akan ditagihkan setelah pendaftaran diverifikasi oleh pihak sekolah.</p>
+                  <p className="text-xs text-gray-500 mt-2">Selain Biaya Pendaftaran atau DP, akan ditagihkan setelah data diverifikasi oleh pihak sekolah.</p>
                 </div>
               )}
             </div>
-          )}
+          )*/}
 
           {/* Data Siswa */}
           <div className="space-y-4 pt-4 border-t">
@@ -348,16 +397,37 @@ export default function PendaftaranSiswaBaruPage() {
                     <label className="flex items-center"><input type="radio" name="infoDari" value="Spanduk" checked={formData.infoDari === 'Spanduk'} onChange={handleChange} className="form-radio" /> <span className="ml-2">Spanduk</span></label>
                     <label className="flex items-center"><input type="radio" name="infoDari" value="Lainnya" checked={formData.infoDari === 'Lainnya'} onChange={handleChange} className="form-radio" /> <span className="ml-2">Lainnya</span></label>
                     {formData.infoDari === 'Lainnya' && (
-                        <input 
-                            type="text" 
-                            name="infoLainnya" 
-                            value={formData.infoLainnya} 
+                        <input
+                            type="text"
+                            name="infoLainnya"
+                            value={formData.infoLainnya}
                             onChange={handleChange}
                             placeholder="Sebutkan sumber lainnya"
-                            className="mt-1 ml-6 block w-full max-w-xs p-2 border border-gray-300 rounded-md shadow-sm text-gray-900 dark:text-gray-900" 
+                            className="mt-1 ml-6 block w-full max-w-xs p-2 border border-gray-300 rounded-md shadow-sm text-gray-900 dark:text-gray-900"
                         />
                     )}
                 </div>
+            </div>
+          </div>
+
+          {/* Upload Bukti Transfer */}
+          <div className="space-y-4 pt-4 border-t">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-900">Upload Bukti Transfer</h3>
+            <div>
+              <label htmlFor="buktiTransfer" className="block text-sm font-medium text-gray-700 dark:text-gray-700">Bukti Transfer <span className="text-red-600">*</span></label>
+              <input
+                type="file"
+                id="buktiTransfer"
+                name="buktiTransfer"
+                accept="image/*,.pdf"
+                required
+                onChange={handleFileChange}
+                className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm text-gray-900 dark:text-gray-900 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-[#581c87] file:text-white file:cursor-pointer"
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">Format gambar (JPG, PNG) atau PDF, ukuran file maksimal 1 MB.</p>
+              {buktiTransfer && (
+                <p className="mt-2 text-xs text-green-700">File terpilih: {buktiTransfer.name} ({(buktiTransfer.size / 1024).toFixed(0)} KB)</p>
+              )}
             </div>
           </div>
 
