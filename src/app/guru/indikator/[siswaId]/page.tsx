@@ -40,6 +40,9 @@ export default function DetailIndikatorSiswaPage() {
   // indikatorId -> { nilai: number, docId: string }
   const [nilaiMap, setNilaiMap] = useState<Record<string, { nilai: number; docId: string }>>({});
   const [kriteriaMap, setKriteriaMap] = useState<Record<number, string>>({});
+  // Referensi untuk melengkapi data yang dikirim ke firestore
+  const [kelasRef, setKelasRef] = useState<{ id: string; namaKelas: string } | null>(null);
+  const [cabangRef, setCabangRef] = useState<{ id: string; nama: string } | null>(null);
   const [loadingNilai, setLoadingNilai] = useState(false);
   const [editingIndikatorId, setEditingIndikatorId] = useState<string | null>(null);
   const [savingIndikatorId, setSavingIndikatorId] = useState<string | null>(null);
@@ -79,7 +82,33 @@ export default function DetailIndikatorSiswaPage() {
           router.push("/guru/indikator");
           return;
         }
-        setSiswa({ id: siswaSnap.id, ...siswaSnap.data() });
+        const siswaData: any = { id: siswaSnap.id, ...(siswaSnap.data() as Record<string, any>) };
+        setSiswa(siswaData);
+
+        // Cari dokumen kelas siswa (untuk kelasId & namaKelas)
+        const qKelas = query(
+          collection(db, "kelas"),
+          where("cabang", "==", siswaData.cabang || ""),
+          where("namaKelas", "==", siswaData.kelas || "")
+        );
+        const snapKelas = await getDocs(qKelas);
+        let kelasInfo: { id: string; namaKelas: string } | null = null;
+        let cabangInfo: { id: string; nama: string } | null = null;
+        if (!snapKelas.empty) {
+          const kelasDoc = snapKelas.docs[0];
+          kelasInfo = { id: kelasDoc.id, namaKelas: kelasDoc.data().namaKelas || siswaData.kelas || "" };
+        }
+        setKelasRef(kelasInfo);
+
+        // Cari dokumen cabang siswa (untuk cabangId & namaCabang)
+        if (siswaData.cabang) {
+          const qCabang = query(collection(db, "cabang"), where("nama", "==", siswaData.cabang));
+          const snapCabang = await getDocs(qCabang);
+          if (!snapCabang.empty) {
+            cabangInfo = { id: snapCabang.docs[0].id, nama: snapCabang.docs[0].data().nama || siswaData.cabang };
+          }
+        }
+        setCabangRef(cabangInfo);
 
         // Semester
         const snapSem = await getDocs(query(collection(db, "kpi_periode"), orderBy("createdAt", "desc")));
@@ -178,18 +207,32 @@ export default function DetailIndikatorSiswaPage() {
     setSavingIndikatorId(indikatorId);
     try {
       const existing = nilaiMap[indikatorId];
+      const subIndikator = indikatorList.find(i => i.id === indikatorId);
+      const semester = semesterList.find(s => s.id === selectedSemester);
       if (existing && existing.docId !== "new") {
         // Update dokumen yang sudah ada
-        await updateDoc(doc(db, "nilai_indikator", existing.docId), { nilai });
+        await updateDoc(doc(db, "nilai_indikator", existing.docId), {
+          nilai,
+          updatedAt: serverTimestamp(),
+        });
       } else {
         await addDoc(collection(db, "nilai_indikator"), {
+          cabangId: cabangRef?.id || "",
+          namaCabang: siswa?.cabang || cabangRef?.nama || "",
+          kelasId: kelasRef?.id || "",
+          namaKelas: siswa?.kelas || kelasRef?.namaKelas || "",
           siswaId,
+          namaSiswa: siswa?.nama || "",
           semesterId: selectedSemester,
+          namaSemester: semester?.namaPeriode || "",
+          indikatorId,
+          namaIndikator: subIndikator?.groupName || "",
           subIndikatorId: indikatorId,
-          indikatorId, // disimpan juga untuk kompatibilitas dengan pembacaan lama
+          namaSubIndikator: subIndikator?.deskripsi || "",
           nilai,
           guruId: guruData.id,
           guruNama: guruData.nama,
+          tanggal: new Date().toISOString().split("T")[0],
           createdAt: serverTimestamp(),
         });
       }

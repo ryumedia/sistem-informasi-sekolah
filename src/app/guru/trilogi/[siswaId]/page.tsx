@@ -41,6 +41,9 @@ export default function DetailTrilogiSiswaPage() {
   // subTrilogiId -> { nilai: number, docId: string }
   const [nilaiMap, setNilaiMap] = useState<Record<string, { nilai: number; docId: string }>>({});
   const [kriteriaMap, setKriteriaMap] = useState<Record<number, string>>({});
+  // Referensi untuk melengkapi data yang dikirim ke firestore
+  const [kelasRef, setKelasRef] = useState<{ id: string; namaKelas: string } | null>(null);
+  const [cabangRef, setCabangRef] = useState<{ id: string; nama: string } | null>(null);
   const [loadingNilai, setLoadingNilai] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
@@ -99,6 +102,23 @@ export default function DetailTrilogiSiswaPage() {
         );
         const kelasSnap = await getDocs(qKelas);
         const jenjangSiswa = !kelasSnap.empty ? (kelasSnap.docs[0].data().jenjangKelas || "") : "";
+
+        // Referensi kelas & cabang siswa (untuk kelasId, namaKelas, cabangId, namaCabang)
+        let kelasInfo: { id: string; namaKelas: string } | null = null;
+        let cabangInfo: { id: string; nama: string } | null = null;
+        if (!kelasSnap.empty) {
+          const kelasDoc = kelasSnap.docs[0];
+          kelasInfo = { id: kelasDoc.id, namaKelas: kelasDoc.data().namaKelas || siswaData.kelas || "" };
+        }
+        setKelasRef(kelasInfo);
+        if (siswaData.cabang) {
+          const qCabang = query(collection(db, "cabang"), where("nama", "==", siswaData.cabang));
+          const snapCabang = await getDocs(qCabang);
+          if (!snapCabang.empty) {
+            cabangInfo = { id: snapCabang.docs[0].id, nama: snapCabang.docs[0].data().nama || siswaData.cabang };
+          }
+        }
+        setCabangRef(cabangInfo);
 
         // Trilogi Groups untuk mapping nama grup
         const snapGroups = await getDocs(collection(db, "trilogi_groups"));
@@ -193,18 +213,32 @@ export default function DetailTrilogiSiswaPage() {
     setSavingItemId(itemId);
     try {
       const existing = nilaiMap[itemId];
+      const subItem = trilogiList.find(t => t.id === itemId);
+      const semester = semesterList.find(s => s.id === selectedSemester);
       if (existing && existing.docId !== "new") {
         // Update dokumen yang sudah ada
-        await updateDoc(doc(db, "nilai_trilogi", existing.docId), { nilai });
+        await updateDoc(doc(db, "nilai_trilogi", existing.docId), {
+          nilai,
+          updatedAt: serverTimestamp(),
+        });
       } else {
         await addDoc(collection(db, "nilai_trilogi"), {
+          cabangId: cabangRef?.id || "",
+          namaCabang: siswa?.cabang || cabangRef?.nama || "",
+          kelasId: kelasRef?.id || "",
+          namaKelas: siswa?.kelas || kelasRef?.namaKelas || "",
           siswaId,
+          namaSiswa: siswa?.nama || "",
           semesterId: selectedSemester,
+          namaSemester: semester?.namaPeriode || "",
+          trilogiId: itemId,
+          namaTrilogi: subItem?.groupName || "",
           subTrilogiId: itemId,
-          trilogiId: itemId, // disimpan juga untuk kompatibilitas dengan pembacaan lama
+          namaSubTrilogi: subItem?.deskripsi || "",
           nilai,
           guruId: guruData.id,
           guruNama: guruData.nama,
+          tanggal: new Date().toISOString().split("T")[0],
           createdAt: serverTimestamp(),
         });
       }
