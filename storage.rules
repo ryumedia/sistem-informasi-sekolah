@@ -11,6 +11,12 @@ service firebase.storage {
       allow read: if true;
     }
 
+    // Izinkan publik mengunggah bukti transfer dari formulir siswa baru.
+    match /bukti_transfer/{fileName} {
+      allow write: if true;
+      allow read: if true;
+    }
+
     // Aturan untuk cover program, hanya admin yang bisa akses.
     match /rekrutmen_covers/{fileName} {
       allow read, write: if request.auth != null;
