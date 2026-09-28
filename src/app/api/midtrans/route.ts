@@ -16,7 +16,7 @@ if (!clientKey) {
 
 // Inisialisasi Snap API dari Midtrans
 const snap = new midtransClient.Snap({
-  isProduction: false, // Set ke true jika sudah di production
+  isProduction: true, // Production mode - pembayaran uang sungguhan
   serverKey: serverKey,
   clientKey: clientKey,
 });

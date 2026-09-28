@@ -33,7 +33,7 @@ export default function HalamanPembayaranSnap({ params }: { params: Promise<{ or
     // Muat script Midtrans Snap
     const clientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY;
     const script = document.createElement('script');
-    script.src = "https://app.sandbox.midtrans.com/snap/snap.js"; // Ganti ke URL production jika sudah live
+    script.src = "https://app.midtrans.com/snap/snap.js"; // Production URL
     script.setAttribute('data-client-key', clientKey || '');
     script.async = true;
 

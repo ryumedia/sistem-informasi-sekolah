@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     }
     const midtransClient = (await import('midtrans-client')).default;
     const snap = new midtransClient.Snap({
-      isProduction: false,
+      isProduction: true, // Production mode - pembayaran uang sungguhan
       serverKey: serverKey,
       clientKey: process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || '',
     });
