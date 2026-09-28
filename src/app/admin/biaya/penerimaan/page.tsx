@@ -415,9 +415,9 @@ export default function PenerimaanPage() {
                         )}
                         <button 
                           onClick={() => openModal(item)}
-                          disabled={item.sudahMasukArusKas || item.status !== 'settlement'}
+                          disabled={item.sudahMasukArusKas || (item.status !== undefined && item.status !== 'settlement' && item.status !== 'capture' && item.status !== 'manual')}
                           className="text-green-600 hover:text-green-800 disabled:text-gray-300 disabled:cursor-not-allowed"
-                          title={item.status !== 'settlement' ? 'Hanya pembayaran sukses yang bisa ditambahkan' : 'Tambahkan ke Arus Kas'}
+                          title={item.status === 'pending' ? 'Tunggu pembayaran selesai' : item.status === 'expire' || item.status === 'cancel' || item.status === 'deny' || item.status === 'error' ? 'Pembayaran gagal, tidak bisa ditambahkan' : 'Tambahkan ke Arus Kas'}
                         >
                           <PlusCircle className="w-5 h-5" />
                         </button>
