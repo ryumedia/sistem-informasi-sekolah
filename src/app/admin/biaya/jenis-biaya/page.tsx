@@ -71,6 +71,7 @@ export default function JenisBiayaPage() {
 
   // Filter State
   const [filterCabang, setFilterCabang] = useState<string>("");
+  const [userRole, setUserRole] = useState<string>("");
   const [filteredJenisBiayaList, setFilteredJenisBiayaList] = useState<JenisBiaya[]>([]);
   const [filteredKelasList, setFilteredKelasList] = useState<Kelas[]>([]);
 
@@ -81,7 +82,9 @@ export default function JenisBiayaPage() {
         const qGuru = query(collection(db, "guru"), where("email", "==", user.email));
         const snapGuru = await getDocs(qGuru);
         if (!snapGuru.empty) {
-          setCurrentUser({ id: snapGuru.docs[0].id, ...snapGuru.docs[0].data() });
+          const userData = snapGuru.docs[0].data();
+          setCurrentUser({ id: snapGuru.docs[0].id, ...userData });
+          setUserRole(userData.role || "");
         } else {
           setCurrentUser(null); // Or handle other roles if necessary
         }
@@ -91,6 +94,14 @@ export default function JenisBiayaPage() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Kunci filter cabang sesuai cabang Kepala Sekolah (butuh cabangList untuk resolve ID)
+  useEffect(() => {
+    if (userRole === "Kepala Sekolah" && currentUser?.cabang && cabangList.length > 0) {
+      const cabangKS = cabangList.find(c => c.nama === currentUser.cabang);
+      if (cabangKS) setFilterCabang(cabangKS.id);
+    }
+  }, [userRole, currentUser, cabangList]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -287,9 +298,10 @@ export default function JenisBiayaPage() {
           <select
             value={filterCabang}
             onChange={(e) => setFilterCabang(e.target.value)}
-            className="w-full max-w-xs border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm"
+            disabled={userRole === "Kepala Sekolah"}
+            className={`w-full max-w-xs border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`}
           >
-            <option value="">Semua Cabang</option>
+            {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
             {cabangList.map(c => <option key={c.id} value={c.id}>{c.nama}</option>)}
           </select>
         </div>

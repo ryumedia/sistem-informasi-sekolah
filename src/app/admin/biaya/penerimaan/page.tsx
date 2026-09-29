@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase";
 import {
   collection,
   query,
@@ -14,8 +14,10 @@ import {
   where,
   Timestamp,
 } from "firebase/firestore";
-import { Loader2, PlusCircle, X, RefreshCw } from 'lucide-react';
+import { onAuthStateChanged } from 'firebase/auth';
+import { Loader2, PlusCircle, X, RefreshCw, Download } from 'lucide-react';
 import { format } from 'date-fns';
+import * as XLSX from 'xlsx';
 
 // --- INTERFACES ---
 interface Pembayaran {
@@ -70,8 +72,11 @@ export default function PenerimaanPage() {
 
   // Filter State
   const [filterCabang, setFilterCabang] = useState<string>("");
+  const [userRole, setUserRole] = useState<string>("");
+  const [userCabangNama, setUserCabangNama] = useState<string>("");
   const [filterTanggalMulai, setFilterTanggalMulai] = useState<string>("");
   const [filterTanggalSelesai, setFilterTanggalSelesai] = useState<string>("");
+  const [filterStatus, setFilterStatus] = useState<string>("");
   const [filteredLaporanList, setFilteredLaporanList] = useState<LaporanPenerimaan[]>([]);
   const [totalPenerimaan, setTotalPenerimaan] = useState<number>(0);
 
@@ -86,6 +91,34 @@ export default function PenerimaanPage() {
   const [selectedCabangInModal, setSelectedCabangInModal] = useState<string>("");
   const [nomenklaturPemasukanList, setNomenklaturPemasukanList] = useState<Nomenklatur[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // --- CEK ROLE USER (Kepala Sekolah hanya bisa lihat cabangnya sendiri) ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser?.email) {
+        try {
+          const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            const userData = snap.docs[0].data();
+            setUserRole(userData.role);
+            if (userData.cabang) setUserCabangNama(userData.cabang);
+          }
+        } catch (error) {
+          console.error("Error fetching user role:", error);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Kunci filter cabang sesuai cabang Kepala Sekolah (butuh cabangList untuk resolve ID)
+  useEffect(() => {
+    if (userRole === "Kepala Sekolah" && userCabangNama && cabangList.length > 0) {
+      const cabangKS = cabangList.find(c => c.nama === userCabangNama);
+      if (cabangKS) setFilterCabang(cabangKS.id);
+    }
+  }, [userRole, userCabangNama, cabangList]);
 
   // --- DATA FETCHING ---
   useEffect(() => {
@@ -185,8 +218,28 @@ export default function PenerimaanPage() {
       filtered = filtered.filter(item => item.tanggalBayar.toDate() <= endDate);
     }
 
+    if (filterStatus) {
+      filtered = filtered.filter(item => {
+        const status = item.status || 'manual';
+        switch (filterStatus) {
+          case 'sukses':
+            return status === 'settlement' || status === 'capture';
+          case 'manual':
+            return !item.status;
+          case 'pending':
+            return status === 'pending';
+          case 'expire':
+            return status === 'expire';
+          case 'gagal':
+            return status === 'deny' || status === 'cancel' || status === 'error';
+          default:
+            return status === filterStatus;
+        }
+      });
+    }
+
     setFilteredLaporanList(filtered); // This line is fine, the dependency array is the issue.
-  }, [filterCabang, filterTanggalMulai, filterTanggalSelesai, laporanList, cabangList]);
+  }, [filterCabang, filterTanggalMulai, filterTanggalSelesai, filterStatus, laporanList, cabangList]);
 
   // --- CALCULATE TOTAL & INITIAL FILTERED LIST ---
   useEffect(() => {
@@ -303,13 +356,62 @@ export default function PenerimaanPage() {
     });
   };
 
+  // --- DOWNLOAD EXCEL (mengikuti filter aktif) ---
+  const handleDownloadExcel = () => {
+    if (filteredLaporanList.length === 0) {
+      alert('Tidak ada data untuk didownload.');
+      return;
+    }
+
+    const dataForExcel = filteredLaporanList.map((item, i) => ({
+      'No.': i + 1,
+      'Tanggal Bayar': format(item.tanggalBayar.toDate(), 'dd MMMM yyyy'),
+      'Nama Siswa': item.namaSiswa,
+      'Cabang': item.cabangSiswa,
+      'Kelas': item.kelasSiswa,
+      'Jenis Biaya': item.jenisBiaya,
+      'ID Transaksi': item.transactionId || '-',
+      'Nominal Pembayaran': item.jumlahBayar,
+      'Status Pembayaran': !item.status ? 'Manual' : item.status === 'settlement' || item.status === 'capture' ? 'Sukses' : item.status === 'pending' ? 'Tertunda' : item.status === 'expire' ? 'Kedaluwarsa' : item.status === 'deny' || item.status === 'cancel' || item.status === 'error' ? 'Gagal' : item.status,
+      'Dicatat Oleh': item.dicatatOleh,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
+    worksheet['!cols'] = [
+      { wch: 5 }, { wch: 16 }, { wch: 25 }, { wch: 15 }, { wch: 10 },
+      { wch: 28 }, { wch: 25 }, { wch: 18 }, { wch: 16 }, { wch: 22 },
+    ];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Laporan Penerimaan');
+
+    const cabangNama = filterCabang
+      ? cabangList.find(c => c.id === filterCabang)?.nama.replace(/\s+/g, '_')
+      : 'Semua_Cabang';
+    const tglMulai = filterTanggalMulai ? format(new Date(filterTanggalMulai), 'yyyyMMdd') : 'awal';
+    const tglSelesai = filterTanggalSelesai ? format(new Date(filterTanggalSelesai), 'yyyyMMdd') : 'sekarang';
+
+    const statusNama = filterStatus
+      ? filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1)
+      : 'Semua_Status';
+    XLSX.writeFile(workbook, `Laporan_Penerimaan_${cabangNama}_${statusNama}_${tglMulai}-${tglSelesai}.xlsx`);
+  };
+
   // --- RENDER ---
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-800">Laporan Penerimaan</h1>
 
-      {/* Tombol Sinkronisasi Manual */}
-      <div className="flex justify-end">
+      {/* Tombol Aksi */}
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={handleDownloadExcel}
+          disabled={loading || filteredLaporanList.length === 0}
+          className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Download data sesuai filter yang aktif"
+        >
+          <Download className="w-4 h-4" />
+          Download Excel
+        </button>
         <button
           onClick={handleSyncAll}
           disabled={isSyncingAll}
@@ -322,11 +424,11 @@ export default function PenerimaanPage() {
       </div>
 
       {/* Filters & Total */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100 items-end">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100 items-end">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Filter Cabang</label>
-          <select value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm">
-            <option value="">Semua Cabang</option>
+          <select value={filterCabang} onChange={(e) => setFilterCabang(e.target.value)} disabled={userRole === "Kepala Sekolah"} className={`w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`}>
+            {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
             {cabangList.map(c => <option key={c.id} value={c.id}>{c.nama}</option>)}
           </select>
         </div>
@@ -337,6 +439,17 @@ export default function PenerimaanPage() {
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal Selesai</label>
           <input type="date" value={filterTanggalSelesai} onChange={(e) => setFilterTanggalSelesai(e.target.value)} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Filter Status</label>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm">
+            <option value="">Semua Status</option>
+            <option value="sukses">Sukses</option>
+            <option value="manual">Manual</option>
+            <option value="pending">Tertunda</option>
+            <option value="expire">Kedaluwarsa</option>
+            <option value="gagal">Gagal</option>
+          </select>
         </div>
         <div className="bg-green-50 border border-green-200 p-4 rounded-lg text-center h-full flex flex-col justify-center">
             <p className="text-sm text-green-800 font-medium">Total Penerimaan (Filtered)</p>

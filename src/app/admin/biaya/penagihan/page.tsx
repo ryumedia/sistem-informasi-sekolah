@@ -80,6 +80,8 @@ export default function PenagihanPage() {
   const [filterTahun, setFilterTahun] = useState<string>(currentYear.toString());
   const [filterBulan, setFilterBulan] = useState<string>(months[new Date().getMonth()]);
   const [filterCabang, setFilterCabang] = useState<string>("");
+  const [userRole, setUserRole] = useState<string>("");
+  const [userCabangNama, setUserCabangNama] = useState<string>("");
   const [filterKelas, setFilterKelas] = useState<string>("");
   const [filteredSiswaList, setFilteredSiswaList] = useState<SiswaWithStatus[]>([]);
   const [kelasOptions, setKelasOptions] = useState<Kelas[]>([]);
@@ -89,11 +91,32 @@ export default function PenagihanPage() {
 
   // --- DATA FETCHING & AUTH ---
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
+      if (user?.email) {
+        try {
+          const q = query(collection(db, "guru"), where("email", "==", user.email));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            const userData = snap.docs[0].data();
+            setUserRole(userData.role);
+            if (userData.cabang) setUserCabangNama(userData.cabang);
+          }
+        } catch (error) {
+          console.error("Error fetching user role:", error);
+        }
+      }
     });
     return () => unsubscribe();
   }, []);
+
+  // Kunci filter cabang sesuai cabang Kepala Sekolah (butuh cabangList untuk resolve ID)
+  useEffect(() => {
+    if (userRole === "Kepala Sekolah" && userCabangNama && cabangList.length > 0) {
+      const cabangKS = cabangList.find(c => c.nama === userCabangNama);
+      if (cabangKS) setFilterCabang(cabangKS.id);
+    }
+  }, [userRole, userCabangNama, cabangList]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -201,9 +224,10 @@ export default function PenagihanPage() {
           <select
             value={filterCabang}
             onChange={(e) => setFilterCabang(e.target.value)}
-            className="w-full max-w-xs border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm"
+            disabled={userRole === "Kepala Sekolah"}
+            className={`w-full max-w-xs border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`}
           >
-            <option value="">Semua Cabang</option>
+            {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
             {cabangList.map(c => <option key={c.id} value={c.id}>{c.nama}</option>)}
           </select>
         </div>
