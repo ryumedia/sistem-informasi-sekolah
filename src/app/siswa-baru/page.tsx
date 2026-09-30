@@ -441,7 +441,7 @@ export default function PendaftaranSiswaBaruPage() {
                 </div>
             </div>
             <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-700">Mengetahui info Main Riang dari?</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-700">Mengetahui Info Main Riang dari?</label>
                 <div className="mt-2 space-y-2 text-gray-700 dark:text-gray-700">
                     <label className="flex items-center"><input type="radio" name="infoDari" value="Re-Enrollment / Siswa Eksisting" checked={formData.infoDari === 'Re-Enrollment / Siswa Eksisting'} onChange={handleChange} className="form-radio" /> <span className="ml-2">Re-Enrollment / Siswa Eksisting</span></label>
                     <label className="flex items-center"><input type="radio" name="infoDari" value="Teman" checked={formData.infoDari === 'Teman'} onChange={handleChange} className="form-radio" /> <span className="ml-2">Teman</span></label>
