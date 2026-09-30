@@ -67,6 +67,13 @@ export default function PendaftaranSiswaBaruPage() {
       setBuktiTransfer(null);
       return;
     }
+    const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('Format file tidak didukung. Gunakan JPG, PNG, atau PDF.');
+      e.target.value = '';
+      setBuktiTransfer(null);
+      return;
+    }
     if (file.size > MAX_FILE_SIZE) {
       alert('Ukuran file maksimal 1 MB. Silakan pilih file yang lebih kecil.');
       e.target.value = '';
@@ -152,6 +159,26 @@ export default function PendaftaranSiswaBaruPage() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  // Helper: jalankan operasi async dengan retry otomatis (untuk jaringan tidak stabil / server sesak)
+  const withRetry = async <T,>(fn: () => Promise<T>, retries = 2, delayMs = 1500): Promise<T> => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        lastError = err;
+        const code = (err as { code?: string }).code || '';
+        const retryable = !code.includes('permission') && !code.includes('unauthorized') && !code.includes('denied');
+        if (attempt < retries && retryable) {
+          await new Promise(res => setTimeout(res, delayMs * (attempt + 1)));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastError;
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!confirm("Apakah Anda yakin data yang diisi sudah benar?")) return;
@@ -166,18 +193,19 @@ export default function PendaftaranSiswaBaruPage() {
       }
       const infoDetail = formData.infoDari === 'Lainnya' ? formData.infoLainnya : formData.infoDari;
 
-      const storageRef = ref(storage, `bukti_transfer/${Date.now()}_${buktiTransfer.name}`);
-      await uploadBytes(storageRef, buktiTransfer);
-      const buktiTransferUrl = await getDownloadURL(storageRef);
+      const safeName = buktiTransfer.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storageRef = ref(storage, `bukti_transfer/${Date.now()}_${safeName}`);
+      await withRetry(() => uploadBytes(storageRef, buktiTransfer));
+      const buktiTransferUrl = await withRetry(() => getDownloadURL(storageRef));
 
-      await addDoc(collection(db, "siswa_baru_registrations"), {
+      await withRetry(() => addDoc(collection(db, "siswa_baru_registrations"), {
         ...formData,
         anakKe: formData.anakKe ? parseInt(formData.anakKe) : 0,
         infoDari: infoDetail,
         buktiTransferUrl,
         statusPendaftaran: 'Baru',
         createdAt: Timestamp.now(),
-      });
+      }));
 
       alert("Pendaftaran berhasil dikirim! Terima kasih telah mendaftar di Main Riang.");
       // Reset form
@@ -207,7 +235,16 @@ export default function PendaftaranSiswaBaruPage() {
 
     } catch (error) {
       console.error("Error submitting registration:", error);
-      alert("Terjadi kesalahan saat mengirim pendaftaran. Silakan coba lagi.");
+      const code = (error as { code?: string }).code || '';
+      let pesan = 'Terjadi kesalahan saat mengirim pendaftaran. Silakan coba lagi.';
+      if (code.includes('unauthorized') || code.includes('permission')) {
+        pesan = 'Upload ditolak server (permission). Kemungkinan nama/isi file tidak sesuai ketentuan. Coba gunakan file JPG/PNG/PDF.';
+      } else if (code.includes('retry-limit') || code.includes('network')) {
+        pesan = 'Koneksi internet tidak stabil saat mengunggah. Periksa koneksi lalu coba lagi.';
+      } else if (code.includes('quota')) {
+        pesan = 'Server sedang sibuk / kuota terlampaui. Coba beberapa saat lagi.';
+      }
+      alert(`${pesan}${code ? ` (Kode: ${code})` : ''}`);
     } finally {
       setSubmitting(false);
     }
@@ -419,12 +456,12 @@ export default function PendaftaranSiswaBaruPage() {
                 type="file"
                 id="buktiTransfer"
                 name="buktiTransfer"
-                accept="image/*,.pdf"
+                accept="image/jpeg,image/png,.pdf"
                 required
                 onChange={handleFileChange}
                 className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm text-gray-900 dark:text-gray-900 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:bg-[#581c87] file:text-white file:cursor-pointer"
               />
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">Format gambar (JPG, PNG) atau PDF, ukuran file maksimal 1 MB.</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">Format JPG, PNG, atau PDF, ukuran file maksimal 1 MB.</p>
               {buktiTransfer && (
                 <p className="mt-2 text-xs text-green-700">File terpilih: {buktiTransfer.name} ({(buktiTransfer.size / 1024).toFixed(0)} KB)</p>
               )}
