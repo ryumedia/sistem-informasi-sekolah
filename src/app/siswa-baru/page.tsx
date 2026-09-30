@@ -198,7 +198,7 @@ export default function PendaftaranSiswaBaruPage() {
       await withRetry(() => uploadBytes(storageRef, buktiTransfer));
       const buktiTransferUrl = await withRetry(() => getDownloadURL(storageRef));
 
-      await withRetry(() => addDoc(collection(db, "siswa_baru_registrations"), {
+      const registrationRef = await withRetry(() => addDoc(collection(db, "siswa_baru_registrations"), {
         ...formData,
         anakKe: formData.anakKe ? parseInt(formData.anakKe) : 0,
         infoDari: infoDetail,
@@ -206,6 +206,21 @@ export default function PendaftaranSiswaBaruPage() {
         statusPendaftaran: 'Baru',
         createdAt: Timestamp.now(),
       }));
+
+      // Pengiriman WhatsApp dilakukan melalui server agar API key Starsender tetap rahasia.
+      try {
+        const notificationResponse = await fetch('/api/notifikasi/siswa-baru', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ registrationId: registrationRef.id }),
+        });
+        if (!notificationResponse.ok) {
+          console.error('Notifikasi WhatsApp gagal:', await notificationResponse.text());
+        }
+      } catch (notificationError) {
+        // Pendaftaran tetap berhasil meskipun layanan WhatsApp sedang bermasalah.
+        console.error('Error mengirim notifikasi WhatsApp:', notificationError);
+      }
 
       alert("Pendaftaran berhasil dikirim! Terima kasih telah mendaftar di Main Riang.");
       // Reset form

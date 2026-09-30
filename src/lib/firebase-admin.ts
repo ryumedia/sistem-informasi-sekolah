@@ -9,9 +9,18 @@ import { getApps, getApp } from 'firebase-admin/app';
 
 function getServiceAccount(): admin.ServiceAccount {
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  // Saat menyimpan private key di .env, ganti newline asli (\n) dengan literal "\\n"
-  // Kode di bawah akan mengubahnya kembali ke format yang benar.
-  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+  // Simpan private key sebagai FIREBASE_PRIVATE_KEY_BASE64 jika format newline
+  // di .env bermasalah. Jika tidak, dukung newline literal dan escape \n.
+  const encodedPrivateKey = process.env.FIREBASE_PRIVATE_KEY_BASE64?.trim();
+  const privateKey = encodedPrivateKey
+    ? Buffer.from(encodedPrivateKey, 'base64').toString('utf8').trim()
+    : (process.env.FIREBASE_PRIVATE_KEY || '')
+      .replace(/^['"]|['"]$/g, '')
+      .replace(/\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '')
+      .replace(/\r/g, '')
+      .trim();
 
   // FIREBASE_PROJECT_ID bersifat opsional: jika tidak diatur, ekstrak dari clientEmail
   // (format: firebase-adminsdk-xxxx@<PROJECT_ID>.iam.gserviceaccount.com)
@@ -26,6 +35,12 @@ function getServiceAccount(): admin.ServiceAccount {
     throw new Error(
       `Firebase Admin kredensial tidak lengkap. Environment variable berikut tidak ditemukan: ${missing.join(', ')}. ` +
       `Pastikan sudah diatur di server (misal .env.local atau pengaturan environment di hosting).`
+    );
+  }
+
+  if (!privateKey.includes('-----BEGIN PRIVATE KEY-----') || !privateKey.includes('-----END PRIVATE KEY-----')) {
+    throw new Error(
+      'FIREBASE_PRIVATE_KEY bukan PEM yang valid. Gunakan private_key dari file JSON service account atau FIREBASE_PRIVATE_KEY_BASE64.'
     );
   }
 

@@ -1,4 +1,4 @@
-"use client";
+﻿﻿"use client";
 
 import { useState, useEffect, useMemo } from 'react';
 import { db, auth } from "@/lib/firebase";
@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged } from 'firebase/auth';
 import Link from 'next/link';
-import { Eye, Send, Loader2, Plus, X } from 'lucide-react';
+import { Eye, Send, Loader2, Plus, X, Search } from 'lucide-react';
 
 // --- INTERFACES ---
 interface Siswa {
@@ -79,6 +79,8 @@ export default function PenagihanPage() {
   // Filter State
   const [filterTahun, setFilterTahun] = useState<string>(currentYear.toString());
   const [filterBulan, setFilterBulan] = useState<string>(months[new Date().getMonth()]);
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<'all'|'paid'|'unpaid'>('all');
   const [filterCabang, setFilterCabang] = useState<string>("");
   const [userRole, setUserRole] = useState<string>("");
   const [userCabangNama, setUserCabangNama] = useState<string>("");
@@ -194,6 +196,19 @@ export default function PenagihanPage() {
       }
     }
 
+    if (statusFilter === 'paid') {
+      filtered = filtered.filter(siswa => siswa.statusPembayaran === 'Lunas');
+    } else if (statusFilter === 'unpaid') {
+      filtered = filtered.filter(siswa => siswa.statusPembayaran === 'Belum Lunas');
+    }
+
+    if (searchTerm.trim()) {
+      const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+      filtered = filtered.filter(siswa =>
+        siswa.nama.toLowerCase().includes(normalizedSearchTerm)
+      );
+    }
+
     if (filterKelas) {
       const selectedKelas = kelasList.find(k => k.id === filterKelas);
       if (selectedKelas) {
@@ -202,7 +217,7 @@ export default function PenagihanPage() {
     }
 
     setFilteredSiswaList(filtered);
-  }, [filterCabang, filterKelas, filterTahun, filterBulan, siswaList, tagihanList, cabangList, kelasList]);
+  }, [filterCabang, filterKelas, filterTahun, filterBulan, searchTerm, statusFilter, siswaList, tagihanList, cabangList, kelasList]);
 
   // --- RENDER ---
   return (
@@ -218,7 +233,7 @@ export default function PenagihanPage() {
       </div>
 
       {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
         <div className="flex-1">
           <label className="block text-sm font-medium text-gray-700 mb-1">Filter Cabang</label>
           <select
@@ -255,6 +270,28 @@ export default function PenagihanPage() {
             {months.map(month => <option key={month} value={month}>{month}</option>)}
           </select>
         </div>
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Status Pembayaran</label>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | 'paid' | 'unpaid')} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm">
+            <option value="all">Semua Status</option>
+            <option value="paid">Lunas</option>
+            <option value="unpaid">Belum Lunas</option>
+          </select>
+        </div>
+        <div className="flex-1 lg:col-span-2">
+          <label htmlFor="search-siswa" className="block text-sm font-medium text-gray-700 mb-1">Cari Nama Siswa</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              id="search-siswa"
+              type="search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Ketik nama siswa..."
+              className="w-full border rounded-lg p-2 pl-9 focus:ring-2 focus:ring-[#581c87] outline-none text-sm"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Data Table */}
@@ -275,7 +312,7 @@ export default function PenagihanPage() {
               {loading ? (
                 <tr><td colSpan={6} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
               ) : filteredSiswaList.length === 0 ? (
-                <tr><td colSpan={5} className="p-8 text-center text-gray-500">Tidak ada data siswa yang cocok.</td></tr>
+                <tr><td colSpan={6} className="p-8 text-center text-gray-500">Tidak ada data siswa yang cocok.</td></tr>
               ) : (
                 filteredSiswaList.map((siswa, i) => (
                   <tr key={siswa.id} className="hover:bg-gray-50">

@@ -12,6 +12,7 @@ interface Cabang {
   alamat: string;
   kota: string;
   status: string;
+  apiStarsender?: string;
 }
 
 export default function PengaturanCabangPage() {
@@ -27,6 +28,7 @@ export default function PengaturanCabangPage() {
     alamat: "",
     kota: "",
     status: "Aktif",
+    apiStarsender: "",
   });
 
   const fetchData = async () => {
@@ -94,13 +96,14 @@ export default function PengaturanCabangPage() {
       alamat: item.alamat,
       kota: item.kota || "",
       status: item.status,
+      apiStarsender: item.apiStarsender || "",
     });
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
-    setFormData({ nama: "", kepalaSekolah: "", alamat: "", kota: "", status: "Aktif" });
+    setFormData({ nama: "", kepalaSekolah: "", alamat: "", kota: "", status: "Aktif", apiStarsender: "" });
     setEditId(null);
   };
 
@@ -127,14 +130,15 @@ export default function PengaturanCabangPage() {
               <th className="p-4">Kota</th>
               <th className="p-4">Alamat</th>
               <th className="p-4">Status</th>
+              <th className="p-4">API Starsender</th>
               <th className="p-4 w-32">Aksi</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={6} className="p-8 text-center">Memuat data...</td></tr>
+              <tr><td colSpan={8} className="p-8 text-center">Memuat data...</td></tr>
             ) : dataList.length === 0 ? (
-              <tr><td colSpan={6} className="p-8 text-center">Belum ada data cabang.</td></tr>
+              <tr><td colSpan={8} className="p-8 text-center">Belum ada data cabang.</td></tr>
             ) : (
               dataList.map((item, index) => (
                 <tr key={item.id} className="hover:bg-gray-50">
@@ -149,6 +153,9 @@ export default function PengaturanCabangPage() {
                     }`}>
                       {item.status}
                     </span>
+                  </td>
+                  <td className="p-4 font-mono text-xs text-gray-500">
+                    {item.apiStarsender ? `${item.apiStarsender.slice(0, 4)}${'•'.repeat(Math.max(item.apiStarsender.length - 4, 4))}` : 'Belum diatur'}
                   </td>
                   <td className="p-4 flex gap-2">
                     <button onClick={() => handleEdit(item)} className="p-2 text-[#581c87] hover:bg-[#581c87]/10 rounded-lg transition">
@@ -195,6 +202,17 @@ export default function PengaturanCabangPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Alamat</label>
                 <textarea required className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   placeholder="Alamat lengkap cabang" rows={3} value={formData.alamat} onChange={(e) => setFormData({...formData, alamat: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">API Starsender</label>
+                <input
+                  type="password"
+                  className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+                  placeholder="Masukkan API key Starsender"
+                  value={formData.apiStarsender}
+                  onChange={(e) => setFormData({...formData, apiStarsender: e.target.value})}
+                />
+                <p className="text-xs text-gray-500 mt-1">API key digunakan untuk mengirim notifikasi WhatsApp dari cabang ini.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>

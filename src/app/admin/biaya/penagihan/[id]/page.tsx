@@ -364,6 +364,22 @@ export default function DetailPenagihanPage() {
 
       await batch.commit();
       alert("Pembayaran berhasil dicatat.");
+
+      // Kirim notifikasi WhatsApp pembayaran melalui server (API key Starsender tetap rahasia).
+      try {
+        const notificationResponse = await fetch('/api/notifikasi/pembayaran', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentId: pembayaranRef.id }),
+        });
+        if (!notificationResponse.ok) {
+          console.error('Notifikasi pembayaran gagal:', await notificationResponse.text());
+        }
+      } catch (notificationError) {
+        // Pencatatan pembayaran tetap dianggap berhasil meskipun notifikasi gagal.
+        console.error('Error mengirim notifikasi pembayaran:', notificationError);
+      }
+
       await fetchData(); // Re-fetch data untuk update tampilan
       closeModal();
     } catch (error) {

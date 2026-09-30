@@ -72,6 +72,20 @@ export async function POST(request: Request) {
             status: sisaTagihan <= 0 ? 'Lunas' : 'Belum Lunas',
           });
         }
+
+        // Kirim notifikasi WhatsApp pembayaran (kegagalan WA tidak mengganggu hasil sinkronisasi)
+        try {
+          const notificationResponse = await fetch(`${new URL(request.url).origin}/api/notifikasi/pembayaran`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paymentId: pembayaranDoc.id }),
+          });
+          if (!notificationResponse.ok) {
+            console.error('Notifikasi pembayaran WhatsApp gagal:', await notificationResponse.text());
+          }
+        } catch (notificationError) {
+          console.error('Error mengirim notifikasi pembayaran:', notificationError);
+        }
       }
     }
 
