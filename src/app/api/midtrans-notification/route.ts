@@ -73,7 +73,7 @@ export async function POST(request: Request) {
 
         // Kirim notifikasi WhatsApp (gunakan service agar kegagalan WA tidak mengganggu hasil Midtrans)
         try {
-          const notificationResponse = await fetch(`${request.nextUrl.origin}/api/notifikasi/pembayaran`, {
+          const notificationResponse = await fetch(`${new URL(request.url).origin}/api/notifikasi/pembayaran`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ paymentId: pembayaranDoc.id }),
