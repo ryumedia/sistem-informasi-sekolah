@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, query, orderBy, getDocs, deleteDoc, doc, updateDoc, Timestamp } from 'firebase/firestore';
-import { Loader2, Eye, Edit, Trash2, X, Filter, RotateCcw, UserPlus, ReceiptText } from 'lucide-react';
+import { Loader2, Eye, Edit, Trash2, X, Filter, RotateCcw, UserPlus, ReceiptText, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 
@@ -60,6 +61,7 @@ export default function SiswaBaruPage() {
   const [filterCabang, setFilterCabang] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterInfoDari, setFilterInfoDari] = useState('');
+  const [filterProgram, setFilterProgram] = useState('');
   const [cabangList, setCabangList] = useState<string[]>([]);
 
   useEffect(() => {
@@ -198,6 +200,7 @@ export default function SiswaBaruPage() {
         if (tglDaftar > endDate) return false;
       }
       if (filterCabang && p.lokasi !== filterCabang) return false;
+      if (filterProgram && p.program !== filterProgram) return false;
       if (filterStatus && p.statusPendaftaran !== filterStatus) return false;
       if (filterInfoDari && !(p.infoDari || '').toLowerCase().includes(filterInfoDari.toLowerCase())) return false;
 
@@ -213,15 +216,52 @@ export default function SiswaBaruPage() {
     const endIndex = startIndex + itemsPerPage;
 
     return {
+      allItems: filtered,
       paginatedItems: filtered.slice(startIndex, endIndex),
       totalItems: filtered.length,
       totalPages: Math.ceil(filtered.length / itemsPerPage)
     };
-  }, [registrations, filterTanggal, filterCabang, filterStatus, filterInfoDari, currentPage]);
+  }, [registrations, filterTanggal, filterCabang, filterProgram, filterStatus, filterInfoDari, currentPage]);
+
+  const programList = useMemo(() => {
+    const set = new Set(registrations.map(p => p.program).filter(Boolean));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'id'));
+  }, [registrations]);
+
+  const handleDownloadExcel = () => {
+    const data = filteredAndPaginatedRegistrations.allItems.map((p, i) => ({
+      'No.': i + 1,
+      'Tanggal Daftar': format(p.createdAt.toDate(), 'dd MMM yyyy, HH:mm', { locale: localeId }),
+      'Nama Siswa': p.namaAnak,
+      'Nama Panggilan': p.namaPanggilan,
+      'Jenis Kelamin': p.jenisKelamin,
+      'Jenjang Usia': p.kelompokUsia,
+      'Tempat, Tgl Lahir': `${p.tempatLahir}, ${format(new Date(p.tanggalLahir), 'dd MMM yyyy', { locale: localeId })}`,
+      'Agama': p.agama,
+      'Lokasi': p.lokasi,
+      'Program': p.program,
+      'Status': p.statusPendaftaran,
+      'Nama Ayah': p.namaAyah,
+      'Nama Ibu': p.namaIbu,
+      'Email': p.email,
+      'No. WA Ayah': p.noWaAyah || '',
+      'No. WA Ibu': p.noWaIbu || '',
+      'Anak Ke': p.anakKe,
+      'Kebutuhan Khusus': p.kebutuhanKhusus,
+      'Info Dari': p.infoDari || '',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    worksheet['!cols'] = Object.keys(data[0] || { No: '' }).map(() => ({ wch: 18 }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Siswa Baru');
+    XLSX.writeFile(workbook, `pendaftaran-siswa-baru-${format(new Date(), 'yyyyMMdd-HHmm')}.xlsx`);
+  };
 
   const resetFilters = () => {
     setFilterTanggal({ start: '', end: '' });
     setFilterCabang('');
+    setFilterProgram('');
     setFilterStatus('');
     setFilterInfoDari('');
     setCurrentPage(1);
@@ -253,14 +293,16 @@ export default function SiswaBaruPage() {
       {/* Filter Section */}
       <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-100 space-y-4">
         <div className="flex items-center gap-2 text-gray-700 dark:text-gray-700 font-medium"><Filter className="w-5 h-5" /><span>Filter Data</span></div>
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 text-sm">
+        <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-6 gap-4 text-sm">
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Dari Tanggal</label><input type="date" value={filterTanggal.start} onChange={e => setFilterTanggal(p => ({ ...p, start: e.target.value }))} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white" /></div>
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Sampai Tanggal</label><input type="date" value={filterTanggal.end} onChange={e => setFilterTanggal(p => ({ ...p, end: e.target.value }))} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white" /></div>
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Lokasi Pendaftaran</label><select value={filterCabang} onChange={e => setFilterCabang(e.target.value)} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white"><option value="">Semua Lokasi</option>{cabangList.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+          <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Program</label><select value={filterProgram} onChange={e => setFilterProgram(e.target.value)} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white"><option value="">Semua Program</option>{programList.map(pr => <option key={pr} value={pr}>{pr}</option>)}</select></div>
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Status</label><select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white"><option value="">Semua Status</option><option value="Baru">Baru</option><option value="Sudah Bayar">Sudah Bayar</option><option value="Sudah Lunas">Sudah Lunas</option><option value="Sudah Assesment">Sudah Assesment</option><option value="Sudah Konsultasi">Sudah Konsultasi</option><option value="Ditolak">Ditolak</option></select></div>
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Info Dari</label><input type="text" value={filterInfoDari} onChange={e => setFilterInfoDari(e.target.value)} placeholder="Cari sumber info..." className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white" /></div>
         </div>
-        <div className="flex justify-end">
+        <div className="flex justify-between items-center">
+          <button onClick={handleDownloadExcel} disabled={filteredAndPaginatedRegistrations.totalItems === 0} className="flex items-center gap-2 bg-green-600 text-white text-sm font-medium py-2 px-4 rounded-lg shadow-sm hover:bg-green-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed disabled:shadow-none"><Download className="w-4 h-4" /> Download Excel</button>
           <button onClick={resetFilters} className="flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-600 hover:text-gray-800 dark:hover:text-gray-800"><RotateCcw className="w-3 h-3" /> Reset Filter</button>
         </div>
       </div>
