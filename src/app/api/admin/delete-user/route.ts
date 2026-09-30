@@ -1,16 +1,6 @@
 // src/app/api/admin/delete-user/route.ts
 import { NextResponse } from "next/server";
-import * as admin from "firebase-admin";
-
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-    }),
-  });
-}
+import { auth } from "@/lib/firebase-admin";
 
 export async function POST(request: Request) {
   try {
@@ -21,7 +11,7 @@ export async function POST(request: Request) {
     // Jika UID tidak ada tapi Email ada (untuk data legacy/lama), cari UID by Email
     if (!targetUid && email) {
         try {
-            const userRecord = await admin.auth().getUserByEmail(email);
+            const userRecord = await auth.getUserByEmail(email);
             targetUid = userRecord.uid;
         } catch (e) {
             // User tidak ditemukan by email, anggap sudah terhapus
@@ -35,7 +25,7 @@ export async function POST(request: Request) {
     }
 
     // Hapus user dari Firebase Authentication
-    await admin.auth().deleteUser(targetUid);
+    await auth.deleteUser(targetUid);
 
     return NextResponse.json({ success: true, message: "User Auth deleted" });
   } catch (error: any) {

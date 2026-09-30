@@ -1,16 +1,6 @@
 // src/app/api/admin/update-user/route.ts
 import { NextResponse } from "next/server";
-import * as admin from "firebase-admin";
-
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-    }),
-  });
-}
+import { auth } from "@/lib/firebase-admin";
 
 export async function POST(request: Request) {
   try {
@@ -24,7 +14,7 @@ export async function POST(request: Request) {
     if (email) updateData.email = email;
     if (password && password.length >= 6) updateData.password = password;
 
-    await admin.auth().updateUser(uid, updateData);
+    await auth.updateUser(uid, updateData);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
