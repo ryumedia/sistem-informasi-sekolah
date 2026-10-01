@@ -26,7 +26,11 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()
-  })
+  }),
+  // Penting: deteksi otomatis long-polling.
+  // Tanpa ini, WebChannel bisa gagal (404 di RPC 'Listen') saat klien mencoba
+  // melanjutkan sesi streaming yang tidak didukung jaringan/proxy di depan browser.
+  experimentalAutoDetectLongPolling: true
 });
 const auth = getAuth(app);
 const storage = getStorage(app);

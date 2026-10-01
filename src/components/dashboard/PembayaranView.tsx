@@ -23,6 +23,9 @@ interface Tagihan {
   nominal: number;
   status: 'Lunas' | 'Belum Lunas';
   dibayar?: number;
+  nominalAwal?: number; // Nominal sebelum diskon
+  diskonJenis?: number; // Diskon dari jenis biaya (%)
+  diskonIndividual?: number; // Diskon individual per siswa (%)
 }
 
 interface Pembayaran {
@@ -39,6 +42,12 @@ interface Pembayaran {
 
 const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
+};
+
+// Hitung nominal setelah diskon (persentase 0-100)
+const hitungSetelahDiskon = (nominal: number, diskon?: number) => {
+  const nilaiDiskon = Math.min(Math.max(diskon || 0, 0), 100);
+  return Math.round(nominal * (1 - nilaiDiskon / 100));
 };
 
 export default function PembayaranView({ userData, onBack }: { user: any, userData: any, onBack: () => void }) {
@@ -304,6 +313,15 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
             const dibayar = tagihan.dibayar || 0;
             const sisa = tagihan.nominal - dibayar;
             const isLunas = sisa <= 0;
+            const diskonJenis = tagihan.diskonJenis || 0;
+            const diskonIndividual = tagihan.diskonIndividual || 0;
+            const adaDiskon = diskonJenis > 0 || diskonIndividual > 0;
+            // Nominal awal: pakai field tersimpan, jika belum ada hitung balik dari nominal + diskon
+            const nominalAwal = tagihan.nominalAwal
+              || (adaDiskon
+                ? Math.round(tagihan.nominal / ((1 - diskonJenis / 100) * (1 - diskonIndividual / 100)))
+                : tagihan.nominal);
+            const nilaiDiskon = nominalAwal - tagihan.nominal;
 
             return (
               <div key={tagihan.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
@@ -317,9 +335,47 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
                   </span>
                 </div>
                 <div className="space-y-2 text-sm border-t pt-3">
-                  <div className="flex justify-between"><span>Total Tagihan:</span><span className="font-medium">{formatCurrency(tagihan.nominal)}</span></div>
-                  <div className="flex justify-between"><span>Dibayar:</span><span className="font-medium text-green-600">{formatCurrency(dibayar)}</span></div>
-                  <div className="flex justify-between"><span>Sisa:</span><span className="font-bold text-red-600">{formatCurrency(sisa)}</span></div>
+                  {/* Rincian harga: harga awal, diskon, lalu jumlah akhir */}
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Harga Awal:</span>
+                    <span className={`font-medium ${adaDiskon ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{formatCurrency(nominalAwal)}</span>
+                  </div>
+
+                  {diskonJenis > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Diskon Jenis Biaya ({diskonJenis}%):</span>
+                      <span className="font-medium text-orange-600">
+                        - {formatCurrency(Math.round(nominalAwal * (diskonJenis / 100)))}
+                      </span>
+                    </div>
+                  )}
+
+                  {diskonIndividual > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Diskon Siswa ({diskonIndividual}%):</span>
+                      <span className="font-medium text-purple-600">
+                        - {formatCurrency(
+                          Math.round(
+                            hitungSetelahDiskon(nominalAwal, diskonJenis) * (diskonIndividual / 100)
+                          )
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {adaDiskon && (
+                    <div className="flex justify-between text-xs text-orange-700 bg-orange-50 -mx-1 px-2 py-1 rounded">
+                      <span>Total Potongan:</span>
+                      <span className="font-semibold">- {formatCurrency(nilaiDiskon)}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between border-t pt-2">
+                    <span className="font-semibold text-gray-700">Jumlah Akhir Tagihan:</span>
+                    <span className="font-bold text-gray-900">{formatCurrency(tagihan.nominal)}</span>
+                  </div>
+                  <div className="flex justify-between"><span className="text-gray-500">Dibayar:</span><span className="font-medium text-green-600">{formatCurrency(dibayar)}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Sisa:</span><span className="font-bold text-red-600">{formatCurrency(sisa)}</span></div>
                 </div>
                 {!isLunas && (
                   <div className="border-t mt-4 pt-4 flex justify-end">

@@ -1,19 +1,19 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useUser } from '@/contexts/UserContext'; // Import the hook
 import { db } from '@/lib/firebase';
 import {
   collection,
   query,
   where,
-  getDocs,
   orderBy,
   collectionGroup,
-  getCountFromServer,
+  onSnapshot,
   getAggregateFromServer,
   sum,
-  average
+  average,
+  Unsubscribe
 } from 'firebase/firestore';
 import { Building, Users, UserSquare, Star, ArrowDown, ArrowUp, Scale, Loader2, PieChart, BarChart3, Wallet } from 'lucide-react';
 
@@ -58,24 +58,33 @@ export default function AdminDashboard() {
     saldo: 0,
   });
 
+  // Ref untuk update incremental (listener menulis field-nya sendiri saja)
+  const statsRef = useRef({ kelas: 0, siswa: 0, guru: 0, performance: 0 });
+  const kelasStatsUnsubs = useRef<Unsubscribe[]>([]);
+
   // Fetch Cabang List for Filter
   useEffect(() => {
-    const fetchCabang = async () => {
+    const fetchCabang = () => {
       try {
-        const snapCabang = await getDocs(query(collection(db, "cabang"), orderBy("nama", "asc")));
-        setCabangList(snapCabang.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            nama: (data.nama as string) || "",
-            ...data
-          };
-        }));
+        // onSnapshot: hasil instan dari cache lokal, update realtime dari server
+        const unsub = onSnapshot(query(collection(db, "cabang"), orderBy("nama", "asc")), (snap) => {
+          setCabangList(snap.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              nama: (data.nama as string) || "",
+              ...data
+            };
+          }));
+        });
+        return unsub;
       } catch (err) {
         console.error("Error fetching cabang list:", err);
+        return undefined;
       }
     };
-    fetchCabang();
+    const cleanup = fetchCabang();
+    return () => cleanup?.();
   }, []);
 
   useEffect(() => {
@@ -92,38 +101,39 @@ export default function AdminDashboard() {
 
     const getBaseQuery = (col: string) => selectedCabang ? query(collection(db, col), where("cabang", "==", selectedCabang)) : collection(db, col);
 
-    const fetchGeneralStats = async () => {
-      try {
-        const kelasPromise = getCountFromServer(getBaseQuery("kelas")).catch(e => { console.error(e); return { data: () => ({ count: 0 }) }; });
-        const siswaPromise = getCountFromServer(query(getBaseQuery("siswa"), where("status", "==", "Aktif"))).catch(e => { console.error(e); return { data: () => ({ count: 0 }) }; });
-        const guruPromise = getCountFromServer(getBaseQuery("guru")).catch(e => { console.error(e); return { data: () => ({ count: 0 }) }; });
+    const fetchGeneralStats = () => {
+      const getBaseCountQuery = (col: string, extra: ReturnType<typeof where>[] = []) =>
+        query(collection(db, col), ...(selectedCabang ? [where("cabang", "==", selectedCabang)] : []), ...extra);
 
-        const pQuery = selectedCabang
-          ? query(collectionGroup(db, 'kpi_guru'), where('cabang', '==', selectedCabang))
-          : collectionGroup(db, 'kpi_guru');
+      // Pakai onSnapshot: angka muncul instan dari cache lokal, lalu realtime
+      const unsubKelas = onSnapshot(getBaseCountQuery("kelas"), snap => {
+        statsRef.current.kelas = snap.size;
+        setStats({ ...statsRef.current });
+      }, e => console.error(e));
 
-        const perfPromise = getAggregateFromServer(pQuery, { avg: average('persentase') }).catch(e => {
-          console.warn("KPI aggregation skipped or failed:", e);
-          return { data: () => ({ avg: 0 }) };
-        });
+      const unsubSiswa = onSnapshot(getBaseCountQuery("siswa", [where("status", "==", "Aktif")]), snap => {
+        statsRef.current.siswa = snap.size;
+        setStats({ ...statsRef.current });
+      }, e => console.error(e));
 
-        const [kelasCountSnap, siswaAktifCountSnap, guruCountSnap, perfAgg] = await Promise.all([
-          kelasPromise,
-          siswaPromise,
-          guruPromise,
-          perfPromise
-        ]);
+      const unsubGuru = onSnapshot(getBaseCountQuery("guru"), snap => {
+        statsRef.current.guru = snap.size;
+        setStats({ ...statsRef.current });
+      }, e => console.error(e));
 
-        const avgPerformance = perfAgg.data().avg || 0;
-        setStats({
-          kelas: kelasCountSnap.data().count,
-          siswa: siswaAktifCountSnap.data().count,
-          guru: guruCountSnap.data().count,
-          performance: parseFloat(avgPerformance.toFixed(2)),
-        });
-      } catch (err) {
-        console.error("Error fetching general stats:", err);
-      }
+      const pQuery = selectedCabang
+        ? query(collectionGroup(db, 'kpi_guru'), where('cabang', '==', selectedCabang))
+        : collectionGroup(db, 'kpi_guru');
+
+      // Agregasi KPI tetap sekali ambil (tidak bisa di-cache seperti count)
+      getAggregateFromServer(pQuery, { avg: average('persentase') })
+        .then(agg => {
+          statsRef.current.performance = parseFloat((agg.data().avg || 0).toFixed(2));
+          setStats({ ...statsRef.current });
+        })
+        .catch(e => console.warn("KPI aggregation skipped or failed:", e));
+
+      return () => { unsubKelas(); unsubSiswa(); unsubGuru(); };
     };
 
     const fetchKeuanganStats = async () => {
@@ -144,71 +154,69 @@ export default function AdminDashboard() {
       }
     };
 
-    const fetchKelasStats = async () => {
-      try {
-        // 1. Fetch kumpul kelas (1 query)
-        const kelasSnap = await getDocs(getBaseQuery("kelas"));
+    const fetchKelasStats = () => {
+      // 1. onSnapshot kelas — instan dari cache lokal
+      const unsubKelas = onSnapshot(getBaseQuery("kelas"), kelasSnap => {
         const classes = kelasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as { id: string; namaKelas?: string; cabang?: string }));
 
-        // 2. Fetch seluruh siswa aktif dalam 1 QUERY tunggal (bukan N*2 query!)
-        const siswaQuery = query(getBaseQuery("siswa"), where("status", "==", "Aktif"));
-        const siswaSnap = await getDocs(siswaQuery);
+        // 2. onSnapshot siswa aktif — instan dari cache lokal
+        const unsubSiswa = onSnapshot(query(getBaseQuery("siswa"), where("status", "==", "Aktif")), siswaSnap => {
+          const genderCounts: Record<string, { laki: number; perempuan: number }> = {};
 
-        // 3. Kelompokkan jumlah siswa per kelas & jenis kelamin di memori (Sangat Cepat!)
-        const genderCounts: Record<string, { laki: number; perempuan: number }> = {};
+          siswaSnap.docs.forEach(sdoc => {
+            const data = sdoc.data() as { cabang?: string; kelas?: string; jenisKelamin?: string };
+            const key = `${data.cabang || ''}_${data.kelas || ''}`;
+            if (!genderCounts[key]) genderCounts[key] = { laki: 0, perempuan: 0 };
+            if (data.jenisKelamin === 'Laki-laki') genderCounts[key].laki += 1;
+            else if (data.jenisKelamin === 'Perempuan') genderCounts[key].perempuan += 1;
+          });
 
-        siswaSnap.docs.forEach(doc => {
-          const data = doc.data() as { cabang?: string; kelas?: string; jenisKelamin?: string };
-          const key = `${data.cabang || ''}_${data.kelas || ''}`;
-          if (!genderCounts[key]) {
-            genderCounts[key] = { laki: 0, perempuan: 0 };
-          }
-          if (data.jenisKelamin === 'Laki-laki') {
-            genderCounts[key].laki += 1;
-          } else if (data.jenisKelamin === 'Perempuan') {
-            genderCounts[key].perempuan += 1;
-          }
-        });
+          const processedKelasStats: KelasStatItem[] = classes.map((cls: { id: string; namaKelas?: string; cabang?: string }) => {
+            const key = `${cls.cabang || ''}_${cls.namaKelas || ''}`;
+            const counts = genderCounts[key] || { laki: 0, perempuan: 0 };
+            return {
+              id: cls.id,
+              namaKelas: cls.namaKelas || '',
+              cabang: cls.cabang || '',
+              laki: counts.laki,
+              perempuan: counts.perempuan,
+              jumlah: counts.laki + counts.perempuan
+            };
+          });
 
-        // 4. Susun hasil
-        const processedKelasStats: KelasStatItem[] = classes.map(cls => {
-          const key = `${cls.cabang || ''}_${cls.namaKelas || ''}`;
-          const counts = genderCounts[key] || { laki: 0, perempuan: 0 };
-          return {
-            id: cls.id,
-            namaKelas: cls.namaKelas || '',
-            cabang: cls.cabang || '',
-            laki: counts.laki,
-            perempuan: counts.perempuan,
-            jumlah: counts.laki + counts.perempuan
-          };
-        });
+          processedKelasStats.sort((a, b) => {
+            if (a.cabang !== b.cabang) return a.cabang.localeCompare(b.cabang);
+            return a.namaKelas.localeCompare(b.namaKelas);
+          });
 
-        processedKelasStats.sort((a, b) => {
-          if (a.cabang !== b.cabang) return a.cabang.localeCompare(b.cabang);
-          return a.namaKelas.localeCompare(b.namaKelas);
-        });
+          setKelasStatsList(processedKelasStats);
+        }, err => console.error("Error fetching siswa stats:", err));
 
-        setKelasStatsList(processedKelasStats);
-      } catch (err) {
-        console.error("Error fetching kelas stats:", err);
-      }
+        kelasStatsUnsubs.current.push(unsubSiswa);
+      }, err => console.error("Error fetching kelas stats:", err));
+
+      kelasStatsUnsubs.current.push(unsubKelas);
     };
 
-    const loadTabData = async () => {
-      setLoadingTab(true);
+    // Setup listener sinkron — cleanup dijalankan langsung saat efek re-run
+    setLoadingTab(true);
+    let cleanup: (() => void) | undefined;
+    const run = async () => {
       try {
-        if (activeTab === 'umum') await fetchGeneralStats();
-        if (activeTab === 'keuangan') await fetchKeuanganStats();
-        if (activeTab === 'kelas') await fetchKelasStats();
+        if (activeTab === 'umum') cleanup = fetchGeneralStats();
+        else if (activeTab === 'kelas') {
+          fetchKelasStats();
+          cleanup = () => { kelasStatsUnsubs.current.forEach(u => u()); kelasStatsUnsubs.current = []; };
+        }
+        else if (activeTab === 'keuangan') await fetchKeuanganStats();
       } catch (error) {
         console.error(`Error fetching data for tab ${activeTab}:`, error);
       } finally {
         setLoadingTab(false);
       }
     };
-
-    loadTabData();
+    run();
+    return () => cleanup?.();
   }, [activeTab, selectedCabang, isAuthDataLoaded, userRole]);
 
   const formatCurrency = (value: number) => {

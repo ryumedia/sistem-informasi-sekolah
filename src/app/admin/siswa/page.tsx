@@ -488,8 +488,40 @@ export default function DataSiswaPage() {
           noTelpRumah: formData.noTelpRumah,
           noWA: formData.noWA,
         };
-        await addDoc(collection(db, "siswa"), { ...dataToAdd, role: "Siswa", createdAt: new Date() });
+        const siswaDocRef = await addDoc(collection(db, "siswa"), { ...dataToAdd, role: "Siswa", createdAt: new Date() });
         alert("Siswa baru berhasil ditambahkan sebagai User!");
+
+        // Kirim notifikasi WhatsApp akun baru via API (hanya saat pertama kali membuat, bukan edit).
+        // Fire-and-forget: kegagalan pengiriman tidak membatalkan penyimpanan siswa.
+        if (siswaDocRef?.id) {
+          fetch('/api/notifikasi/akun-baru', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ siswaId: siswaDocRef.id })
+          })
+            .then(async (res) => {
+              if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                console.warn("Notifikasi akun baru gagal:", errData.error || res.status);
+              }
+            })
+            .catch((err) => console.warn("Notifikasi akun baru gagal:", err));
+        }
+
+        // Kirim notifikasi WhatsApp akun baru (hanya saat pertama kali membuat, bukan edit).
+        // Fire-and-forget: kegagalan pengiriman tidak membatalkan penyimpanan siswa.
+        fetch('/api/notifikasi/akun-baru', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ siswaId: siswaDocRef.id })
+        })
+          .then(async (res) => {
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              console.warn("Notifikasi akun baru gagal:", errData.error || res.status);
+            }
+          })
+          .catch((err) => console.warn("Notifikasi akun baru gagal:", err));
       }
       closeModal();
       fetchSiswa();
