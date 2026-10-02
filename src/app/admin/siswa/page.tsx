@@ -95,6 +95,8 @@ export default function DataSiswaPage() {
   const [filterCabang, setFilterCabang] = useState("");
   const [filterKelas, setFilterKelas] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  // Daftar kelas yang diampu guru (khusus role Guru, untuk mengunci filter kelas)
+  const [guruKelasList, setGuruKelasList] = useState<string[]>([]);
 
   // State Form
   const [formData, setFormData] = useState({
@@ -268,7 +270,7 @@ export default function DataSiswaPage() {
     if (newStudentDataString) {
       try {
         const newStudentData = JSON.parse(newStudentDataString);
-        
+
         // Hapus data dari localStorage agar tidak ter-trigger lagi
         localStorage.removeItem('newStudentFromRegistration');
 
@@ -311,6 +313,24 @@ export default function DataSiswaPage() {
             if (["Kepala Sekolah", "Guru", "Caregiver"].includes(userData.role)) {
               setFilterCabang(userData.cabang);
             }
+            // Role Guru: kunci filter kelas sesuai kelas yang diampu
+            if (userData.role === "Guru" && userData.nama) {
+              const qKelasGuru = query(
+                collection(db, "kelas"),
+                where("cabang", "==", userData.cabang),
+                where("guruKelas", "array-contains", userData.nama)
+              );
+              const kelasGuruSnap = await getDocs(qKelasGuru);
+              const namaKelasGuru: string[] = kelasGuruSnap.docs
+                .map((d) => d.data().namaKelas as string)
+                .filter(Boolean)
+                .sort((a, b) => a.localeCompare(b));
+              setGuruKelasList(namaKelasGuru);
+              // Jika hanya mengampu satu kelas, langsung kunci ke kelas tersebut
+              if (namaKelasGuru.length === 1) {
+                setFilterKelas(namaKelasGuru[0]);
+              }
+            }
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
@@ -345,7 +365,7 @@ export default function DataSiswaPage() {
     try {
       if (editId) {
         // Mode Edit: Update data yang ada
-        
+
         // 1. Cek apakah email berubah, jika ya update di Auth via API
         const currentSiswa = siswaList.find(s => s.id === editId);
         if (currentSiswa && currentSiswa.uid && currentSiswa.email !== formData.email) {
@@ -354,7 +374,7 @@ export default function DataSiswaPage() {
              headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify({ uid: currentSiswa.uid, email: formData.email })
            });
-           
+
            if (!res.ok) {
              const errData = await res.json();
              throw new Error(errData.error || "Gagal update email di Auth System");
@@ -424,7 +444,7 @@ export default function DataSiswaPage() {
         ];
 
         const queryResults = await Promise.all(emailExistsQuery.map(q => getDocs(q)));
-        
+
         if (queryResults.some(snap => !snap.empty)) {
           alert("Email sudah terdaftar, silakan gunakan email lain.");
           setSubmitting(false);
@@ -543,7 +563,7 @@ export default function DataSiswaPage() {
       try {
         // 1. Cari data siswa untuk mendapatkan UID/Email
         const siswaToDelete = siswaList.find(s => s.id === id);
-        
+
         // 2. Hapus user di Auth via API
         if (siswaToDelete) {
             await fetch('/api/admin/delete-user', {
@@ -741,7 +761,7 @@ export default function DataSiswaPage() {
 
             // Create Auth User
             const userCredential = await createUserWithEmailAndPassword(secondaryAuth, row.Email, row.Password);
-            
+
             // Add to Firestore
             await addDoc(collection(db, "siswa"), {
                 nama: row.Nama,
@@ -749,8 +769,8 @@ export default function DataSiswaPage() {
                 jenisKelamin: row['Jenis Kelamin'] || "Laki-laki",
                 nisn: row.NISN || "",
                 tempatLahir: row['Tempat Lahir'] || "",
-                tanggalLahir: tglLahir, 
-                agama: row.Agama || "",                
+                tanggalLahir: tglLahir,
+                agama: row.Agama || "",
                 anakKe: row['Anak Ke-berapa'] || "",
                 namaAyah: row['Nama Ayah'] || "",
                 nikAyah: row['NIK Ayah'] || "",
@@ -858,13 +878,24 @@ export default function DataSiswaPage() {
     }
   };
 
+  // Role yang filter cabangnya dikunci
+  const isGuru = userRole === "Guru";
+  const isCabangLocked = userRole === "Kepala Sekolah" || isGuru;
+  // Guru dengan 1 kelas (atau tanpa kelas) -> filter kelas dikunci penuh
+  const isKelasLocked = isGuru && guruKelasList.length <= 1;
+
   // Logic Filter
   const filteredSiswa = siswaList.filter((siswa) => {
-    const matchSearch = siswa.nama.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchSearch = siswa.nama.toLowerCase().includes(searchQuery.toLowerCase()) ||
                         siswa.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchCabang = filterCabang ? siswa.cabang === filterCabang : true;
-    const matchKelas = filterKelas ? (siswa.kelas === filterKelas || siswa.kelasDaycare === filterKelas) : true;
-    
+    const matchKelas = filterKelas
+      ? (siswa.kelas === filterKelas || siswa.kelasDaycare === filterKelas)
+      : isGuru
+        // Guru tanpa pilihan kelas: tetap batasi ke semua kelas yang diampu
+        ? guruKelasList.includes(siswa.kelas) || (!!siswa.kelasDaycare && guruKelasList.includes(siswa.kelasDaycare))
+        : true;
+
     const matchStatus = filterStatus ? siswa.status === filterStatus : true;
     return matchSearch && matchCabang && matchKelas && matchStatus;
   });
@@ -884,12 +915,12 @@ export default function DataSiswaPage() {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-800">Data Siswa</h1>
         <div className="flex gap-2">
-            <input 
-                type="file" 
-                accept=".xlsx, .xls" 
-                ref={fileInputRef} 
-                className="hidden" 
-                onChange={handleFileImport} 
+            <input
+                type="file"
+                accept=".xlsx, .xls"
+                ref={fileInputRef}
+                className="hidden"
+                onChange={handleFileImport}
             />
             <button
                 onClick={() => fileInputRef.current?.click()}
@@ -927,23 +958,34 @@ export default function DataSiswaPage() {
           />
         </div>
         <select
-          className={`border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900 ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`}
+          className={`border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900 ${isCabangLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
           value={filterCabang}
           onChange={(e) => setFilterCabang(e.target.value)}
-          disabled={userRole === "Kepala Sekolah"}
+          disabled={isCabangLocked}
         >
-          {userRole !== "Kepala Sekolah" && <option value="">Semua Cabang</option>}
+          {!isCabangLocked && <option value="">Semua Cabang</option>}
           {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
         </select>
         <select
-          className="border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
+          className={`border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900 ${isKelasLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
           value={filterKelas}
           onChange={(e) => setFilterKelas(e.target.value)}
+          disabled={isKelasLocked}
         >
-          <option value="">Semua Kelas</option>
-          {kelasList
-            .filter((k) => !filterCabang || k.cabang === filterCabang)
-            .map((k) => <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>)}
+          {isGuru ? (
+            <>
+              {guruKelasList.length === 0 && <option value="">Belum ada kelas</option>}
+              {guruKelasList.length > 1 && <option value="">Semua Kelas Saya</option>}
+              {guruKelasList.map((namaKelas) => <option key={namaKelas} value={namaKelas}>{namaKelas}</option>)}
+            </>
+          ) : (
+            <>
+              <option value="">Semua Kelas</option>
+              {kelasList
+                .filter((k) => !filterCabang || k.cabang === filterCabang)
+                .map((k) => <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>)}
+            </>
+          )}
         </select>
         <select
           className="border rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"

@@ -8,6 +8,66 @@ import { Loader2, PlusCircle, Users, QrCode, Edit, Trash2, X, Building, Calendar
 import { format, parseISO } from 'date-fns';
 import { Scanner } from '@yudiel/react-qr-scanner';
 
+// --- SOUND FEEDBACK (Web Audio API, tanpa file audio) ---
+let audioCtx: AudioContext | null = null;
+
+const getAudioContext = (): AudioContext | null => {
+  if (typeof window === 'undefined') return null;
+  if (!audioCtx) {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return null;
+    audioCtx = new Ctx();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+};
+
+// Panggil saat ada interaksi user (klik) agar browser mengizinkan audio
+const unlockAudio = () => {
+  getAudioContext();
+};
+
+const playTone = (ctx: AudioContext, freq: number, start: number, duration: number, type: OscillatorType, volume = 0.3) => {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+  gain.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+  gain.gain.exponentialRampToValueAtTime(volume, ctx.currentTime + start + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(ctx.currentTime + start);
+  osc.stop(ctx.currentTime + start + duration + 0.05);
+};
+
+/**
+ * Memainkan suara feedback scan.
+ * - success: "ting-tong" (dua nada naik)
+ * - error: "tut-tut" (nada rendah dua kali)
+ * Mengembalikan Promise yang selesai setelah suara selesai diputar,
+ * supaya alert() tidak memotong suara.
+ */
+const playScanSound = (kind: 'success' | 'error'): Promise<void> => {
+  const ctx = getAudioContext();
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    navigator.vibrate(kind === 'success' ? 150 : [100, 80, 100]);
+  }
+  if (!ctx) return Promise.resolve();
+
+  let totalMs: number;
+  if (kind === 'success') {
+    playTone(ctx, 880, 0, 0.25, 'sine', 0.35);      // ting
+    playTone(ctx, 1318.5, 0.18, 0.4, 'sine', 0.35); // tong
+    totalMs = 600;
+  } else {
+    playTone(ctx, 220, 0, 0.18, 'square', 0.2);    // tut
+    playTone(ctx, 220, 0.25, 0.25, 'square', 0.2); // tut
+    totalMs = 550;
+  }
+  return new Promise(resolve => setTimeout(resolve, totalMs));
+};
+
 interface Acara {
   id: string;
   nama: string;
@@ -72,6 +132,7 @@ export default function DaftarAcaraPage() {
   };
 
   const handleOpenScanner = (acara: Acara) => {
+    unlockAudio();
     setScanningAcara(acara);
     setIsScannerOpen(true);
   };
@@ -119,6 +180,7 @@ export default function DaftarAcaraPage() {
       const pesertaSnap = await getDoc(pesertaRef);
 
       if (pesertaSnap.exists()) {
+        await playScanSound('error');
         alert(`Peserta sudah melakukan check-in sebelumnya pada pukul ${format(pesertaSnap.data().checkInTime.toDate(), 'HH:mm:ss')}.`);
         return;
       }
@@ -154,10 +216,12 @@ export default function DaftarAcaraPage() {
 
       await setDoc(pesertaRef, dataPeserta);
 
+      await playScanSound('success');
       alert(`Check-in berhasil!\n\nNama: ${userDoc.nama}\nRole: ${userDoc.role}\nCabang: ${userDoc.cabang || 'Tidak ada'}`);
 
     } catch (error) {
       console.error("Error processing scan:", error);
+      await playScanSound('error');
       alert("Gagal melakukan check-in. " + (error as Error).message);
     }
   };
@@ -174,8 +238,8 @@ export default function DaftarAcaraPage() {
           <h1 className="text-2xl font-bold text-gray-800">Daftar Acara</h1>
           <p className="text-sm text-gray-500">Kelola semua acara sekolah yang akan datang dan yang sudah lewat.</p>
         </div>
-        <button 
-          onClick={() => handleOpenModal()} 
+        <button
+          onClick={() => handleOpenModal()}
           className="inline-flex items-center gap-2 bg-[#581c87] text-white px-4 py-2 rounded-lg hover:bg-[#4a166f] transition"
         >
           <PlusCircle className="w-4 h-4" />
@@ -234,25 +298,25 @@ export default function DaftarAcaraPage() {
                       <div className="flex justify-center items-center gap-1">
                         <Link
                           href={`/admin/informasi/acara/peserta/${item.id}`}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" 
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
                           title="Lihat Peserta">
                           <Users className="w-4 h-4" />
                         </Link>
-                        <button 
-                          onClick={() => handleOpenScanner(item)} 
-                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition" 
+                        <button
+                          onClick={() => handleOpenScanner(item)}
+                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition"
                           title="Scan QR Code">
                           <QrCode className="w-4 h-4" />
                         </button>
-                        <button 
+                        <button
                           onClick={() => handleOpenModal(item)}
-                          className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition" 
+                          className="p-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition"
                           title="Edit">
                           <Edit className="w-4 h-4" />
                         </button>
-                        <button 
-                          onClick={() => handleDelete(item)} 
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" 
+                        <button
+                          onClick={() => handleDelete(item)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
                           title="Hapus">
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -267,10 +331,10 @@ export default function DaftarAcaraPage() {
       </div>
 
       {isModalOpen && (
-        <AcaraModal 
-          acara={selectedAcara} 
+        <AcaraModal
+          acara={selectedAcara}
           cabangList={cabangList}
-          onClose={handleCloseModal} 
+          onClose={handleCloseModal}
           onSubmit={handleFormSubmit}
         />
       )}
@@ -393,8 +457,8 @@ function AcaraModal({ acara, cabangList, onClose, onSubmit }: AcaraModalProps) {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 p-4 border rounded-lg bg-gray-50/50">
               {cabangList.map(c => (
                 <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={formData.cabang.includes(c.nama)}
                     onChange={() => handleCabangChange(c.nama)}
                     className="w-4 h-4 text-[#581c87] rounded focus:ring-[#581c87]"
@@ -474,6 +538,7 @@ function ScannerModal({ acaraNama, onClose, onScan }: ScannerModalProps) {
         <div className="w-full bg-gray-900 aspect-square overflow-hidden relative">
           <Scanner
             onScan={onScan}
+            sound={false}
             onError={(error: any) => console.log(error?.message)}
             constraints={{
               facingMode: 'environment'

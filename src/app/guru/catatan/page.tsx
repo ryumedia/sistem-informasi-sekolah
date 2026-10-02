@@ -4,9 +4,18 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, Timestamp, orderBy } from "firebase/firestore";
-import { ArrowLeft, Loader2, Plus, Pencil, Trash2, Save, X, FileText, User, BarChart, Baby, Ruler, Scaling } from "lucide-react";
+import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, Timestamp } from "firebase/firestore";
+import { ArrowLeft, Loader2, Plus, Pencil, Trash2, Save, X, FileText, User, BarChart, Baby, Ruler, Scaling, Search } from "lucide-react";
 import { format } from "date-fns";
+
+// Pecah array menjadi beberapa bagian (Firestore 'in' maksimal 30 nilai)
+function chunkArray<T>(arr: T[], size: number): T[][] {
+    const result: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) {
+        result.push(arr.slice(i, i + size));
+    }
+    return result;
+}
 
 interface GrowthData {
     id: string;
@@ -67,6 +76,10 @@ export default function CatatanGuruPage() {
     const [isPertumbuhanModalOpen, setIsPertumbuhanModalOpen] = useState(false);
     const [editingGrowth, setEditingGrowth] = useState<GrowthData | null>(null);
 
+    // Filter (berlaku untuk kedua tab)
+    const [filterNama, setFilterNama] = useState("");
+    const [filterBulan, setFilterBulan] = useState(""); // format "yyyy-MM"
+
     const [submitting, setSubmitting] = useState(false);
     const [formData, setFormData] = useState({
         siswaId: "",
@@ -117,13 +130,17 @@ export default function CatatanGuruPage() {
                 let list: any[] = []; // Deklarasikan list di sini
 
                 if (classes.length > 0) {
-                    const qSiswa = query(
-                        collection(db, "siswa"),
-                        where("cabang", "==", guruData.cabang),
-                        where("kelas", "in", classes)
+                    // Firestore 'in' maksimal 30 nilai per query -> pecah per 30
+                    const siswaSnaps = await Promise.all(
+                        chunkArray(classes, 30).map(chunk =>
+                            getDocs(query(
+                                collection(db, "siswa"),
+                                where("cabang", "==", guruData.cabang),
+                                where("kelas", "in", chunk)
+                            ))
+                        )
                     );
-                    const siswaSnap = await getDocs(qSiswa);
-                    list = siswaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    list = siswaSnaps.flatMap(snap => snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
                     // Sort client-side
                     list.sort((a: any, b: any) => (a.nama || "").localeCompare(b.nama || ""));
                     setSiswaList(list);
@@ -149,16 +166,21 @@ export default function CatatanGuruPage() {
                 // C. Fetch Pertumbuhan Anak (Growth data for the students of this teacher)
                 const siswaIds = list.map((s: any) => s.id);
                 if (siswaIds.length > 0) {
-                    const qGrowth = query(
-                        collection(db, "pertumbuhan_anak"),
-                        where("siswaId", "in", siswaIds),
-                        orderBy("tanggal", "desc")
+                    // Firestore 'in' maksimal 30 nilai per query -> pecah per 30
+                    const growthSnaps = await Promise.all(
+                        chunkArray(siswaIds, 30).map(chunk =>
+                            getDocs(query(
+                                collection(db, "pertumbuhan_anak"),
+                                where("siswaId", "in", chunk)
+                            ))
+                        )
                     );
-                    const growthSnap = await getDocs(qGrowth);
-                    const growthData = growthSnap.docs.map(doc => ({
+                    const growthData = growthSnaps.flatMap(snap => snap.docs.map(doc => ({
                         id: doc.id,
                         ...doc.data()
-                    } as GrowthData));
+                    } as GrowthData)));
+                    // Sort client-side (tanggal desc) karena hasil berasal dari beberapa query
+                    growthData.sort((a, b) => (b.tanggal?.seconds || 0) - (a.tanggal?.seconds || 0));
                     setGrowthList(growthData);
                 }
             } catch (error) {
@@ -328,6 +350,43 @@ export default function CatatanGuruPage() {
         }
     };
 
+    // Ubah berbagai format tanggal (Timestamp / {seconds} / string / Date) menjadi Date
+    const toJsDate = (dateVal: unknown): Date | null => {
+        if (!dateVal) return null;
+        if (dateVal instanceof Date) return isNaN(dateVal.getTime()) ? null : dateVal;
+        if (typeof dateVal === "object") {
+            const obj = dateVal as { toDate?: () => Date; seconds?: number };
+            if (typeof obj.toDate === "function") return obj.toDate();
+            if (typeof obj.seconds === "number") return new Date(obj.seconds * 1000);
+            return null;
+        }
+        if (typeof dateVal === "string" || typeof dateVal === "number") {
+            const d = new Date(dateVal);
+            return isNaN(d.getTime()) ? null : d;
+        }
+        return null;
+    };
+
+    const matchBulan = (dateVal: unknown) => {
+        if (!filterBulan) return true;
+        const d = toJsDate(dateVal);
+        return d ? format(d, "yyyy-MM") === filterBulan : false;
+    };
+
+    const getNamaSiswa = (siswaNama: string | undefined, siswaId: string) =>
+        siswaNama || siswaList.find(s => s.id === siswaId)?.nama || "";
+
+    const keyword = filterNama.trim().toLowerCase();
+    const matchNama = (nama: string) => !keyword || nama.toLowerCase().includes(keyword);
+
+    const filteredCatatan = catatanList.filter(item =>
+        matchNama(getNamaSiswa(item.siswaNama, item.siswaId)) && matchBulan(item.createdAt)
+    );
+    const filteredGrowth = growthList.filter(item =>
+        matchNama(getNamaSiswa(item.siswaNama, item.siswaId)) && matchBulan(item.tanggal)
+    );
+    const isFiltering = keyword !== "" || filterBulan !== "";
+
     if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Loader2 className="w-8 h-8 animate-spin text-[#581c87]" /></div>;
 
     return (
@@ -366,6 +425,41 @@ export default function CatatanGuruPage() {
                                 <BarChart className="w-4 h-4" /> Pertumbuhan Anak
                             </button>
                         </nav>
+
+                        {/* Filter */}
+                        <div className="mt-4 flex flex-col sm:flex-row gap-2">
+                            <div className="relative flex-1">
+                                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                <input
+                                    type="text"
+                                    value={filterNama}
+                                    onChange={(e) => setFilterNama(e.target.value)}
+                                    placeholder="Cari nama siswa..."
+                                    className="w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none"
+                                />
+                            </div>
+                            <input
+                                type="month"
+                                value={filterBulan}
+                                onChange={(e) => setFilterBulan(e.target.value)}
+                                className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none text-gray-700"
+                                title="Filter bulan"
+                            />
+                            {isFiltering && (
+                                <button
+                                    onClick={() => { setFilterNama(""); setFilterBulan(""); }}
+                                    className="flex items-center justify-center gap-1 px-3 py-2 text-sm text-gray-600 border rounded-lg hover:bg-gray-100 transition"
+                                    title="Reset filter"
+                                >
+                                    <X className="w-4 h-4" /> Reset
+                                </button>
+                            )}
+                        </div>
+                        {isFiltering && (
+                            <p className="text-xs text-gray-500 mt-2">
+                                Menampilkan {activeTab === "catatan" ? filteredCatatan.length : filteredGrowth.length} dari {activeTab === "catatan" ? catatanList.length : growthList.length} data
+                            </p>
+                        )}
                     </div>
 
                     <div className="p-4 space-y-4 pb-20">
@@ -376,8 +470,14 @@ export default function CatatanGuruPage() {
                                     <h3 className="font-semibold text-gray-700">Belum Ada Catatan</h3>
                                     <p className="text-gray-500 text-sm mt-1">Tekan tombol + untuk membuat catatan baru.</p>
                                 </div>
+                            ) : filteredCatatan.length === 0 ? (
+                                <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                    <Search className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                                    <h3 className="font-semibold text-gray-700">Tidak Ada Catatan yang Cocok</h3>
+                                    <p className="text-gray-500 text-sm mt-1">Coba ubah nama siswa atau bulan pada filter.</p>
+                                </div>
                             ) : (
-                                catatanList.map(item => (
+                                filteredCatatan.map(item => (
                                     <div key={item.id} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm hover:shadow-md transition relative group">
                                         <div className="flex justify-between items-start mb-2 pr-16">
                                             <div className="flex items-center gap-2">
@@ -422,8 +522,14 @@ export default function CatatanGuruPage() {
                                     <h3 className="font-semibold text-gray-700">Belum Ada Data Pertumbuhan</h3>
                                     <p className="text-gray-500 text-sm mt-1">Tekan tombol + untuk menambah data baru.</p>
                                 </div>
+                            ) : filteredGrowth.length === 0 ? (
+                                <div className="text-center py-16 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                    <Search className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                                    <h3 className="font-semibold text-gray-700">Tidak Ada Data yang Cocok</h3>
+                                    <p className="text-gray-500 text-sm mt-1">Coba ubah nama siswa atau bulan pada filter.</p>
+                                </div>
                             ) : (
-                                growthList.map(item => {
+                                filteredGrowth.map(item => {
                                     // Fallback: jika siswaNama kosong, cari dari daftar siswa berdasarkan siswaId
                                     const namaSiswa = item.siswaNama || siswaList.find(s => s.id === item.siswaId)?.nama || "Siswa Tidak Diketahui";
                                     return (

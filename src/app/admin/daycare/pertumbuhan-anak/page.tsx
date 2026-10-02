@@ -3,8 +3,14 @@ import { useState, useEffect } from 'react';
 import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, Timestamp } from "firebase/firestore";
 import { onAuthStateChanged } from 'firebase/auth';
-import { Plus, Pencil, Trash2, X, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Loader2, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
+
+const ITEMS_PER_PAGE = 20;
+const NAMA_BULAN = [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+];
 interface GrowthData {
   id: string;
   tanggal: Timestamp;
@@ -58,6 +64,12 @@ const PertumbuhanAnakPage = () => {
   // State for page filters
   const [filterCabang, setFilterCabang] = useState<string>("");
   const [filteredGrowthList, setFilteredGrowthList] = useState<GrowthData[]>([]);
+  const [searchNama, setSearchNama] = useState<string>("");
+  const [filterTahun, setFilterTahun] = useState<string>(""); // "2026"
+  const [filterBulan, setFilterBulan] = useState<string>(""); // "1" - "12"
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [formData, setFormData] = useState({
     tanggal: '',
@@ -105,7 +117,7 @@ const PertumbuhanAnakPage = () => {
             let allCabang = cabangSnapshot.docs.map(doc => {
                 const { id, ...data } = { id: doc.id, ...doc.data() };
                 return { id, ...data } as Cabang;
-            });       
+            });
             if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
                 allCabang = allCabang.filter(c => c.nama === currentUser.cabang);
             }
@@ -122,7 +134,7 @@ const PertumbuhanAnakPage = () => {
                 return { id, ...data } as Kelas;
             });
             setAllKelasList(fetchedKelas); // Simpan semua kelas
-            
+
             // Filter kelas sesuai cabang user jika bukan admin
             let userKelas = fetchedKelas;
             if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
@@ -213,11 +225,59 @@ const PertumbuhanAnakPage = () => {
         if (userCabang) setFilterCabang(userCabang.nama);
     }
 
+    const keyword = searchNama.trim().toLowerCase();
     const filtered = growthList.filter(laporan => {
-        return !filterCabang || laporan.cabang === filterCabang;
+        const matchCabang = !filterCabang || laporan.cabang === filterCabang;
+        const matchNama = !keyword || (laporan.namaSiswa || "").toLowerCase().includes(keyword);
+
+        let matchTanggal = true;
+        if (filterTahun || filterBulan) {
+            const tgl = laporan.tanggal?.toDate ? laporan.tanggal.toDate() : null;
+            if (!tgl) {
+                matchTanggal = false;
+            } else {
+                if (filterTahun && tgl.getFullYear() !== Number(filterTahun)) matchTanggal = false;
+                if (filterBulan && tgl.getMonth() + 1 !== Number(filterBulan)) matchTanggal = false;
+            }
+        }
+
+        return matchCabang && matchNama && matchTanggal;
     });
     setFilteredGrowthList(filtered);
-  }, [filterCabang, growthList, currentUser, cabangList]);
+  }, [filterCabang, searchNama, filterTahun, filterBulan, growthList, currentUser, cabangList]);
+
+  // Daftar tahun diambil dari data yang ada (terbaru di atas)
+  const tahunOptions = Array.from(
+    new Set(
+      growthList
+        .map(g => (g.tanggal?.toDate ? g.tanggal.toDate().getFullYear() : null))
+        .filter((y): y is number => y !== null)
+    )
+  ).sort((a, b) => b - a);
+
+  const resetPage = () => setCurrentPage(1);
+  const isFilterAktif = searchNama !== "" || filterTahun !== "" || filterBulan !== "";
+  const handleResetFilter = () => {
+    setSearchNama("");
+    setFilterTahun("");
+    setFilterBulan("");
+    resetPage();
+  };
+
+  // Pagination logic (halaman di-clamp agar tetap valid, misal setelah data dihapus)
+  const totalPages = Math.max(1, Math.ceil(filteredGrowthList.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
+  const paginatedGrowth = filteredGrowthList.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  // Nomor halaman yang ditampilkan (maks 5, berpusat di halaman aktif)
+  const getPageNumbers = () => {
+    const maxButtons = 5;
+    let start = Math.max(1, safePage - Math.floor(maxButtons / 2));
+    const end = Math.min(totalPages, start + maxButtons - 1);
+    start = Math.max(1, end - maxButtons + 1);
+    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  };
 
   const closeModal = () => {
     setIsModalOpen(false);
@@ -254,7 +314,7 @@ const PertumbuhanAnakPage = () => {
     });
     setIsModalOpen(true);
   };
-  
+
   const openAddModal = () => {
     setEditId(null);
     const initial = {
@@ -274,7 +334,7 @@ const PertumbuhanAnakPage = () => {
     setFormData(initial);
     setIsModalOpen(true);
   }
-  
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.siswaId || !formData.tanggal) {
@@ -282,7 +342,7 @@ const PertumbuhanAnakPage = () => {
         return;
     }
     setSubmitting(true);
-    
+
     const dataToSave = {
         ...formData,
         tanggal: Timestamp.fromDate(new Date(formData.tanggal)),
@@ -326,7 +386,7 @@ const PertumbuhanAnakPage = () => {
       }
     }
   };
-  
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -340,20 +400,63 @@ const PertumbuhanAnakPage = () => {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <div className="flex-1">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+          <div className="lg:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cari Nama Anak</label>
+              <div className="relative">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchNama}
+                    onChange={(e) => { setSearchNama(e.target.value); resetPage(); }}
+                    placeholder="Ketik nama anak..."
+                    className="w-full border rounded-lg p-2 pl-9 focus:ring-2 focus:ring-[#581c87] outline-none text-sm"
+                  />
+              </div>
+          </div>
+          <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tahun</label>
+              <select
+                value={filterTahun}
+                onChange={(e) => { setFilterTahun(e.target.value); resetPage(); }}
+                className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-sm"
+              >
+                  <option value="">Semua Tahun</option>
+                  {tahunOptions.map(y => <option key={y} value={String(y)}>{y}</option>)}
+              </select>
+          </div>
+          <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Bulan</label>
+              <select
+                value={filterBulan}
+                onChange={(e) => { setFilterBulan(e.target.value); resetPage(); }}
+                className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-sm"
+              >
+                  <option value="">Semua Bulan</option>
+                  {NAMA_BULAN.map((nama, i) => <option key={nama} value={String(i + 1)}>{nama}</option>)}
+              </select>
+          </div>
+          <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Filter Cabang</label>
-              <select 
-                name="filterCabang" 
-                value={filterCabang} 
-                onChange={(e) => setFilterCabang(e.target.value)} 
-                className={`w-full max-w-xs border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm ${(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan") ? "bg-gray-100 cursor-not-allowed" : ""}`}
+              <select
+                name="filterCabang"
+                value={filterCabang}
+                onChange={(e) => { setFilterCabang(e.target.value); resetPage(); }}
+                className={`w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm ${(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan") ? "bg-gray-100 cursor-not-allowed" : ""}`}
                 disabled={(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan")}
               >
                   <option value="">Semua Cabang</option>
                   {cabangList.map(c => <option key={c.id} value={c.nama}>{c.nama}</option>)}
               </select>
           </div>
+          {isFilterAktif && (
+              <div className="md:col-span-2 lg:col-span-5 flex items-center justify-between text-sm">
+                  <span className="text-gray-500">Ditemukan {filteredGrowthList.length} dari {growthList.length} data</span>
+                  <button onClick={handleResetFilter} className="flex items-center gap-1 text-[#581c87] hover:underline">
+                      <X className="w-4 h-4" /> Reset Filter
+                  </button>
+              </div>
+          )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -375,11 +478,11 @@ const PertumbuhanAnakPage = () => {
               {loading ? (
                 <tr><td colSpan={8} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
               ) : filteredGrowthList.length === 0 ? (
-                <tr><td colSpan={8} className="p-8 text-center">Belum ada data pertumbuhan.</td></tr>
+                <tr><td colSpan={8} className="p-8 text-center">{isFilterAktif ? "Tidak ada data yang cocok dengan filter." : "Belum ada data pertumbuhan."}</td></tr>
               ) : (
-                filteredGrowthList.map((data, index) => (
+                paginatedGrowth.map((data, index) => (
                   <tr key={data.id} className="hover:bg-gray-50">
-                    <td className="p-4 text-center">{index + 1}</td>
+                    <td className="p-4 text-center">{startIndex + index + 1}</td>
                     <td className="p-4 font-medium text-gray-900">{format(data.tanggal.toDate(), 'dd MMMM yyyy')}</td>
                     <td className="p-4">{data.namaSiswa}</td>
                     <td className="p-4">{data.cabang}</td>
@@ -400,6 +503,44 @@ const PertumbuhanAnakPage = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {!loading && filteredGrowthList.length > 0 && (
+          <div className="flex flex-col md:flex-row justify-between items-center gap-3 p-4 border-t border-gray-100">
+            <p className="text-sm text-gray-600">
+              Menampilkan {startIndex + 1}–{Math.min(startIndex + ITEMS_PER_PAGE, filteredGrowthList.length)} dari {filteredGrowthList.length} data
+            </p>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
+                  disabled={safePage === 1}
+                  className="p-2 rounded-lg border text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Sebelumnya"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                {getPageNumbers().map(page => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`min-w-[36px] px-3 py-1.5 rounded-lg border text-sm transition ${page === safePage ? "bg-[#581c87] text-white border-[#581c87]" : "text-gray-700 hover:bg-gray-100"}`}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
+                  disabled={safePage === totalPages}
+                  className="p-2 rounded-lg border text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Berikutnya"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {isModalOpen && (

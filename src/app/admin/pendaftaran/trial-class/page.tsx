@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, orderBy, getDocs } from 'firebase/firestore';
 import { Loader2, Filter, RotateCcw, MapPin, Calendar, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
+import { useLokasiKepalaSekolah, normalizeLokasi } from '@/hooks/useLokasiKepalaSekolah';
 
 interface TrialClassParticipant {
   id: string;
@@ -102,51 +103,59 @@ export default function TrialClassPage() {
     return Array.from(set).sort();
   }, [masterLokasi, participants]);
 
+  // Kepala Sekolah: filter lokasi dikunci sesuai cabangnya
+  const { isLocked: isLokasiLocked, lockedLokasi, ready: roleReady } = useLokasiKepalaSekolah(lokasiOptions);
+  const effectiveLokasi = isLokasiLocked ? lockedLokasi : filterLokasi;
+  const lokasiCocok = useCallback(
+    (lokasi?: string) => !effectiveLokasi || normalizeLokasi(lokasi) === normalizeLokasi(effectiveLokasi),
+    [effectiveLokasi]
+  );
+
   // Options for Pilihan Tanggal
   const tanggalOptions = useMemo(() => {
     const set = new Set<string>();
     masterJadwal.forEach(j => {
-      if (!filterLokasi || j.lokasi === filterLokasi) {
+      if (lokasiCocok(j.lokasi)) {
         if (j.tanggal?.trim()) set.add(j.tanggal.trim());
       }
     });
     participants.forEach(p => {
-      if (!filterLokasi || p.lokasi === filterLokasi) {
+      if (lokasiCocok(p.lokasi)) {
         if (p.tanggal?.trim()) set.add(p.tanggal.trim());
       }
     });
     return Array.from(set).sort();
-  }, [masterJadwal, participants, filterLokasi]);
+  }, [masterJadwal, participants, lokasiCocok]);
 
   // Options for Pilihan Waktu
   const waktuOptions = useMemo(() => {
     const set = new Set<string>();
     masterJadwal.forEach(j => {
-      const matchLokasi = !filterLokasi || j.lokasi === filterLokasi;
+      const matchLokasi = lokasiCocok(j.lokasi);
       const matchTanggal = !filterTanggal || j.tanggal === filterTanggal;
       if (matchLokasi && matchTanggal && j.waktu?.trim()) {
         set.add(j.waktu.trim());
       }
     });
     participants.forEach(p => {
-      const matchLokasi = !filterLokasi || p.lokasi === filterLokasi;
+      const matchLokasi = lokasiCocok(p.lokasi);
       const matchTanggal = !filterTanggal || p.tanggal === filterTanggal;
       if (matchLokasi && matchTanggal && p.waktu?.trim()) {
         set.add(p.waktu.trim());
       }
     });
     return Array.from(set).sort();
-  }, [masterJadwal, participants, filterLokasi, filterTanggal]);
+  }, [masterJadwal, participants, lokasiCocok, filterTanggal]);
 
   // Filtered Participants
   const filteredParticipants = useMemo(() => {
     return participants.filter(p => {
-      if (filterLokasi && p.lokasi !== filterLokasi) return false;
+      if (!lokasiCocok(p.lokasi)) return false;
       if (filterTanggal && p.tanggal !== filterTanggal) return false;
       if (filterWaktu && p.waktu !== filterWaktu) return false;
       return true;
     });
-  }, [participants, filterLokasi, filterTanggal, filterWaktu]);
+  }, [participants, lokasiCocok, filterTanggal, filterWaktu]);
 
   const resetFilters = () => {
     setFilterLokasi('');
@@ -154,7 +163,8 @@ export default function TrialClassPage() {
     setFilterWaktu('');
   };
 
-  const hasActiveFilter = filterLokasi || filterTanggal || filterWaktu;
+  // Lokasi yang terkunci tidak dihitung sebagai "filter aktif"
+  const hasActiveFilter = (!isLokasiLocked && filterLokasi) || filterTanggal || filterWaktu;
 
   // Helper to format WhatsApp URL and open chat
   const getWhatsAppUrl = (nomorWa: string, namaAnak?: string) => {
@@ -206,15 +216,17 @@ export default function TrialClassPage() {
               <MapPin className="w-3.5 h-3.5 text-gray-400" /> Pilihan Lokasi
             </label>
             <select
-              value={filterLokasi}
+              value={effectiveLokasi}
               onChange={(e) => {
                 setFilterLokasi(e.target.value);
                 setFilterTanggal('');
                 setFilterWaktu('');
               }}
-              className="w-full p-2.5 border border-gray-200 rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-[#581c87] focus:border-transparent outline-none transition text-sm"
+              disabled={isLokasiLocked}
+              className={`w-full p-2.5 border border-gray-200 rounded-lg text-gray-900 focus:ring-2 focus:ring-[#581c87] focus:border-transparent outline-none transition text-sm ${isLokasiLocked ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
             >
-              <option value="">Semua Lokasi</option>
+              {!isLokasiLocked && <option value="">Semua Lokasi</option>}
+              {isLokasiLocked && !lokasiOptions.includes(lockedLokasi) && <option value={lockedLokasi}>{lockedLokasi}</option>}
               {lokasiOptions.map(lok => (
                 <option key={lok} value={lok}>{lok}</option>
               ))}
@@ -285,7 +297,7 @@ export default function TrialClassPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {loading ? (
+              {loading || !roleReady ? (
                 <tr><td colSpan={8} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
               ) : filteredParticipants.length === 0 ? (
                 <tr>

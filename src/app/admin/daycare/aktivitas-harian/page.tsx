@@ -16,7 +16,7 @@ import {
   where,
   Timestamp,
 } from "firebase/firestore";
-import { Plus, Pencil, Trash2, X, Loader2, Eye } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Loader2, Eye, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 
 // Define interfaces for our data structures
@@ -27,7 +27,7 @@ interface Cabang {
 interface Kelas {
   id: string;
   namaKelas: string;
-  cabang: string; 
+  cabang: string;
   guruKelas?: string[]; // Added optional property
 }
 interface Siswa {
@@ -35,6 +35,8 @@ interface Siswa {
   nama: string;
   cabang: string;
   kelas: string;
+  isDaycare?: boolean;
+  kelasDaycare?: string;
 }
 interface Aktivitas {
   id: string;
@@ -59,6 +61,8 @@ interface LaporanHarian {
     namaCabang?: string;
     namaKelas?: string;
 }
+
+const ITEMS_PER_PAGE = 20;
 
 const initialFormData = {
   tanggal: new Date(),
@@ -93,6 +97,12 @@ export default function AktivitasHarianPage() {
   // State for page filters
   const [filterCabang, setFilterCabang] = useState<string>("");
   const [filteredLaporanList, setFilteredLaporanList] = useState<LaporanHarian[]>([]);
+  const [searchNama, setSearchNama] = useState<string>("");
+  const [filterTanggalDari, setFilterTanggalDari] = useState<string>(""); // yyyy-MM-dd
+  const [filterTanggalSampai, setFilterTanggalSampai] = useState<string>(""); // yyyy-MM-dd
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
 
   // 1. Auth Check & Get User Data
   useEffect(() => {
@@ -112,14 +122,20 @@ export default function AktivitasHarianPage() {
             userData = { ...snapCaregiver.docs[0].data(), id: snapCaregiver.docs[0].id };
           }
         }
+        if (!userData) {
+          // User login tapi tidak terdaftar di 'guru' maupun 'caregivers'
+          console.warn("Aktivitas Harian: data user tidak ditemukan untuk email", user.email);
+          setLoading(false);
+        }
         setCurrentUser(userData);
       } else {
         setCurrentUser(null);
+        setLoading(false);
       }
     });
     return () => unsubscribe();
   }, []);
-  
+
   // 2. Fetch Data based on User Role
   useEffect(() => {
     if (!currentUser) return;
@@ -130,7 +146,7 @@ export default function AktivitasHarianPage() {
         // --- Fetch Cabang ---
         const cabangSnapshot = await getDocs(query(collection(db, "cabang"), orderBy("nama", "asc")));
         let allCabang = cabangSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabang));
-        
+
         // Filter Cabang jika Caregiver/Guru
         if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
             allCabang = allCabang.filter(c => c.nama === currentUser.cabang);
@@ -145,10 +161,10 @@ export default function AktivitasHarianPage() {
         } else {
              kelasQuery = query(collection(db, "kelas"), orderBy("namaKelas", "asc"));
         }
-        
+
         const kelasSnapshot = await getDocs(kelasQuery);
         let allKelas = kelasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kelas));
-        
+
         // Extra safety: filter by branch if user has branch
         if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
             allKelas = allKelas.filter(k => k.cabang === currentUser.cabang);
@@ -158,9 +174,11 @@ export default function AktivitasHarianPage() {
         // --- Fetch Siswa ---
         // Filter siswa based on allowed classes
         const allowedKelasNames = allKelas.map(k => k.namaKelas);
+        // Role dengan akses penuh (sama dengan role yang boleh memilih "Semua Cabang")
+        const isFullAccess = ["Admin", "Direktur", "Yayasan"].includes(currentUser.role);
         let siswaQuery;
-        
-        if (currentUser.role === "Admin") {
+
+        if (isFullAccess) {
              siswaQuery = query(collection(db, "siswa"), orderBy("nama", "asc"));
         } else {
              // Optimasi: Filter by branch dulu jika ada
@@ -173,10 +191,14 @@ export default function AktivitasHarianPage() {
 
         const siswaSnapshot = await getDocs(siswaQuery);
         let allSiswa = siswaSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Siswa));
-        
+
         // Filter siswa agar hanya yang ada di kelas yang diampu
-        if (currentUser.role !== "Admin") {
-            allSiswa = allSiswa.filter(s => allowedKelasNames.includes(s.kelas));
+        // Siswa daycare menyimpan kelasnya di 'kelasDaycare', jadi cek keduanya
+        if (!isFullAccess) {
+            allSiswa = allSiswa.filter(s =>
+                allowedKelasNames.includes(s.kelas) ||
+                (!!s.kelasDaycare && allowedKelasNames.includes(s.kelasDaycare))
+            );
         }
         setSiswaList(allSiswa);
 
@@ -195,33 +217,45 @@ export default function AktivitasHarianPage() {
         const laporanSnapshot = await getDocs(query(collection(db, "daycare_laporan_harian"), orderBy("tanggal", "desc")));
         const laporanData = laporanSnapshot.docs.map(doc => {
             const data = doc.data() as LaporanHarian;
-            
-            // Filter logic: Hanya tampilkan jika kelas ada di daftar kelas yang diampu
-            const kelas = allKelas.find(k => k.id === data.kelasId);
-            
-            if (currentUser.role !== "Admin" && !kelas) {
-                return null;
-            }
 
             const siswa = allSiswa.find(s => s.id === data.siswaId);
-            // Jika siswa tidak ditemukan di daftar siswa yang diampu (misal pindah kelas), sembunyikan
-            if (currentUser.role !== "Admin" && !siswa) {
+            // Jika siswa tidak ada di daftar siswa yang boleh dilihat, sembunyikan
+            if (!isFullAccess && !siswa) {
                  return null;
             }
-            
+
+            // Cari kelas lewat kelasId; jika kosong/tidak cocok (laporan lama, kelasId null),
+            // fallback ke nama kelas siswa (kelasDaycare lebih dulu, lalu kelas reguler)
+            const kelas =
+                allKelas.find(k => k.id === data.kelasId) ||
+                (siswa ? allKelas.find(k =>
+                    k.namaKelas === (siswa.kelasDaycare || siswa.kelas) &&
+                    (!siswa.cabang || k.cabang === siswa.cabang)
+                ) : undefined);
+
             const displaySiswa = siswa || { nama: 'Siswa tidak ditemukan' };
             const displayKelas = kelas || { namaKelas: 'Kelas tidak ditemukan' };
-            const displayCabang = allCabang.find(c => c.id === data.cabangId) || { nama: 'Cabang tidak ditemukan' };
+            // Cari cabang lewat cabangId; jika kosong (laporan lama), fallback ke nama cabang siswa
+            const cabang =
+                allCabang.find(c => c.id === data.cabangId) ||
+                (siswa ? allCabang.find(c => c.nama === siswa.cabang) : undefined);
+            const displayCabang = cabang || { nama: 'Cabang tidak ditemukan' };
 
             return {
                 ...data,
+                // Pakai ID hasil resolusi agar filter cabang tetap berfungsi untuk laporan lama
+                cabangId: cabang?.id || data.cabangId,
+                kelasId: kelas?.id || data.kelasId,
                 id: doc.id,
                 namaSiswa: displaySiswa.nama,
                 namaCabang: displayCabang.nama,
                 namaKelas: displayKelas.namaKelas,
             };
         }).filter(item => item !== null) as LaporanHarian[];
-        
+
+        if (laporanSnapshot.size !== laporanData.length) {
+            console.info(`Aktivitas Harian: ${laporanSnapshot.size} laporan di database, ${laporanData.length} ditampilkan untuk role "${currentUser.role}".`);
+        }
         setLaporanList(laporanData);
 
       } catch (error) {
@@ -242,11 +276,34 @@ export default function AktivitasHarianPage() {
         if (userCabang) setFilterCabang(userCabang.id);
     }
 
+    const keyword = searchNama.trim().toLowerCase();
     const filtered = laporanList.filter(laporan => {
-        return !filterCabang || laporan.cabangId === filterCabang;
+        const matchCabang = !filterCabang || laporan.cabangId === filterCabang;
+        const matchNama = !keyword || (laporan.namaSiswa || "").toLowerCase().includes(keyword);
+
+        // Bandingkan dalam format yyyy-MM-dd (waktu lokal) agar tidak terpengaruh jam
+        let matchTanggal = true;
+        if (filterTanggalDari || filterTanggalSampai) {
+            const tgl = laporan.tanggal?.toDate ? format(laporan.tanggal.toDate(), "yyyy-MM-dd") : "";
+            if (!tgl) matchTanggal = false;
+            if (filterTanggalDari && tgl < filterTanggalDari) matchTanggal = false;
+            if (filterTanggalSampai && tgl > filterTanggalSampai) matchTanggal = false;
+        }
+
+        return matchCabang && matchNama && matchTanggal;
     });
     setFilteredLaporanList(filtered);
-  }, [filterCabang, laporanList, currentUser, cabangList]);
+  }, [filterCabang, searchNama, filterTanggalDari, filterTanggalSampai, laporanList, currentUser, cabangList]);
+
+  // Kembali ke halaman 1 setiap kali filter berubah
+  const resetPage = () => setCurrentPage(1);
+  const isFilterAktif = searchNama !== "" || filterTanggalDari !== "" || filterTanggalSampai !== "";
+  const handleResetFilter = () => {
+    setSearchNama("");
+    setFilterTanggalDari("");
+    setFilterTanggalSampai("");
+    resetPage();
+  };
 
   // Effect for cascading dropdowns
   // UPDATED: Now filters by name, not ID
@@ -277,7 +334,7 @@ export default function AktivitasHarianPage() {
       const selectedKelas = kelasList.find(k => k.id === formData.kelasId);
       if (selectedCabang && selectedKelas) {
         setFilteredSiswaList(
-          siswaList.filter(s => s.cabang === selectedCabang.nama && s.kelas === selectedKelas.namaKelas)
+          siswaList.filter(s => s.cabang === selectedCabang.nama && (s.kelas === selectedKelas.namaKelas || s.kelasDaycare === selectedKelas.namaKelas))
         );
       } else {
         setFilteredSiswaList([]);
@@ -295,7 +352,7 @@ export default function AktivitasHarianPage() {
     const { name, value } = e.target;
     setFormData((prev: any) => ({ ...prev, [name]: value }));
   };
-  
+
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
      setFormData((prev: any) => ({ ...prev, tanggal: new Date(e.target.value) }));
   }
@@ -350,11 +407,11 @@ export default function AktivitasHarianPage() {
       });
     } else {
       setEditingLaporanId(null);
-      
+
       // Auto-select and Lock for Caregiver/Guru
       let defaultCabangId = "";
       let defaultKelasId = "";
-      
+
       if ((currentUser?.role === "Caregiver" || currentUser?.role === "Guru") && cabangList.length > 0) {
           defaultCabangId = cabangList[0].id;
       }
@@ -371,7 +428,7 @@ export default function AktivitasHarianPage() {
     }
     setIsModalOpen(true);
   };
-  
+
   const openDetailModal = (laporan: LaporanHarian) => {
       setSelectedLaporan(laporan);
       setIsDetailModalOpen(true);
@@ -382,7 +439,7 @@ export default function AktivitasHarianPage() {
     setEditingLaporanId(null);
     setFormData(initialFormData);
   };
-  
+
   const closeDetailModal = () => {
       setIsDetailModalOpen(false);
       setSelectedLaporan(null);
@@ -395,7 +452,7 @@ export default function AktivitasHarianPage() {
         return;
     }
     setIsSubmitting(true);
-    
+
     const { id, namaSiswa, namaCabang, namaKelas, ...restOfData } = formData;
     const dataToSave = {
         ...restOfData,
@@ -411,22 +468,22 @@ export default function AktivitasHarianPage() {
             const laporanRef = doc(db, "daycare_laporan_harian", editingLaporanId);
             await updateDoc(laporanRef, dataToSave);
             alert("Laporan berhasil diperbarui!");
-            
-            setLaporanList(laporanList.map(l => 
-                l.id === editingLaporanId 
+
+            setLaporanList(laporanList.map(l =>
+                l.id === editingLaporanId
                 ? {
                     id: editingLaporanId,
                     ...dataToSave,
                     namaSiswa: siswa?.nama,
                     namaCabang: cabang?.nama,
                     namaKelas: kelas?.namaKelas,
-                } 
+                }
                 : l
             ));
         } else {
             const newDocRef = await addDoc(collection(db, "daycare_laporan_harian"), dataToSave);
             alert("Laporan harian berhasil disimpan!");
-            
+
             setLaporanList([
               {
                 id: newDocRef.id,
@@ -439,7 +496,7 @@ export default function AktivitasHarianPage() {
             ]);
         }
         closeModal();
-       
+
     } catch (error) {
         console.error("Error saving laporan:", error);
         alert("Gagal menyimpan laporan.");
@@ -460,6 +517,21 @@ export default function AktivitasHarianPage() {
       }
   }
 
+  // Pagination logic (halaman di-clamp agar tetap valid, misal setelah data dihapus)
+  const totalPages = Math.max(1, Math.ceil(filteredLaporanList.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
+  const paginatedLaporan = filteredLaporanList.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  // Nomor halaman yang ditampilkan (maks 5, berpusat di halaman aktif)
+  const getPageNumbers = () => {
+    const maxButtons = 5;
+    let start = Math.max(1, safePage - Math.floor(maxButtons / 2));
+    const end = Math.min(totalPages, start + maxButtons - 1);
+    start = Math.max(1, end - maxButtons + 1);
+    return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -473,20 +545,61 @@ export default function AktivitasHarianPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <div className="flex-1">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+          <div className="lg:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cari Nama Siswa</label>
+              <div className="relative">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchNama}
+                    onChange={(e) => { setSearchNama(e.target.value); resetPage(); }}
+                    placeholder="Ketik nama siswa..."
+                    className="w-full border rounded-lg p-2 pl-9 focus:ring-2 focus:ring-[#581c87] outline-none text-sm"
+                  />
+              </div>
+          </div>
+          <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Dari Tanggal</label>
+              <input
+                type="date"
+                value={filterTanggalDari}
+                max={filterTanggalSampai || undefined}
+                onChange={(e) => { setFilterTanggalDari(e.target.value); resetPage(); }}
+                className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm"
+              />
+          </div>
+          <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Sampai Tanggal</label>
+              <input
+                type="date"
+                value={filterTanggalSampai}
+                min={filterTanggalDari || undefined}
+                onChange={(e) => { setFilterTanggalSampai(e.target.value); resetPage(); }}
+                className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm"
+              />
+          </div>
+          <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Filter Cabang</label>
-              <select 
-                name="filterCabang" 
-                value={filterCabang} 
-                onChange={(e) => setFilterCabang(e.target.value)} 
-                className={`w-full max-w-xs border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm ${(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan") ? "bg-gray-100 cursor-not-allowed" : ""}`}
+              <select
+                name="filterCabang"
+                value={filterCabang}
+                onChange={(e) => { setFilterCabang(e.target.value); resetPage(); }}
+                className={`w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm ${(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan") ? "bg-gray-100 cursor-not-allowed" : ""}`}
                 disabled={(currentUser?.role !== "Admin" && currentUser?.role !== "Direktur" && currentUser?.role !== "Yayasan")}
               >
                   <option value="">Semua Cabang</option>
                   {cabangList.map(c => <option key={c.id} value={c.id}>{c.nama}</option>)}
               </select>
           </div>
+          {isFilterAktif && (
+              <div className="md:col-span-2 lg:col-span-5 flex items-center justify-between text-sm">
+                  <span className="text-gray-500">Ditemukan {filteredLaporanList.length} dari {laporanList.length} laporan</span>
+                  <button onClick={handleResetFilter} className="flex items-center gap-1 text-[#581c87] hover:underline">
+                      <X className="w-4 h-4" /> Reset Filter
+                  </button>
+              </div>
+          )}
       </div>
 
       {/* Data Table */}
@@ -507,11 +620,11 @@ export default function AktivitasHarianPage() {
               {loading ? (
                 <tr><td colSpan={6} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
               ) : filteredLaporanList.length === 0 ? (
-                <tr><td colSpan={6} className="p-8 text-center text-gray-500">Belum ada laporan.</td></tr>
+                <tr><td colSpan={6} className="p-8 text-center text-gray-500">{isFilterAktif ? "Tidak ada laporan yang cocok dengan filter." : "Belum ada laporan."}</td></tr>
               ) : (
-                filteredLaporanList.map((l, i) => (
+                paginatedLaporan.map((l, i) => (
                   <tr key={l.id} className="hover:bg-gray-50">
-                    <td className="p-4 text-center">{i + 1}</td>
+                    <td className="p-4 text-center">{startIndex + i + 1}</td>
                     <td className="p-4">{format(l.tanggal.toDate(), 'dd MMMM yyyy')}</td>
                     <td className="p-4 font-medium text-gray-900">{l.namaSiswa}</td>
                     <td className="p-4">{l.namaCabang}</td>
@@ -527,6 +640,44 @@ export default function AktivitasHarianPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {!loading && filteredLaporanList.length > 0 && (
+          <div className="flex flex-col md:flex-row justify-between items-center gap-3 p-4 border-t border-gray-100">
+            <p className="text-sm text-gray-600">
+              Menampilkan {startIndex + 1}–{Math.min(startIndex + ITEMS_PER_PAGE, filteredLaporanList.length)} dari {filteredLaporanList.length} data
+            </p>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
+                  disabled={safePage === 1}
+                  className="p-2 rounded-lg border text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Sebelumnya"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                {getPageNumbers().map(page => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`min-w-[36px] px-3 py-1.5 rounded-lg border text-sm transition ${page === safePage ? "bg-[#581c87] text-white border-[#581c87]" : "text-gray-700 hover:bg-gray-100"}`}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
+                  disabled={safePage === totalPages}
+                  className="p-2 rounded-lg border text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Berikutnya"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Add/Edit Modal */}

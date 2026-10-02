@@ -6,6 +6,7 @@ import { collection, query, orderBy, getDocs, deleteDoc, doc, updateDoc } from '
 import { Loader2, Filter, RotateCcw, MapPin, Calendar, Trash2, Edit, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
+import { useLokasiKepalaSekolah, normalizeLokasi } from '@/hooks/useLokasiKepalaSekolah';
 
 interface TematikParticipant {
     id: string;
@@ -125,24 +126,31 @@ export default function AdminTematikPage() {
         return Array.from(set).sort();
     }, [masterLokasi, participants]);
 
+    // Kepala Sekolah: filter lokasi dikunci sesuai cabangnya
+    const { isLocked: isLokasiLocked, lockedLokasi, ready: roleReady } = useLokasiKepalaSekolah(lokasiOptions);
+    const effectiveLokasi = isLokasiLocked ? lockedLokasi : filterLokasi;
+
     const bulanOptions = useMemo(() => {
         const set = new Set<string>();
         participants.forEach(p => {
-            if (!filterLokasi || p.lokasi === filterLokasi) {
+            if (!effectiveLokasi || normalizeLokasi(p.lokasi) === normalizeLokasi(effectiveLokasi)) {
                 if (p.bulan?.trim()) set.add(p.bulan.trim());
             }
         });
         return Array.from(set).sort();
-    }, [participants, filterLokasi]);
+    }, [participants, effectiveLokasi]);
 
     const filteredParticipants = useMemo(() => {
         return participants.filter(p => {
-            if (filterLokasi && p.lokasi !== filterLokasi) return false;
+            if (effectiveLokasi && normalizeLokasi(p.lokasi) !== normalizeLokasi(effectiveLokasi)) return false;
             if (filterBulan && p.bulan !== filterBulan) return false;
             if (filterStatus && (p.status || 'Baru') !== filterStatus) return false;
             return true;
         });
-    }, [participants, filterLokasi, filterBulan, filterStatus]);
+    }, [participants, effectiveLokasi, filterBulan, filterStatus]);
+
+    // Lokasi yang terkunci tidak dihitung sebagai "filter aktif"
+    const hasActiveFilter = (!isLokasiLocked && filterLokasi) || filterBulan || filterStatus;
 
     const resetFilters = () => {
         setFilterLokasi('');
@@ -193,7 +201,7 @@ export default function AdminTematikPage() {
                         <Filter className="w-4 h-4 text-orange-600" />
                         <span>Filter Data Pendaftar</span>
                     </div>
-                    {(filterLokasi || filterBulan || filterStatus) && (
+                    {hasActiveFilter && (
                         <button
                             onClick={resetFilters}
                             className="flex items-center gap-1.5 text-xs font-medium text-orange-700 hover:text-orange-900 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-lg transition"
@@ -210,14 +218,16 @@ export default function AdminTematikPage() {
                             <MapPin className="w-3.5 h-3.5 text-gray-400" /> Pilihan Lokasi
                         </label>
                         <select
-                            value={filterLokasi}
+                            value={effectiveLokasi}
                             onChange={(e) => {
                                 setFilterLokasi(e.target.value);
                                 setFilterBulan('');
                             }}
-                            className="w-full p-2.5 border border-gray-200 rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-orange-500 outline-none transition text-sm"
+                            disabled={isLokasiLocked}
+                            className={`w-full p-2.5 border border-gray-200 rounded-lg text-gray-900 focus:ring-2 focus:ring-orange-500 outline-none transition text-sm ${isLokasiLocked ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
                         >
-                            <option value="">Semua Lokasi</option>
+                            {!isLokasiLocked && <option value="">Semua Lokasi</option>}
+                            {isLokasiLocked && !lokasiOptions.includes(lockedLokasi) && <option value={lockedLokasi}>{lockedLokasi}</option>}
                             {lokasiOptions.map(lok => (
                                 <option key={lok} value={lok}>{lok}</option>
                             ))}
@@ -261,7 +271,7 @@ export default function AdminTematikPage() {
             {/* SUMMARY BADGE */}
             <div className="bg-orange-50 border border-orange-200 text-orange-800 text-sm font-medium p-3 rounded-lg flex items-center justify-between">
                 <span>Total Pendaftar ditemukan: <span className="font-bold">{filteredParticipants.length}</span></span>
-                {(filterLokasi || filterBulan || filterStatus) && (
+                {hasActiveFilter && (
                     <span className="text-xs bg-orange-200/70 text-orange-900 px-2.5 py-0.5 rounded-full font-semibold">Filter Aktif</span>
                 )}
             </div>
@@ -284,7 +294,7 @@ export default function AdminTematikPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {loading ? (
+                            {loading || !roleReady ? (
                                 <tr><td colSpan={9} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-orange-600" /></td></tr>
                             ) : filteredParticipants.length === 0 ? (
                                 <tr>

@@ -8,6 +8,7 @@ import { Loader2, Eye, Edit, Trash2, X, Filter, RotateCcw, UserPlus, ReceiptText
 import * as XLSX from 'xlsx';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
+import { useLokasiKepalaSekolah, normalizeLokasi } from '@/hooks/useLokasiKepalaSekolah';
 
 interface SiswaBaruDetail {
   id: string;
@@ -63,6 +64,10 @@ export default function SiswaBaruPage() {
   const [filterInfoDari, setFilterInfoDari] = useState('');
   const [filterProgram, setFilterProgram] = useState('');
   const [cabangList, setCabangList] = useState<string[]>([]);
+
+  // Kepala Sekolah: filter lokasi dikunci sesuai cabangnya
+  const { isLocked: isLokasiLocked, lockedLokasi, ready: roleReady } = useLokasiKepalaSekolah(cabangList);
+  const effectiveCabang = isLokasiLocked ? lockedLokasi : filterCabang;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -199,7 +204,7 @@ export default function SiswaBaruPage() {
         endDate.setHours(23, 59, 59, 999);
         if (tglDaftar > endDate) return false;
       }
-      if (filterCabang && p.lokasi !== filterCabang) return false;
+      if (effectiveCabang && normalizeLokasi(p.lokasi) !== normalizeLokasi(effectiveCabang)) return false;
       if (filterProgram && p.program !== filterProgram) return false;
       if (filterStatus && p.statusPendaftaran !== filterStatus) return false;
       if (filterInfoDari && !(p.infoDari || '').toLowerCase().includes(filterInfoDari.toLowerCase())) return false;
@@ -221,7 +226,7 @@ export default function SiswaBaruPage() {
       totalItems: filtered.length,
       totalPages: Math.ceil(filtered.length / itemsPerPage)
     };
-  }, [registrations, filterTanggal, filterCabang, filterProgram, filterStatus, filterInfoDari, currentPage]);
+  }, [registrations, filterTanggal, effectiveCabang, filterProgram, filterStatus, filterInfoDari, currentPage]);
 
   const programList = useMemo(() => {
     const set = new Set(registrations.map(p => p.program).filter(Boolean));
@@ -296,7 +301,7 @@ export default function SiswaBaruPage() {
         <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-6 gap-4 text-sm">
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Dari Tanggal</label><input type="date" value={filterTanggal.start} onChange={e => setFilterTanggal(p => ({ ...p, start: e.target.value }))} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white" /></div>
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Sampai Tanggal</label><input type="date" value={filterTanggal.end} onChange={e => setFilterTanggal(p => ({ ...p, end: e.target.value }))} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white" /></div>
-          <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Lokasi Pendaftaran</label><select value={filterCabang} onChange={e => setFilterCabang(e.target.value)} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white"><option value="">Semua Lokasi</option>{cabangList.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+          <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Lokasi Pendaftaran</label><select value={effectiveCabang} onChange={e => setFilterCabang(e.target.value)} disabled={isLokasiLocked} className={`w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 ${isLokasiLocked ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}>{!isLokasiLocked && <option value="">Semua Lokasi</option>}{isLokasiLocked && !cabangList.includes(lockedLokasi) && <option value={lockedLokasi}>{lockedLokasi}</option>}{cabangList.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Program</label><select value={filterProgram} onChange={e => setFilterProgram(e.target.value)} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white"><option value="">Semua Program</option>{programList.map(pr => <option key={pr} value={pr}>{pr}</option>)}</select></div>
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Status</label><select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white"><option value="">Semua Status</option><option value="Baru">Baru</option><option value="Sudah Bayar">Sudah Bayar</option><option value="Sudah Lunas">Sudah Lunas</option><option value="Sudah Assesment">Sudah Assesment</option><option value="Sudah Konsultasi">Sudah Konsultasi</option><option value="Ditolak">Ditolak</option></select></div>
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Info Dari</label><input type="text" value={filterInfoDari} onChange={e => setFilterInfoDari(e.target.value)} placeholder="Cari sumber info..." className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white" /></div>
@@ -328,7 +333,7 @@ export default function SiswaBaruPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {loading ? (
+              {loading || !roleReady ? (
                 <tr><td colSpan={8} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
               ) : filteredAndPaginatedRegistrations.paginatedItems.length === 0 ? (
                 <tr><td colSpan={8} className="p-8 text-center text-gray-500 dark:text-gray-500">Belum ada pendaftar siswa baru.</td></tr>
