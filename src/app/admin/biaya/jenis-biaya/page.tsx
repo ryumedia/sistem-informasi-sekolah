@@ -75,6 +75,10 @@ export default function JenisBiayaPage() {
   const [filteredJenisBiayaList, setFilteredJenisBiayaList] = useState<JenisBiaya[]>([]);
   const [filteredKelasList, setFilteredKelasList] = useState<Kelas[]>([]);
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
+
   // --- DATA FETCHING & AUTH ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -151,6 +155,29 @@ export default function JenisBiayaPage() {
     }
     setFilteredJenisBiayaList(filtered);
   }, [filterCabang, jenisBiayaList]);
+
+  // Reset ke halaman 1 saat filter/data berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterCabang, jenisBiayaList]);
+
+  // Pagination Logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredJenisBiayaList.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredJenisBiayaList.length / itemsPerPage);
+
+  const getPageNumbers = () => {
+    const maxButtons = 5;
+    if (totalPages <= maxButtons) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    if (currentPage <= 3) return [1, 2, 3, 4, 5];
+    if (currentPage >= totalPages - 2) {
+      return Array.from({ length: maxButtons }, (_, i) => totalPages - maxButtons + 1 + i);
+    }
+    return [currentPage - 2, currentPage - 1, currentPage, currentPage + 1, currentPage + 2];
+  };
 
   useEffect(() => {
     // Jika penerapan adalah 'kelas_tertentu' dan ada cabang yang dipilih, filter kelasnya
@@ -328,9 +355,9 @@ export default function JenisBiayaPage() {
               ) : filteredJenisBiayaList.length === 0 ? (
                 <tr><td colSpan={6} className="p-8 text-center text-gray-500">Belum ada data.</td></tr>
               ) : (
-                filteredJenisBiayaList.map((item, i) => (
+                currentItems.map((item, i) => (
                   <tr key={item.id} className="hover:bg-gray-50">
-                    <td className="p-4 text-center">{i + 1}</td>
+                    <td className="p-4 text-center">{indexOfFirstItem + i + 1}</td>
                     <td className="p-4 font-medium text-gray-900">{item.nama}</td>
                     <td className="p-4">
                       {item.penerapan === 'semua' && <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">Semua Cabang & Kelas</span>}
@@ -375,6 +402,46 @@ export default function JenisBiayaPage() {
           </table>
         </div>
       </div>
+
+      {/* Pagination */}
+      {!loading && filteredJenisBiayaList.length > 0 && (
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+          <p className="text-sm text-gray-600">
+            Menampilkan <span className="font-semibold">{indexOfFirstItem + 1}</span>–{" "}
+            <span className="font-semibold">{Math.min(indexOfLastItem, filteredJenisBiayaList.length)}</span> dari{" "}
+            <span className="font-semibold">{filteredJenisBiayaList.length}</span> jenis biaya
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            {getPageNumbers().map((page) => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={`px-3 py-1.5 text-sm rounded-lg transition ${
+                  currentPage === page
+                    ? "bg-[#581c87] text-white font-medium"
+                    : "border border-gray-300 text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Add/Edit Modal */}
       {isModalOpen && (

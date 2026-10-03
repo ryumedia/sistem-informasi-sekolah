@@ -59,6 +59,7 @@ export default function PengajuanPage() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [bulkApproving, setBulkApproving] = useState(false);
   const itemsPerPage = 10;
 
   // 1. Cek Role User yang Login
@@ -97,7 +98,7 @@ export default function PengajuanPage() {
             }
           } else {
              // Fallback for admin or other roles not in guru/caregivers
-             setCurrentUser({ id: user.uid, uid: user.uid, email: user.email, role: "Admin" }); 
+             setCurrentUser({ id: user.uid, uid: user.uid, email: user.email, role: "Admin" });
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
@@ -164,13 +165,13 @@ export default function PengajuanPage() {
       } else {
         q = query(pengajuanCollection, ...constraints);
       }
-      
+
       const querySnapshot = await getDocs(q);
       const data = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       })) as Pengajuan[];
-      
+
       setDataList(data);
     } catch (error) {
       console.error("Error fetching pengajuan:", error);
@@ -209,7 +210,7 @@ export default function PengajuanPage() {
   const handleApprove = async (item: Pengajuan) => {
     let newStatus = "";
     const userRoles = currentUser?.role || [];
-    
+
     if (item.status === "Menunggu KS") {
       if (!userRoles.includes("Kepala Sekolah")) return alert("Hanya Kepala Sekolah yang dapat menyetujui tahap ini.");
       newStatus = "Menunggu Direktur";
@@ -229,6 +230,55 @@ export default function PengajuanPage() {
       await updateDoc(doc(db, "pengajuan", item.id), { status: newStatus });
       alert("Status berhasil diperbarui!");
       fetchData();
+    }
+  };
+
+  // 5b. Logic Approve Masal
+  const handleBulkApprove = async () => {
+    const userRoles = currentUser?.role || [];
+    const selectedData = filteredData.filter((item) => selectedItems.includes(item.id));
+
+    const approvable = selectedData.filter((item) => {
+      if (item.status === "Menunggu KS") return userRoles.includes("Kepala Sekolah");
+      if (item.status === "Menunggu Direktur") return userRoles.includes("Direktur");
+      return false;
+    });
+
+    if (approvable.length === 0) {
+      alert("Tidak ada pengajuan terpilih yang bisa Anda approve dengan role saat ini.\n- Kepala Sekolah: hanya item berstatus 'Menunggu KS'.\n- Direktur: hanya item berstatus 'Menunggu Direktur'.");
+      return;
+    }
+
+    const skipped = selectedData.length - approvable.length;
+    const nextStatuses = approvable.map((item) =>
+      item.jenisPengajuan === 'Realokasi' && item.status === 'Menunggu Direktur'
+        ? "Disetujui (Realokasi)"
+        : item.status === "Menunggu KS"
+        ? "Menunggu Direktur"
+        : "Disetujui"
+    );
+
+    if (!confirm(`Setujui ${approvable.length} pengajuan terpilih secara bersamaan?${skipped > 0 ? `\n(${skipped} item lain akan dilewati karena status/role tidak sesuai)` : ""}`)) {
+      return;
+    }
+
+    setBulkApproving(true);
+    try {
+      // Proses paralel semua update
+      await Promise.all(
+        approvable.map((item, i) =>
+          updateDoc(doc(db, "pengajuan", item.id), { status: nextStatuses[i] })
+        )
+      );
+      alert(`${approvable.length} pengajuan berhasil disetujui!`);
+      setSelectedItems([]);
+      fetchData();
+    } catch (error) {
+      console.error("Error bulk approving:", error);
+      alert("Sebagian atau seluruh pengajuan gagal di-approve. Coba lagi.");
+      fetchData();
+    } finally {
+      setBulkApproving(false);
     }
   };
 
@@ -329,28 +379,28 @@ export default function PengajuanPage() {
     <div className="space-y-6">
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <h1 className="text-2xl font-bold text-gray-800">Daftar Pengajuan Anggaran</h1>
-        
+
         {/* Filter Area */}
         <div className="flex flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600">Dari:</span>
-            <input 
-              type="date" 
+            <input
+              type="date"
               className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900"
-              value={startDate} 
+              value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
             />
             <span className="text-sm text-gray-600">Sampai:</span>
-            <input 
-              type="date" 
+            <input
+              type="date"
               className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900"
-              value={endDate} 
+              value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
             />
           </div>
-          <select 
-            className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900 ${["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role) ? "bg-gray-100 cursor-not-allowed" : ""}`} 
-            value={filterCabang} 
+          <select
+            className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900 ${["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role) ? "bg-gray-100 cursor-not-allowed" : ""}`}
+            value={filterCabang}
             onChange={(e) => setFilterCabang(e.target.value)}
             disabled={["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role)}
           >
@@ -363,9 +413,9 @@ export default function PengajuanPage() {
               <option key={n.id} value={n.nama}>{n.nama}</option>
             ))}
           </select>
-          <input 
-            type="text" 
-            placeholder="Cari Nama Pengaju" 
+          <input
+            type="text"
+            placeholder="Cari Nama Pengaju"
             className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900"
             value={filterNama}
             onChange={(e) => setFilterNama(e.target.value)}
@@ -391,6 +441,15 @@ export default function PengajuanPage() {
             <p className="text-2xl font-bold">Rp {totalPengajuanTerpilih.toLocaleString("id-ID")}</p>
           </div>
           <button onClick={() => setSelectedItems([])} className="text-sm font-medium text-purple-600 hover:text-purple-800">Bersihkan Pilihan</button>
+          <button
+            onClick={handleBulkApprove}
+            disabled={bulkApproving}
+            className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Approve semua pengajuan terpilih sesuai tahapan role Anda"
+          >
+            <CheckCircle className="w-4 h-4" />
+            {bulkApproving ? "Memproses..." : "Approve Masal"}
+          </button>
         </div>
       )}
 

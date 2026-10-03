@@ -1,4 +1,4 @@
-﻿﻿"use client";
+﻿﻿﻿"use client";
 
 import { useState, useEffect, useMemo } from 'react';
 import { db, auth } from "@/lib/firebase";
@@ -87,6 +87,10 @@ export default function PenagihanPage() {
   const [filterKelas, setFilterKelas] = useState<string>("");
   const [filteredSiswaList, setFilteredSiswaList] = useState<SiswaWithStatus[]>([]);
   const [kelasOptions, setKelasOptions] = useState<Kelas[]>([]);
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
 
   // Bulk Add Modal State
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
@@ -219,6 +223,29 @@ export default function PenagihanPage() {
     setFilteredSiswaList(filtered);
   }, [filterCabang, filterKelas, filterTahun, filterBulan, searchTerm, statusFilter, siswaList, tagihanList, cabangList, kelasList]);
 
+  // Reset ke halaman 1 saat filter/data berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterCabang, filterKelas, filterTahun, filterBulan, searchTerm, statusFilter, siswaList]);
+
+  // Pagination Logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredSiswaList.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredSiswaList.length / itemsPerPage);
+
+  const getPageNumbers = () => {
+    const maxButtons = 5;
+    if (totalPages <= maxButtons) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    if (currentPage <= 3) return [1, 2, 3, 4, 5];
+    if (currentPage >= totalPages - 2) {
+      return Array.from({ length: maxButtons }, (_, i) => totalPages - maxButtons + 1 + i);
+    }
+    return [currentPage - 2, currentPage - 1, currentPage, currentPage + 1, currentPage + 2];
+  };
+
   // --- RENDER ---
   return (
     <div className="space-y-6">
@@ -314,9 +341,9 @@ export default function PenagihanPage() {
               ) : filteredSiswaList.length === 0 ? (
                 <tr><td colSpan={6} className="p-8 text-center text-gray-500">Tidak ada data siswa yang cocok.</td></tr>
               ) : (
-                filteredSiswaList.map((siswa, i) => (
+                currentItems.map((siswa, i) => (
                   <tr key={siswa.id} className="hover:bg-gray-50">
-                    <td className="p-4 text-center">{i + 1}</td>
+                    <td className="p-4 text-center">{indexOfFirstItem + i + 1}</td>
                     <td className="p-4 font-medium text-gray-900">{siswa.nama}</td>
                     <td className="p-4">{siswa.cabang}</td>
                     <td className="p-4">{siswa.kelas}</td>
@@ -344,6 +371,46 @@ export default function PenagihanPage() {
           </table>
         </div>
       </div>
+
+      {/* Pagination */}
+      {!loading && filteredSiswaList.length > 0 && (
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+          <p className="text-sm text-gray-600">
+            Menampilkan <span className="font-semibold">{indexOfFirstItem + 1}</span>–{" "}
+            <span className="font-semibold">{Math.min(indexOfLastItem, filteredSiswaList.length)}</span> dari{" "}
+            <span className="font-semibold">{filteredSiswaList.length}</span> siswa
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            {getPageNumbers().map((page) => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={`px-3 py-1.5 text-sm rounded-lg transition ${
+                  currentPage === page
+                    ? "bg-[#581c87] text-white font-medium"
+                    : "border border-gray-300 text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {isBulkModalOpen && (
         <BulkTagihanModal

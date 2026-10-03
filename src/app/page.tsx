@@ -7,9 +7,8 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
-import { collection, query, where, getDocs, doc, getDoc, addDoc, orderBy, limit } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { BookOpen, Calendar, Bell, User, LogOut, Shield, Home, KeyRound, Activity, FileText, FilePlus, CreditCard, Ticket, QrCode, X } from "lucide-react";
-import { formatDate } from "@/lib/dateUtils";
 import { QRCodeSVG } from "qrcode.react"; // Ganti impor ke QRCodeSVG
 
 import ChangePasswordModal from "../components/dashboard/changePasswordModal";
@@ -35,7 +34,7 @@ export default function UserHome() {
   const [isPasswordModalOpen, setPasswordModalOpen] = useState(false);
   const [isEditProfileModalOpen, setEditProfileModalOpen] = useState(false);
   const [isPengajuanModalOpen, setPengajuanModalOpen] = useState(false);
-  const [latestPengumuman, setLatestPengumuman] = useState<any[]>([]);
+  const [unpaidTagihan, setUnpaidTagihan] = useState<any[]>([]);
   const [selectedPengumuman, setSelectedPengumuman] = useState<any>(null);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
@@ -97,41 +96,35 @@ export default function UserHome() {
     return () => unsubscribe();
   }, [router]); // Hapus fetchUserData dari dependency array
 
-  // Fetch Latest Pengumuman for Dashboard
+  // Fetch Tagihan Belum Lunas untuk Info Biaya Sekolah (khusus Siswa)
   useEffect(() => {
-    const fetchLatestPengumuman = async () => {
-      if (!userData?.cabang && !["Admin", "Direktur", "Yayasan"].includes(userData?.role)) return;
+    const fetchUnpaidTagihan = async () => {
+      if (userData?.role !== "Siswa" || !userData?.id) {
+        setUnpaidTagihan([]);
+        return;
+      }
       try {
-        let q;
-        const role = userData?.role;
-        const cabang = userData?.cabang;
-
-        if (["Admin", "Direktur", "Yayasan"].includes(role)) {
-           q = query(collection(db, "pengumuman"), orderBy("createdAt", "desc"), limit(3));
-        } else {
-           if (cabang) {
-             q = query(collection(db, "pengumuman"), where("cabang", "==", cabang));
-           } else {
-             q = query(collection(db, "pengumuman"), where("cabang", "==", "Unknown"));
-           }
-        }
-
+        const q = query(
+          collection(db, "tagihan_siswa"),
+          where("siswaId", "==", userData.id),
+          where("status", "==", "Belum Lunas")
+        );
         const snap = await getDocs(q);
         const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        
+        // Urutkan berdasarkan tahun & bulan terdekat
         items.sort((a: any, b: any) => {
-            const dateA = a.createdAt?.seconds || 0;
-            const dateB = b.createdAt?.seconds || 0;
-            return dateB - dateA;
+          const yearDiff = (parseInt(a.tahun) || 0) - (parseInt(b.tahun) || 0);
+          if (yearDiff !== 0) return yearDiff;
+          const monthsOrder = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+          return (monthsOrder.indexOf(a.bulan) || 0) - (monthsOrder.indexOf(b.bulan) || 0);
         });
-
-        setLatestPengumuman(items.slice(0, 3));
+        setUnpaidTagihan(items);
       } catch (err) {
-        console.error("Error fetching latest pengumuman:", err);
+        console.error("Error fetching unpaid tagihan:", err);
       }
     };
-    fetchLatestPengumuman();
-  }, [userData?.cabang, userData?.role]); // Ubah dependency ke yang lebih spesifik
+    fetchUnpaidTagihan();
+  }, [userData?.id, userData?.role]);
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -152,16 +145,16 @@ export default function UserHome() {
   return (
     <main className="min-h-screen bg-gray-200 flex justify-center items-start">
       <div className="w-full max-w-lg bg-white min-h-screen shadow-2xl flex flex-col">
-        
+
         {activeTab === "home" && (
           <>
             <header className="bg-[#581c87] text-white p-6 rounded-b-3xl shadow-md flex flex-col items-center">
               <div className="mb-3">
-                <Image 
-                  src="/logo.png" 
-                  alt="Logo Sekolah" 
-                  width={70} 
-                  height={70} 
+                <Image
+                  src="/logo.png"
+                  alt="Logo Sekolah"
+                  width={70}
+                  height={70}
                   className="object-contain"
                 />
               </div>
@@ -194,21 +187,34 @@ export default function UserHome() {
 
               <section>
                 <div className="flex justify-between items-center mb-3">
-                  <h2 className="font-semibold text-gray-800">Pengumuman Terbaru</h2>
+                  <h2 className="font-semibold text-gray-800">Info Biaya Sekolah</h2>
+                  {userData?.role === "Siswa" && unpaidTagihan.length > 0 && (
+                    <button onClick={() => setActiveTab("pembayaran")} className="text-xs font-medium text-[#581c87] hover:underline">Lihat Semua</button>
+                  )}
                 </div>
                 <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm space-y-3">
-                  {latestPengumuman.length === 0 ? (
-                    <p className="text-xs text-gray-500 italic text-center py-2">Belum ada pengumuman terbaru.</p>
+                  {userData?.role !== "Siswa" ? (
+                    <p className="text-xs text-gray-500 italic text-center py-2">Info biaya sekolah tersedia untuk akun siswa.</p>
+                  ) : unpaidTagihan.length === 0 ? (
+                    <p className="text-xs text-green-600 text-center py-2 font-medium">Tidak ada tagihan pembayaran. Semua biaya sudah lunas 🎉</p>
                   ) : (
-                    latestPengumuman.map((item, idx) => (
-                      <div 
-                        key={item.id} 
-                        onClick={() => setSelectedPengumuman(item)}
-                        className={`cursor-pointer hover:bg-gray-50 transition p-2 rounded-lg -mx-2 ${idx !== latestPengumuman.length - 1 ? 'border-b border-gray-100 pb-2 mb-1' : ''}`}
+                    unpaidTagihan.map((item, idx) => (
+                      <div
+                        key={item.id}
+                        onClick={() => setActiveTab("pembayaran")}
+                        className={`cursor-pointer hover:bg-orange-50 transition p-3 rounded-lg -mx-2 ${idx !== unpaidTagihan.length - 1 ? 'border-b border-gray-100 pb-3 mb-1' : ''}`}
                       >
-                        <h3 className="font-medium text-sm text-gray-800 line-clamp-1">{item.judul}</h3>
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.deskripsi}</p>
-                        <p className="text-[10px] text-gray-400 mt-1 text-right">{formatDate(item.createdAt)}</p>
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="min-w-0">
+                            <h3 className="font-medium text-sm text-gray-800 truncate">{item.jenisBiaya || 'Biaya Sekolah'}</h3>
+                            <p className="text-xs text-gray-500 mt-0.5">Periode: {item.bulan} {item.tahun}</p>
+                          </div>
+                          <span className="shrink-0 text-xs font-semibold bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">Belum Lunas</span>
+                        </div>
+                        <div className="flex justify-between items-end mt-1">
+                          <span className="text-sm font-bold text-[#581c87]">Rp {(item.nominal || 0).toLocaleString('id-ID')}</span>
+                          <span className="text-[10px] text-gray-400">Ketuk untuk bayar</span>
+                        </div>
                       </div>
                     ))
                   )}

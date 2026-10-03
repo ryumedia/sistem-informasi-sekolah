@@ -80,6 +80,10 @@ export default function PenerimaanPage() {
   const [filteredLaporanList, setFilteredLaporanList] = useState<LaporanPenerimaan[]>([]);
   const [totalPenerimaan, setTotalPenerimaan] = useState<number>(0);
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
+
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPenerimaan, setSelectedPenerimaan] = useState<LaporanPenerimaan | null>(null);
@@ -240,6 +244,29 @@ export default function PenerimaanPage() {
 
     setFilteredLaporanList(filtered); // This line is fine, the dependency array is the issue.
   }, [filterCabang, filterTanggalMulai, filterTanggalSelesai, filterStatus, laporanList, cabangList]);
+
+  // Reset ke halaman 1 saat filter/data berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterCabang, filterTanggalMulai, filterTanggalSelesai, filterStatus, laporanList]);
+
+  // Pagination Logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredLaporanList.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredLaporanList.length / itemsPerPage);
+
+  const getPageNumbers = () => {
+    const maxButtons = 5;
+    if (totalPages <= maxButtons) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    if (currentPage <= 3) return [1, 2, 3, 4, 5];
+    if (currentPage >= totalPages - 2) {
+      return Array.from({ length: maxButtons }, (_, i) => totalPages - maxButtons + 1 + i);
+    }
+    return [currentPage - 2, currentPage - 1, currentPage, currentPage + 1, currentPage + 2];
+  };
 
   // --- CALCULATE TOTAL & INITIAL FILTERED LIST ---
   useEffect(() => {
@@ -482,7 +509,7 @@ export default function PenerimaanPage() {
               ) : filteredLaporanList.length === 0 ? (
                 <tr><td colSpan={11} className="p-8 text-center text-gray-500">Tidak ada data penerimaan yang cocok.</td></tr>
               ) : (
-                filteredLaporanList.map((item, i) => {
+                currentItems.map((item, i) => {
                   const getStatusPill = (status?: string) => {
                     if (!status) return <span className="bg-gray-100 text-gray-800 text-xs font-semibold px-2 py-1 rounded-full">Manual</span>;
                     switch (status) {
@@ -526,7 +553,7 @@ export default function PenerimaanPage() {
                             {syncingIds.has(item.id) ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
                           </button>
                         )}
-                        <button 
+                        <button
                           onClick={() => openModal(item)}
                           disabled={item.sudahMasukArusKas || (item.status !== undefined && item.status !== 'settlement' && item.status !== 'capture' && item.status !== 'manual')}
                           className="text-green-600 hover:text-green-800 disabled:text-gray-300 disabled:cursor-not-allowed"
@@ -543,6 +570,46 @@ export default function PenerimaanPage() {
           </table>
         </div>
       </div>
+
+      {/* Pagination */}
+      {!loading && filteredLaporanList.length > 0 && (
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+          <p className="text-sm text-gray-600">
+            Menampilkan <span className="font-semibold">{indexOfFirstItem + 1}</span>–{" "}
+            <span className="font-semibold">{Math.min(indexOfLastItem, filteredLaporanList.length)}</span> dari{" "}
+            <span className="font-semibold">{filteredLaporanList.length}</span> transaksi
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            {getPageNumbers().map((page) => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={`px-3 py-1.5 text-sm rounded-lg transition ${
+                  currentPage === page
+                    ? "bg-[#581c87] text-white font-medium"
+                    : "border border-gray-300 text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal Tambah Pemasukan ke Arus Kas */}
       {isModalOpen && selectedPenerimaan && (
