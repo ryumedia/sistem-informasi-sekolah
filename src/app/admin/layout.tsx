@@ -250,6 +250,7 @@ export default function AdminLayout({
         { name: "Siswa Baru", href: "/admin/notifikasi/siswa-baru", roles: ["Admin", "Yayasan"] },
         { name: "Akun Baru", href: "/admin/notifikasi/akun-baru", roles: ["Admin", "Yayasan"] },
         { name: "Pembayaran", href: "/admin/notifikasi/pembayaran", roles: ["Admin", "Yayasan"] },
+        { name: "Tagihan", href: "/admin/notifikasi/tagihan", roles: ["Admin", "Yayasan"] },
       ]
     },
   ];

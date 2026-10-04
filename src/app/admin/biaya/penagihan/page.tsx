@@ -21,6 +21,7 @@ interface Siswa {
   nama: string;
   cabang: string;
   kelas: string;
+  noWA?: string;
 }
 
 interface Tagihan {
@@ -29,6 +30,8 @@ interface Tagihan {
   bulan: string;
   tahun: string;
   status: 'Lunas' | 'Belum Lunas';
+  nominal?: number;
+  jenisBiaya?: string;
 }
 
 interface Cabang {
@@ -94,6 +97,56 @@ export default function PenagihanPage() {
 
   // Bulk Add Modal State
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [sendingTagihanId, setSendingTagihanId] = useState<string | null>(null);
+
+  // Peta siswaId -> tagihan sesuai filter bulan/tahun yang dipilih
+  const tagihanBySiswa = useMemo(() => {
+    const map: Record<string, Tagihan | undefined> = {};
+    tagihanList.forEach(t => {
+      if (t.bulan === filterBulan && t.tahun === filterTahun) {
+        map[t.siswaId] = t;
+      }
+    });
+    return map;
+  }, [tagihanList, filterBulan, filterTahun]);
+
+  // --- KIRIM NOTIFIKASI TAGIHAN ---
+  const handleKirimTagihan = async (siswaId: string) => {
+    // Cari tagihan siswa yang sesuai filter bulan/tahun dan belum lunas
+    const tagihan = tagihanList.find(t =>
+      t.siswaId === siswaId &&
+      t.bulan === filterBulan &&
+      t.tahun === filterTahun
+    );
+
+    if (!tagihan) {
+      alert(`Tidak ada tagihan untuk ${filterBulan} ${filterTahun}.`);
+      return;
+    }
+
+    setSendingTagihanId(tagihan.id);
+    try {
+      const response = await fetch('/api/notifikasi/tagihan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tagihanId: tagihan.id }),
+      });
+      const data = await response.json();
+
+      if (data.skipped) {
+        alert(`Notifikasi dilewati: ${data.reason}`);
+      } else if (data.sent) {
+        alert('Notifikasi tagihan berhasil dikirim ke WhatsApp siswa.');
+      } else if (data.error) {
+        alert(`Gagal mengirim: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Error mengirim notifikasi tagihan:', error);
+      alert('Terjadi kesalahan saat mengirim notifikasi.');
+    } finally {
+      setSendingTagihanId(null);
+    }
+  };
 
   // --- DATA FETCHING & AUTH ---
   useEffect(() => {
@@ -360,9 +413,18 @@ export default function PenagihanPage() {
                       <Link href={`/admin/biaya/penagihan/${siswa.id}`} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition" title="Lihat Detail Tagihan">
                         <Eye className="w-4 h-4" />
                       </Link>
-                      <button className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition" title="Kirim Tagihan Baru">
-                        <Send className="w-4 h-4" />
-                      </button>
+                                            {siswa.statusPembayaran !== 'Lunas' && (
+                        <button
+                          onClick={() => handleKirimTagihan(siswa.id)}
+                          disabled={sendingTagihanId !== null}
+                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Kirim Notifikasi Tagihan via WhatsApp"
+                        >
+                          {sendingTagihanId === tagihanBySiswa[siswa.id]?.id
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <Send className="w-4 h-4" />}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
