@@ -30,7 +30,7 @@ interface SiswaBaruDetail {
   kebutuhanKhusus: 'Ya' | 'Tidak';
   infoDari: string;
   buktiTransferUrl?: string;
-  statusPendaftaran: 'Baru' | 'Sudah Bayar' | 'Sudah Lunas' | 'Sudah Assesment' | 'Sudah Konsultasi' | 'Ditolak';
+  statusPendaftaran: 'Baru' | 'Bayar Pendaftaran' | 'Lunas' | 'Daftar Tunggu' | 'Batal';
   createdAt: Timestamp;
 }
 
@@ -153,11 +153,10 @@ export default function SiswaBaruPage() {
   const getStatusBadgeColor = (status: SiswaBaruDetail['statusPendaftaran']) => {
     switch (status) {
       case 'Baru': return 'bg-blue-100 text-blue-800';
-      case 'Sudah Bayar': return 'bg-purple-100 text-purple-800';
-      case 'Sudah Lunas': return 'bg-emerald-100 text-emerald-800';
-      case 'Sudah Assesment': return 'bg-yellow-100 text-yellow-800';
-      case 'Sudah Konsultasi': return 'bg-green-100 text-green-800';
-      case 'Ditolak': return 'bg-red-100 text-red-800 dark:text-red-800';
+      case 'Bayar Pendaftaran': return 'bg-purple-100 text-purple-800';
+      case 'Lunas': return 'bg-emerald-100 text-emerald-800';
+      case 'Daftar Tunggu': return 'bg-amber-100 text-amber-800';
+      case 'Batal': return 'bg-red-100 text-red-800 dark:text-red-800';
       default: return 'bg-gray-100 text-gray-800 dark:text-gray-800';
     }
   };
@@ -362,7 +361,7 @@ export default function SiswaBaruPage() {
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Sampai Tanggal</label><input type="date" value={filterTanggal.end} onChange={e => setFilterTanggal(p => ({ ...p, end: e.target.value }))} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white" /></div>
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Lokasi Pendaftaran</label><select value={effectiveCabang} onChange={e => setFilterCabang(e.target.value)} disabled={isLokasiLocked} className={`w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 ${isLokasiLocked ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}>{!isLokasiLocked && <option value="">Semua Lokasi</option>}{isLokasiLocked && !cabangList.includes(lockedLokasi) && <option value={lockedLokasi}>{lockedLokasi}</option>}{cabangList.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Program</label><select value={filterProgram} onChange={e => setFilterProgram(e.target.value)} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white"><option value="">Semua Program</option>{programList.map(pr => <option key={pr} value={pr}>{pr}</option>)}</select></div>
-          <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Status</label><select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white"><option value="">Semua Status</option><option value="Baru">Baru</option><option value="Sudah Bayar">Sudah Bayar</option><option value="Sudah Lunas">Sudah Lunas</option><option value="Sudah Assesment">Sudah Assesment</option><option value="Sudah Konsultasi">Sudah Konsultasi</option><option value="Ditolak">Ditolak</option></select></div>
+          <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Status</label><select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white"><option value="">Semua Status</option><option value="Baru">Baru</option><option value="Bayar Pendaftaran">Bayar Pendaftaran</option><option value="Lunas">Lunas</option><option value="Daftar Tunggu">Daftar Tunggu</option><option value="Batal">Batal</option></select></div>
           <div><label className="block text-xs text-gray-500 dark:text-gray-500 mb-1">Info Dari</label><input type="text" value={filterInfoDari} onChange={e => setFilterInfoDari(e.target.value)} placeholder="Cari sumber info..." className="w-full p-2 border rounded-md text-gray-900 dark:text-gray-900 bg-white" /></div>
         </div>
         <div className="flex justify-between items-center">
@@ -560,11 +559,10 @@ export default function SiswaBaruPage() {
                       className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-sm bg-white disabled:bg-gray-100 text-gray-900 dark:text-gray-900"
                     >
                       <option value="Baru">Baru</option>
-                      <option value="Sudah Bayar">Sudah Bayar</option>
-                      <option value="Sudah Lunas">Sudah Lunas</option>
-                      <option value="Sudah Assesment">Sudah Assesment</option>
-                      <option value="Sudah Konsultasi">Sudah Konsultasi</option>
-                      <option value="Ditolak">Ditolak</option>
+                      <option value="Bayar Pendaftaran">Bayar Pendaftaran</option>
+                      <option value="Lunas">Lunas</option>
+                      <option value="Daftar Tunggu">Daftar Tunggu</option>
+                      <option value="Batal">Batal</option>
                     </select>
                   </div>
                 </div>

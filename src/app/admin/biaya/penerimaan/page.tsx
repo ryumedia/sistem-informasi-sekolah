@@ -22,7 +22,8 @@ import * as XLSX from 'xlsx';
 // --- INTERFACES ---
 interface Pembayaran {
   id: string;
-  tagihanId: string;
+  tagihanId?: string; // field lama (jika ada)
+  tagihanIds?: string[]; // field baru: array ID tagihan
   siswaId: string;
   jumlahBayar: number;
   tanggalBayar: Timestamp;
@@ -56,6 +57,7 @@ interface LaporanPenerimaan extends Pembayaran {
   cabangSiswa: string;
   kelasSiswa: string;
   jenisBiaya: string;
+  jenisBiayaList: string[];
 }
 
 interface Nomenklatur {
@@ -169,7 +171,24 @@ export default function PenerimaanPage() {
           const laporanData = pembayaranSnap.docs.map(doc => {
             const pembayaran = { id: doc.id, ...doc.data() } as Pembayaran;
             const siswa = siswaMap.get(pembayaran.siswaId);
-            const tagihan = tagihanMap.get(pembayaran.tagihanId);
+
+            // Dukung field baru (tagihanIds array) dan field lama (tagihanId tunggal)
+            const tagihanIds = (pembayaran.tagihanIds && pembayaran.tagihanIds.length > 0)
+              ? pembayaran.tagihanIds
+              : (pembayaran.tagihanId ? [pembayaran.tagihanId] : []);
+
+            const jenisBiayaList = tagihanIds
+              .map(id => {
+                const tagihan = tagihanMap.get(id);
+                return tagihan
+                  ? `${tagihan.jenisBiaya} ${tagihan.bulan} ${tagihan.tahun}`.trim()
+                  : null;
+              })
+              .filter((jb): jb is string => jb !== null);
+
+            const jenisBiaya = jenisBiayaList.length > 0
+              ? jenisBiayaList[0] + (jenisBiayaList.length > 1 ? ` +${jenisBiayaList.length - 1} lainnya` : "")
+              : "Tagihan Dihapus";
 
             return {
               ...pembayaran,
@@ -177,9 +196,8 @@ export default function PenerimaanPage() {
               cabangSiswa: siswa?.cabang || "N/A",
               transactionId: pembayaran.transactionId, // Gunakan transactionId dari pembayaran
               kelasSiswa: siswa?.kelas || "N/A",
-              jenisBiaya: tagihan
-                ? `${tagihan.jenisBiaya} ${tagihan.bulan} ${tagihan.tahun}`
-                : "Tagihan Dihapus",
+              jenisBiaya,
+              jenisBiayaList,
             };
           });
 
@@ -396,7 +414,7 @@ export default function PenerimaanPage() {
       'Nama Siswa': item.namaSiswa,
       'Cabang': item.cabangSiswa,
       'Kelas': item.kelasSiswa,
-      'Jenis Biaya': item.jenisBiaya,
+      'Jenis Biaya': item.jenisBiayaList.length > 0 ? item.jenisBiayaList.join('; ') : 'Tagihan Dihapus',
       'ID Transaksi': item.transactionId || '-',
       'Nominal Pembayaran': item.jumlahBayar,
       'Status Pembayaran': !item.status ? 'Manual' : item.status === 'settlement' || item.status === 'capture' ? 'Sukses' : item.status === 'pending' ? 'Tertunda' : item.status === 'expire' ? 'Kedaluwarsa' : item.status === 'deny' || item.status === 'cancel' || item.status === 'error' ? 'Gagal' : item.status,
@@ -535,7 +553,7 @@ export default function PenerimaanPage() {
                       <td className="p-4 font-medium text-gray-900">{item.namaSiswa}</td>
                       <td className="p-4">{item.cabangSiswa}</td>
                       <td className="p-4">{item.kelasSiswa}</td>
-                      <td className="p-4">{item.jenisBiaya}</td>
+                      <td className="p-4" title={item.jenisBiayaList.length > 0 ? item.jenisBiayaList.join(', ') : 'Tagihan tidak ditemukan'}>{item.jenisBiaya}</td>
                       <td className="p-4 text-xs text-gray-500 font-mono">
                         {item.transactionId || '-'}
                       </td>

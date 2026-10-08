@@ -36,7 +36,8 @@ interface Pembayaran {
   jumlahBayar: number;
   tanggalBayar: Timestamp;
   status: 'pending' | 'settlement' | 'expire' | 'cancel' | 'deny' | string;
-  jenisBiaya: string; // Untuk tampilan di riwayat
+  jenisBiaya: string; // Untuk tampilan di riwayat (jenis pertama + "+N lainnya")
+  jenisBiayaList?: string[]; // Daftar lengkap semua jenis biaya yang dibayar
   bulan: string;
   tahun: string;
 }
@@ -68,6 +69,8 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [isResumingPayment, setIsResumingPayment] = useState<string | null>(null); // Menyimpan ID pembayaran yang sedang dilanjutkan
+  // Modal detail rincian jenis biaya
+  const [detailItem, setDetailItem] = useState<Pembayaran | null>(null);
 
 
   useEffect(() => {
@@ -127,13 +130,26 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
         const snap = await getDocs(q);
         setRiwayatList(snap.docs.map(doc => {
           const pembayaranData = doc.data();
-          const tagihanTerkait = tagihanMap.get(pembayaranData.tagihanId);
+          // Dukung mode keranjang (tagihanIds array) dan mode lama (tagihanId tunggal)
+          const ids: string[] = (pembayaranData.tagihanIds && pembayaranData.tagihanIds.length > 0)
+            ? pembayaranData.tagihanIds
+            : (pembayaranData.tagihanId ? [pembayaranData.tagihanId] : []);
+
+          const jenisBiayaList = ids
+            .map(id => tagihanMap.get(id))
+            .filter((t): t is Tagihan => !!t)
+            .map(t => `${t.jenisBiaya} ${t.bulan} ${t.tahun}`.trim());
+
+          const jenisUtama = jenisBiayaList[0] || 'N/A';
+          const sisaCount = jenisBiayaList.length > 1 ? jenisBiayaList.length - 1 : 0;
+
           return {
             id: doc.id,
             ...pembayaranData,
-            jenisBiaya: tagihanTerkait?.jenisBiaya || 'N/A',
-            bulan: tagihanTerkait?.bulan || '',
-            tahun: tagihanTerkait?.tahun || '',
+            jenisBiaya: jenisUtama + (sisaCount > 0 ? ` +${sisaCount} lainnya` : ''),
+            jenisBiayaList,
+            bulan: '',
+            tahun: '',
           } as Pembayaran;
         }));
       } catch (error) {
@@ -468,7 +484,6 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <h3 className="font-bold text-gray-800">{item.jenisBiaya}</h3>
-                      <p className="text-xs text-gray-500">{item.bulan} {item.tahun}</p>
                     </div>
                     {getStatusPill(item.status)}
                   </div>                  <div className="space-y-1 text-sm border-t pt-2 mt-2">
@@ -476,6 +491,16 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
                     <div className="flex justify-between"><span>Jumlah Bayar:</span><span className="font-bold text-green-600">{formatCurrency(item.jumlahBayar)}</span></div>
                     <div className="flex justify-between"><span>Order ID:</span><span className="font-mono text-xs text-gray-500">{item.transactionId || '-'}</span></div>
                   </div>
+                  {(item.jenisBiayaList?.length ?? 0) > 0 && (
+                    <div className="border-t mt-3 pt-3 flex justify-end">
+                      <button
+                        onClick={() => setDetailItem(item)}
+                        className="text-[#581c87] hover:text-[#45156b] text-sm font-medium flex items-center gap-1"
+                      >
+                        Lihat Detail
+                      </button>
+                    </div>
+                  )}
                   {item.status === 'pending' && (
                     <div className="border-t mt-3 pt-3 flex justify-end">
                       <button 
@@ -493,6 +518,63 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
           )}
         </div>}
       </div>
+
+      {/* Modal Detail Rincian Jenis Biaya */}
+      {detailItem && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+          onClick={() => setDetailItem(null)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[85vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b flex justify-between items-center">
+              <h3 className="font-bold text-gray-800">Rincian Pembayaran</h3>
+              <button onClick={() => setDetailItem(null)} className="text-gray-400 hover:text-gray-600 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto">
+              <div className="bg-gray-50 p-3 rounded-lg space-y-2 text-sm mb-4">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Tanggal Transaksi:</span>
+                  <span className="font-medium">{new Date(detailItem.tanggalBayar.seconds * 1000).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Jumlah Bayar:</span>
+                  <span className="font-bold text-green-600">{formatCurrency(detailItem.jumlahBayar)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Status:</span>
+                  <span className="font-medium">{detailItem.status === 'settlement' || detailItem.status === 'capture' ? 'Sukses' : detailItem.status === 'pending' ? 'Tertunda' : detailItem.status === 'expire' ? 'Kedaluwarsa' : detailItem.status}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Order ID:</span>
+                  <span className="font-mono text-xs text-gray-500 break-all text-right">{detailItem.transactionId || '-'}</span>
+                </div>
+              </div>
+              <p className="text-sm font-semibold text-gray-700 mb-2">Jenis Biaya Dibayar ({detailItem.jenisBiayaList?.length ?? 0}):</p>
+              <ul className="space-y-2">
+                {(detailItem.jenisBiayaList ?? []).map((jb, idx) => (
+                  <li key={idx} className="flex items-start gap-2 text-sm bg-white border border-gray-100 rounded-lg px-3 py-2">
+                    <CheckSquare className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                    <span className="text-gray-800">{jb}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="p-4 bg-gray-50 border-t rounded-b-2xl sm:rounded-b-xl">
+              <button
+                onClick={() => setDetailItem(null)}
+                className="w-full bg-[#581c87] text-white py-3 rounded-lg hover:bg-[#45156b] transition font-medium"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bar Keranjang Pembayaran (sticky bottom) */}
       {activeTab === 'tagihan' && selectedIds.length > 0 && (

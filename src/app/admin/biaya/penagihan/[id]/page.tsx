@@ -155,6 +155,8 @@ export default function DetailPenagihanPage() {
 
             return false;
           });
+          // Urutkan alfabetis berdasarkan nama agar dropdown berurutan
+          filteredJenisBiaya.sort((a, b) => a.nama.localeCompare(b.nama, 'id'));
           setAvailableJenisBiaya(filteredJenisBiaya);
         } else {
           console.warn("Cabang siswa tidak ditemukan, jenis biaya tidak dapat difilter:", siswaData.cabang);

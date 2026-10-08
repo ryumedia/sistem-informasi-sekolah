@@ -58,6 +58,11 @@ export default function PendaftaranSiswaBaruPage() {
   const [infoBiaya, setInfoBiaya] = useState<InfoBiaya[]>([]);
   const [loadingBiaya, setLoadingBiaya] = useState(false);
   const [buktiTransfer, setBuktiTransfer] = useState<File | null>(null);
+  // Daftar kombinasi lokasi+program yang sudah penuh (dari koleksi program_full)
+  const [programFullSet, setProgramFullSet] = useState<Set<string>>(new Set());
+
+  // True jika kombinasi lokasi + program yang dipilih masuk daftar Program Full
+  const isProgramFull = programFullSet.has(`${formData.lokasi}||${formData.program}`);
 
   const MAX_FILE_SIZE = 1 * 1024 * 1024; // 1 MB
 
@@ -86,15 +91,24 @@ export default function PendaftaranSiswaBaruPage() {
   useEffect(() => {
     const fetchOptions = async () => {
       try {
-        const [lokasiSnap, programSnap, usiaSnap] = await Promise.all([
+        const [lokasiSnap, programSnap, usiaSnap, programFullSnap] = await Promise.all([
           getDocs(query(collection(db, 'lokasi_pendaftaran'), orderBy('nama'))),
           getDocs(query(collection(db, 'program_pendaftaran'), orderBy('nama'))),
           getDocs(query(collection(db, 'kelompok_usia'), orderBy('usia'))),
+          getDocs(collection(db, 'program_full')),
         ]);
 
         setLokasiOptions(lokasiSnap.docs.map(doc => ({ id: doc.id, nama: doc.data().nama })));
         setProgramOptions(programSnap.docs.map(doc => ({ id: doc.id, nama: doc.data().nama })));
         setUsiaOptions(usiaSnap.docs.map(doc => ({ id: doc.id, nama: doc.data().usia })));
+
+        // Kumpulkan kombinasi lokasi|program yang sudah penuh pendaftarnya
+        const fullSet = new Set<string>();
+        programFullSnap.docs.forEach(d => {
+          const data = d.data() as { lokasi?: string; program?: string };
+          if (data.lokasi && data.program) fullSet.add(`${data.lokasi}||${data.program}`);
+        });
+        setProgramFullSet(fullSet);
 
       } catch (error) {
         console.error("Error fetching options:", error);
@@ -203,7 +217,8 @@ export default function PendaftaranSiswaBaruPage() {
         anakKe: formData.anakKe ? parseInt(formData.anakKe) : 0,
         infoDari: infoDetail,
         buktiTransferUrl,
-        statusPendaftaran: 'Baru',
+        // Pendaftar dengan kombinasi lokasi+program yang penuh ditandai sebagai Daftar Tunggu
+        statusPendaftaran: isProgramFull ? 'Daftar Tunggu' : 'Baru',
         createdAt: Timestamp.now(),
       }));
 
@@ -222,7 +237,9 @@ export default function PendaftaranSiswaBaruPage() {
         console.error('Error mengirim notifikasi WhatsApp:', notificationError);
       }
 
-      alert("Pendaftaran berhasil dikirim! Terima kasih telah mendaftar di Main Riang.");
+      alert(isProgramFull
+        ? "Pendaftaran berhasil dikirim! Ananda saat ini masuk dalam Daftar Tunggu Pendaftaran. Terima kasih telah mendaftar di Main Riang."
+        : "Pendaftaran berhasil dikirim! Terima kasih telah mendaftar di Main Riang.");
       // Reset form
       setBuktiTransfer(null);
       const fileInput = document.getElementById('buktiTransfer') as HTMLInputElement | null;
@@ -313,6 +330,15 @@ export default function PendaftaranSiswaBaruPage() {
               </select>
             </div>
           </div>
+
+          {/* Peringatan Program Full: pendaftar tetap bisa lanjut, masuk daftar tunggu */}
+          {isProgramFull && (
+            <div className="bg-red-50 border border-red-300 rounded-xl p-4">
+              <p className="text-sm text-red-800">
+                <span className="font-semibold">Peringatan:</span> Kuota untuk Cabang dan Program ini sudah Full. Anak anda akan masuk dalam Daftar Tunggu Pendaftaran. Jika sampai Januari 2027 status Ananda masih dalam daftar tunggu, maka uang pendaftaran akan dikembalikan 100%.
+              </p>
+            </div>
+          )}
 
           {/* Info Biaya Pendaftaran sesuai lokasi */}
           {/*formData.lokasi && (

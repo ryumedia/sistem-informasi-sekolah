@@ -110,7 +110,10 @@ export default function UserHome() {
           where("status", "==", "Belum Lunas")
         );
         const snap = await getDocs(q);
-        const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Tagihan dengan sisa Rp 0 (misal karena diskon 100%) dianggap lunas, jangan tampilkan
+        const items = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter((t: any) => (t.nominal || 0) - (t.dibayar || 0) > 0);
         // Urutkan berdasarkan tahun & bulan terdekat
         items.sort((a: any, b: any) => {
           const yearDiff = (parseInt(a.tahun) || 0) - (parseInt(b.tahun) || 0);

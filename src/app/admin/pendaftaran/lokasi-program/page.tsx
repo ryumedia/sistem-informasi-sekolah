@@ -3,7 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { Loader2, PlusCircle, Edit, Trash2, X, MapPin, BookOpen, CalendarClock, Users } from 'lucide-react';
+import { Loader2, PlusCircle, Edit, Trash2, X, MapPin, BookOpen, CalendarClock, Users, CheckCircle2 } from 'lucide-react';
 
 // --- INTERFACES ---
 interface Lokasi {
@@ -29,6 +29,12 @@ interface KuotaTematik {
   lokasi: string;
   bulan: string;
   kuota: number;
+}
+
+interface ProgramFull {
+  id: string;
+  lokasi: string;
+  program: string;
 }
 
 // --- MAIN COMPONENT ---
@@ -57,6 +63,11 @@ export default function LokasiProgramPage() {
   const [isKuotaTematikModalOpen, setIsKuotaTematikModalOpen] = useState(false);
   const [editingKuotaTematik, setEditingKuotaTematik] = useState<KuotaTematik | null>(null);
 
+  // State for Program Full
+  const [programFullList, setProgramFullList] = useState<ProgramFull[]>([]);
+  const [loadingProgramFull, setLoadingProgramFull] = useState(true);
+  const [isProgramFullModalOpen, setIsProgramFullModalOpen] = useState(false);
+
   // Fetch Data
   useEffect(() => {
     const fetchData = async <T,>(
@@ -82,6 +93,7 @@ export default function LokasiProgramPage() {
     fetchData("program_pendaftaran", setProgramList, setLoadingProgram);
     fetchData("jadwal_trial", setJadwalList, setLoadingJadwal, "tanggal");
     fetchData("kuota_tematik", setKuotaTematikList, setLoadingKuotaTematik, "lokasi");
+    fetchData("program_full", setProgramFullList, setLoadingProgramFull, "lokasi");
   }, []);
 
   // --- LOKASI HANDLERS ---
@@ -196,6 +208,30 @@ export default function LokasiProgramPage() {
     }
   };
 
+  // --- PROGRAM FULL HANDLERS ---
+  const handleSaveProgramFull = async (formData: { lokasi: string; program: string }) => {
+    try {
+      await addDoc(collection(db, "program_full"), formData);
+      // Refresh data
+      const snapshot = await getDocs(query(collection(db, "program_full"), orderBy("lokasi", "asc")));
+      setProgramFullList(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ProgramFull)));
+    } catch (error) {
+      console.error("Error saving program full:", error);
+      alert("Gagal menyimpan data program full.");
+    }
+  };
+
+  const handleDeleteProgramFull = async (id: string) => {
+    if (!confirm("Yakin ingin menghapus program full ini?")) return;
+    try {
+      await deleteDoc(doc(db, "program_full", id));
+      setProgramFullList(prev => prev.filter(item => item.id !== id));
+    } catch (error) {
+      console.error("Error deleting program full:", error);
+      alert("Gagal menghapus program full.");
+    }
+  };
+
 
   return (
     <div className="space-y-8">
@@ -217,6 +253,9 @@ export default function LokasiProgramPage() {
           </a>
           <a href="#program" className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-sm font-medium hover:bg-green-100 transition flex items-center gap-1.5">
             <BookOpen className="w-4 h-4" /> Program
+          </a>
+          <a href="#program-full" className="px-3 py-1.5 bg-rose-50 text-rose-700 rounded-lg text-sm font-medium hover:bg-rose-100 transition flex items-center gap-1.5">
+            <CheckCircle2 className="w-4 h-4" /> Program Full
           </a>
         </div>
       </div>
@@ -402,11 +441,55 @@ export default function LokasiProgramPage() {
         </div>
       </section>
 
+      {/* SECTION 5: PROGRAM FULL */}
+      <section id="program-full" className="scroll-mt-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><CheckCircle2 className="w-5 h-5" /> Kelola Program Full</h2>
+          <button onClick={() => setIsProgramFullModalOpen(true)} className="inline-flex items-center gap-2 bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 transition text-sm">
+            <PlusCircle className="w-4 h-4" /> Tambah
+          </button>
+        </div>
+        <p className="text-sm text-gray-500 -mt-2 mb-4">Daftar program yang sudah penuh pendaftarnya per cabang. Program ini tidak akan menerima pendaftar baru.</p>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-gray-600">
+              <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
+                <tr>
+                  <th className="p-4 w-12 text-center">No.</th>
+                  <th className="p-4">Lokasi</th>
+                  <th className="p-4">Program</th>
+                  <th className="p-4 w-20 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loadingProgramFull ? (
+                  <tr><td colSpan={4} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" /></td></tr>
+                ) : programFullList.length === 0 ? (
+                  <tr><td colSpan={4} className="p-8 text-center text-gray-500">Belum ada program yang penuh.</td></tr>
+                ) : (
+                  programFullList.map((item, index) => (
+                    <tr key={item.id} className="hover:bg-gray-50">
+                      <td className="p-4 text-center">{index + 1}</td>
+                      <td className="p-4 font-medium text-gray-900">{item.lokasi}</td>
+                      <td className="p-4">{item.program}</td>
+                      <td className="p-4 flex justify-center gap-2">
+                        <button onClick={() => handleDeleteProgramFull(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus"><Trash2 className="w-4 h-4" /></button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       {/* MODALS */}
       {isLokasiModalOpen && <LokasiModal data={editingLokasi} onClose={() => setIsLokasiModalOpen(false)} onSave={handleSaveLokasi} />}
       {isProgramModalOpen && <ProgramModal data={editingProgram} onClose={() => setIsProgramModalOpen(false)} onSave={handleSaveProgram} />}
       {isJadwalModalOpen && <JadwalModal data={editingJadwal} lokasiOptions={lokasiList} onClose={() => setIsJadwalModalOpen(false)} onSave={handleSaveJadwal} />}
       {isKuotaTematikModalOpen && <KuotaTematikModal data={editingKuotaTematik} lokasiOptions={lokasiList} onClose={() => setIsKuotaTematikModalOpen(false)} onSave={handleSaveKuotaTematik} />}
+      {isProgramFullModalOpen && <ProgramFullModal lokasiOptions={lokasiList} programOptions={programList} onClose={() => setIsProgramFullModalOpen(false)} onSave={handleSaveProgramFull} />}
     </div>
   );
 }
@@ -533,6 +616,52 @@ function ProgramModal({ data, onClose, onSave }: { data: Program | null, onClose
           <div className="pt-2 flex justify-end gap-3">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-200">Batal</button>
             <button type="submit" disabled={isSubmitting} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 transition disabled:opacity-50">
+              {isSubmitting ? 'Menyimpan...' : 'Simpan'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ProgramFullModal({ lokasiOptions, programOptions, onClose, onSave }: { lokasiOptions: Lokasi[], programOptions: Program[], onClose: () => void, onSave: (formData: { lokasi: string; program: string }) => void }) {
+  const [formData, setFormData] = useState({ lokasi: '', program: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    await onSave(formData);
+    setIsSubmitting(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="p-4 border-b flex justify-between items-center">
+          <h3 className="font-bold text-gray-800">Tambah Program Full</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Lokasi</label>
+            <select required value={formData.lokasi} onChange={e => setFormData({ ...formData, lokasi: e.target.value })} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-rose-500 outline-none bg-white">
+              <option value="" disabled>-- Pilih Lokasi --</option>
+              {lokasiOptions.map(opt => <option key={opt.id} value={opt.nama}>{opt.nama}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Pilih Program</label>
+            <select required value={formData.program} onChange={e => setFormData({ ...formData, program: e.target.value })} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-rose-500 outline-none bg-white">
+              <option value="" disabled>-- Pilih Program --</option>
+              {programOptions.map(opt => <option key={opt.id} value={opt.nama}>{opt.nama}</option>)}
+            </select>
+          </div>
+          <div className="pt-2 flex justify-end gap-3">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-200">Batal</button>
+            <button type="submit" disabled={isSubmitting} className="bg-rose-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-rose-700 transition disabled:opacity-50">
               {isSubmitting ? 'Menyimpan...' : 'Simpan'}
             </button>
           </div>
