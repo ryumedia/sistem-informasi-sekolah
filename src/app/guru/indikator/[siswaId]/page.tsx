@@ -24,6 +24,8 @@ interface SubIndikator {
   id: string;
   deskripsi: string;
   groupName: string;
+  groupId: string; // ID indikator_groups (untuk filter jenjang)
+  periode?: string; // Semester tempat sub indikator berlaku
 }
 
 export default function DetailIndikatorSiswaPage() {
@@ -37,12 +39,18 @@ export default function DetailIndikatorSiswaPage() {
   const [semesterList, setSemesterList] = useState<any[]>([]);
   const [selectedSemester, setSelectedSemester] = useState<string>("");
   const [indikatorList, setIndikatorList] = useState<SubIndikator[]>([]);
+  // Semua sub indikator (sebelum difilter jenjang + semester)
+  const [allSubIndikators, setAllSubIndikators] = useState<SubIndikator[]>([]);
+  // IDs indikator_groups yang cocok dengan jenjang kelas siswa
+  const [matchedGroupIds, setMatchedGroupIds] = useState<string[]>([]);
   // indikatorId -> { nilai: number, docId: string }
   const [nilaiMap, setNilaiMap] = useState<Record<string, { nilai: number; docId: string }>>({});
   const [kriteriaMap, setKriteriaMap] = useState<Record<number, string>>({});
   // Referensi untuk melengkapi data yang dikirim ke firestore
   const [kelasRef, setKelasRef] = useState<{ id: string; namaKelas: string } | null>(null);
   const [cabangRef, setCabangRef] = useState<{ id: string; nama: string } | null>(null);
+  // Nama semester default (untuk pencocokan toleran field periode sub indikator)
+  const [defaultSemesterNama, setDefaultSemesterNama] = useState<string>("");
   const [loadingNilai, setLoadingNilai] = useState(false);
   const [editingIndikatorId, setEditingIndikatorId] = useState<string | null>(null);
   const [savingIndikatorId, setSavingIndikatorId] = useState<string | null>(null);
@@ -93,12 +101,36 @@ export default function DetailIndikatorSiswaPage() {
         );
         const snapKelas = await getDocs(qKelas);
         let kelasInfo: { id: string; namaKelas: string } | null = null;
+        let jenjangKelas: string = "";
         let cabangInfo: { id: string; nama: string } | null = null;
         if (!snapKelas.empty) {
           const kelasDoc = snapKelas.docs[0];
           kelasInfo = { id: kelasDoc.id, namaKelas: kelasDoc.data().namaKelas || siswaData.kelas || "" };
+          jenjangKelas = kelasDoc.data().jenjangKelas || "";
         }
         setKelasRef(kelasInfo);
+
+        // Cari ID jenjang kelas di koleksi 'jenjang_kelas' berdasarkan nama (atau ID sebagai fallback)
+        let matchedJenjangId: string = "";
+        let matchedJenjangNama: string = "";
+        if (jenjangKelas) {
+          const qJenjang = query(collection(db, "jenjang_kelas"), where("nama", "==", jenjangKelas));
+          const snapJenjang = await getDocs(qJenjang);
+          if (!snapJenjang.empty) {
+            matchedJenjangId = snapJenjang.docs[0].id;
+            matchedJenjangNama = snapJenjang.docs[0].data().nama || "";
+          } else {
+            // Mungkin jenjangKelas sudah berupa ID dokumen
+            const jenjangDoc = await getDoc(doc(db, "jenjang_kelas", jenjangKelas));
+            if (jenjangDoc.exists()) {
+              matchedJenjangId = jenjangDoc.id;
+              matchedJenjangNama = jenjangDoc.data().nama || "";
+            }
+          }
+        }
+        if (!matchedJenjangId && !matchedJenjangNama) {
+          console.warn("[Indikator] jenjangKelas tidak ditemukan di koleksi jenjang_kelas:", jenjangKelas);
+        }
 
         // Cari dokumen cabang siswa (untuk cabangId & namaCabang)
         if (siswaData.cabang) {
@@ -110,22 +142,34 @@ export default function DetailIndikatorSiswaPage() {
         }
         setCabangRef(cabangInfo);
 
-        // Semester
+        // Semester (simpan juga nama untuk pencocokan toleran)
         const snapSem = await getDocs(query(collection(db, "kpi_periode"), orderBy("createdAt", "desc")));
-        const sems = snapSem.docs.map(d => ({ id: d.id, ...d.data() }));
+        const sems = snapSem.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, any>) }));
         setSemesterList(sems);
         const defSem = sems.find((s: any) => s.isDefault);
         if (defSem) setSelectedSemester(defSem.id);
         else if (sems.length > 0) setSelectedSemester(sems[0].id);
+        const defaultSemNama = ((defSem || sems[0]) as any)?.namaPeriode || "";
+        setDefaultSemesterNama(defaultSemNama);
 
         // Indikator Groups untuk mapping nama grup
         const snapGroups = await getDocs(collection(db, "indikator_groups"));
         const groupMap = new Map<string, string>();
+        const groupIdsForJenjang: string[] = [];
         snapGroups.forEach(d => {
-          groupMap.set(d.id, d.data().nama);
+          const data = d.data();
+          groupMap.set(d.id, data.nama);
+          // Pencocokan toleran: field jenjang di indikator_groups bisa berupa ID
+          // dokumen jenjang_kelas ATAU namanya langsung.
+          const jenjangRefs = [matchedJenjangId, matchedJenjangNama, jenjangKelas].filter(Boolean);
+          if (jenjangRefs.includes(data.jenjang) || jenjangRefs.includes(data.jenjangId)) {
+            groupIdsForJenjang.push(d.id);
+          }
         });
+        setMatchedGroupIds(groupIdsForJenjang);
+        console.log("[Indikator] jenjangKelas:", jenjangKelas, "| matchedJenjangId:", matchedJenjangId, "| groups cocok:", groupIdsForJenjang.length, "dari", snapGroups.size);
 
-        // Sub Indikators
+        // Sub Indikators (semua diambil, difilter jenjang + semester di useEffect terpisah)
         const snapSubIndikator = await getDocs(collection(db, "sub_indikators"));
         const subIndikators = snapSubIndikator.docs.map(d => {
           const data = d.data();
@@ -135,6 +179,8 @@ export default function DetailIndikatorSiswaPage() {
             id: d.id,
             deskripsi: data.deskripsi || "",
             groupName: groupMap.get(groupId) || "Lainnya",
+            groupId: groupId || "",
+            periode: data.periode || "",
           } as SubIndikator;
         });
 
@@ -143,6 +189,7 @@ export default function DetailIndikatorSiswaPage() {
           if (a.groupName > b.groupName) return 1;
           return (a.deskripsi || "").localeCompare(b.deskripsi || "");
         });
+        setAllSubIndikators(subIndikators);
         setIndikatorList(subIndikators);
 
         // Kriteria Nilai
@@ -166,6 +213,32 @@ export default function DetailIndikatorSiswaPage() {
     };
     fetchData();
   }, [guruData, siswaId, router]);
+
+  // 2b. Filter sub indikator sesuai jenjang kelas siswa + semester terpilih
+  useEffect(() => {
+    if (!selectedSemester || allSubIndikators.length === 0) {
+      if (allSubIndikators.length === 0) setIndikatorList([]);
+      return;
+    }
+    // Cari nama semester terpilih untuk pencocokan toleran
+    const semObj = semesterList.find(s => s.id === selectedSemester);
+    const semNama = semObj?.namaPeriode || defaultSemesterNama;
+
+    let filtered = allSubIndikators;
+    if (matchedGroupIds.length > 0) {
+      // Filter berdasarkan grup indikator yang sesuai jenjang kelas siswa
+      filtered = filtered.filter(s => matchedGroupIds.includes(s.groupId));
+    }
+    const sebelumSemester = filtered.length;
+    // Filter berdasarkan periode (semester) — toleran terhadap ID atau nama periode
+    filtered = filtered.filter(s => s.periode === selectedSemester || (semNama && s.periode === semNama));
+    if (filtered.length === 0 && sebelumSemester > 0) {
+      console.warn("[Indikator] Semua sub indikator terbuang saat filter periode. Contoh periode di data:",
+        allSubIndikators.slice(0, 5).map(s => s.periode),
+        "| selectedSemester:", selectedSemester, "| semNama:", semNama);
+    }
+    setIndikatorList(filtered);
+  }, [allSubIndikators, matchedGroupIds, selectedSemester, semesterList, defaultSemesterNama]);
 
   // 3. Fetch Nilai saat semester berubah
   useEffect(() => {
@@ -313,20 +386,19 @@ export default function DetailIndikatorSiswaPage() {
                         {isEditing ? (
                           /* Mode Edit: pilihan nilai inline */
                           <div className="flex items-center gap-1">
-                            {[
-                              { n: 4, c: 'bg-green-100 text-green-700 hover:bg-green-200' },
-                              { n: 3, c: 'bg-blue-100 text-blue-700 hover:bg-blue-200' },
-                              { n: 2, c: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' },
-                              { n: 1, c: 'bg-red-100 text-red-700 hover:bg-red-200' },
-                            ].map(opt => (
+                            {[3, 2, 1].map(opt => (
                               <button
-                                key={opt.n}
+                                key={opt}
                                 disabled={isSaving}
-                                onClick={() => handleSaveNilai(indikator.id, opt.n)}
-                                title={kriteriaMap[opt.n] || String(opt.n)}
-                                className={`w-7 h-7 rounded-full text-[10px] font-bold transition ${opt.c} disabled:opacity-50`}
+                                onClick={() => handleSaveNilai(indikator.id, opt)}
+                                title={kriteriaMap[opt] || String(opt)}
+                                className={`w-7 h-7 rounded-full text-[10px] font-bold transition ${
+                                  opt === 3 ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' :
+                                  opt === 2 ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' :
+                                  'bg-red-100 text-red-700 hover:bg-red-200'
+                                } disabled:opacity-50`}
                               >
-                                {kriteriaMap[opt.n] || opt.n}
+                                {kriteriaMap[opt] || opt}
                               </button>
                             ))}
                             <button
@@ -347,8 +419,7 @@ export default function DetailIndikatorSiswaPage() {
                               <>
                                 <span className={`
                                   inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold shadow-sm
-                                  ${nilai >= 4 ? 'bg-green-100 text-green-700' :
-                                    nilai === 3 ? 'bg-blue-100 text-blue-700' :
+                                  ${nilai === 3 ? 'bg-blue-100 text-blue-700' :
                                     nilai === 2 ? 'bg-yellow-100 text-yellow-700' :
                                     'bg-red-100 text-red-700'}
                                 `}>

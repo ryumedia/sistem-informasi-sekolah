@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
-import { collection, query, orderBy, getDocs, deleteDoc, doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, getDocsFromCache, deleteDoc, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { Loader2, Eye, Edit, Trash2, X, Filter, RotateCcw, UserPlus, ReceiptText, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { format } from 'date-fns';
@@ -51,6 +51,7 @@ export default function SiswaBaruPage() {
   const [selectedRegistration, setSelectedRegistration] = useState<SiswaBaruDetail | null>(null);
   const [modalMode, setModalMode] = useState<ModalMode>('view');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isOfflineData, setIsOfflineData] = useState(false);
   const router = useRouter();
 
   // Pagination
@@ -70,23 +71,57 @@ export default function SiswaBaruPage() {
   const effectiveCabang = isLokasiLocked ? lockedLokasi : filterCabang;
 
   useEffect(() => {
+    let cancelled = false;
+    const q = query(collection(db, "siswa_baru_registrations"), orderBy("createdAt", "desc"));
+
     const fetchData = async () => {
-      try {
-        const q = query(collection(db, "siswa_baru_registrations"), orderBy("createdAt", "desc"));
-        const snapshot = await getDocs(q);
-        const list = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as SiswaBaruDetail));
-        setRegistrations(list);
-      } catch (error) {
-        console.error("Error fetching new student registrations: ", error);
-        alert("Gagal memuat data pendaftar siswa baru.");
-      } finally {
-        setLoading(false);
+      const maxRetries = 2;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const snapshot = await getDocs(q);
+          if (cancelled) return;
+          const list = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          } as SiswaBaruDetail));
+          setRegistrations(list);
+          setIsOfflineData(false);
+          setLoading(false);
+          return;
+        } catch (error) {
+          if (cancelled) return;
+          console.error(`Error fetching new student registrations (percobaan ${attempt + 1}):`, error);
+          // Tunggu sebentar sebelum retry (backoff sederhana)
+          if (attempt < maxRetries) {
+            await new Promise(res => setTimeout(res, 1500 * (attempt + 1)));
+            continue;
+          }
+          // Semua retry gagal: fallback ke cache offline (jika ada)
+          try {
+            const cached = await getDocsFromCache(q);
+            if (cancelled) return;
+            const list = cached.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            } as SiswaBaruDetail));
+            if (list.length > 0) {
+              setRegistrations(list);
+              setIsOfflineData(true);
+              setLoading(false);
+            } else {
+              setLoading(false);
+              alert("Gagal memuat data pendaftar siswa baru. Periksa koneksi internet Anda, lalu coba muat ulang halaman.");
+            }
+          } catch (cacheError) {
+            console.error("Cache offline juga tidak tersedia:", cacheError);
+            setLoading(false);
+            alert("Gagal memuat data pendaftar siswa baru. Periksa koneksi internet Anda, lalu coba muat ulang halaman.");
+          }
+        }
       }
     };
     fetchData();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -158,6 +193,30 @@ export default function SiswaBaruPage() {
     } catch (error) {
       console.error("Error updating status:", error);
       alert("Gagal memperbarui status.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleInfoDariChange = async () => {
+    if (!selectedRegistration) return;
+    if (!confirm("Anda akan mengubah \"Info Dari\" menjadi 'Re-Enrollment / Siswa Eksisting'. Perubahan ini tidak dapat dikembalikan. Lanjutkan?")) return;
+
+    setIsSubmitting(true);
+    try {
+      const docRef = doc(db, "siswa_baru_registrations", selectedRegistration.id);
+      await updateDoc(docRef, { infoDari: "Re-Enrollment / Siswa Eksisting" });
+
+      // Update state locally
+      setSelectedRegistration(prev => prev ? { ...prev, infoDari: "Re-Enrollment / Siswa Eksisting" } : null);
+      setRegistrations(prevList => prevList.map(r =>
+        r.id === selectedRegistration.id ? { ...r, infoDari: "Re-Enrollment / Siswa Eksisting" } : r
+      ));
+
+      alert("Info dari berhasil diubah menjadi 'Re-Enrollment / Siswa Eksisting'.");
+    } catch (error) {
+      console.error("Error updating infoDari:", error);
+      alert("Gagal mengubah info dari.");
     } finally {
       setIsSubmitting(false);
     }
@@ -311,6 +370,12 @@ export default function SiswaBaruPage() {
           <button onClick={resetFilters} className="flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-600 hover:text-gray-800 dark:hover:text-gray-800"><RotateCcw className="w-3 h-3" /> Reset Filter</button>
         </div>
       </div>
+
+      {isOfflineData && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-800 text-sm font-medium p-3 rounded-lg">
+          ⚠️ Koneksi ke server terputus. Menampilkan data tersimpan (offline). Data mungkin tidak up-to-date.
+        </div>
+      )}
 
       <div className="bg-purple-50 border border-purple-200 text-purple-800 text-sm font-medium p-3 rounded-lg flex items-center justify-between">
         <span>Total Pendaftar ditemukan: <span className="font-bold">{filteredAndPaginatedRegistrations.totalItems}</span></span>
@@ -466,7 +531,19 @@ export default function SiswaBaruPage() {
               {/* Info Lain */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm text-gray-900 dark:text-gray-900">
                 <div className="col-span-2 font-semibold text-purple-800 dark:text-purple-800 border-b pb-2 mb-2">Lain-lain</div>
-                <div><span className="text-gray-500 dark:text-gray-500">Info dari:</span><span className="font-medium ml-2">{selectedRegistration.infoDari}</span></div>
+                <div><span className="text-gray-500 dark:text-gray-500">Info dari:</span><span className="font-medium ml-2">{selectedRegistration.infoDari}</span>
+                  {modalMode === 'edit' && selectedRegistration.infoDari !== 'Re-Enrollment / Siswa Eksisting' && (
+                    <button
+                      onClick={handleInfoDariChange}
+                      disabled={isSubmitting}
+                      className="ml-2 inline-flex items-center text-xs text-[#581c87] hover:bg-purple-50 rounded px-1.5 py-0.5 transition disabled:opacity-50"
+                      title="Ubah menjadi Re-Enrollment / Siswa Eksisting"
+                    >
+                      <Edit className="w-3 h-3 mr-0.5" />
+                      Ubah
+                    </button>
+                  )}
+                </div>
               </div>
 
             </div>

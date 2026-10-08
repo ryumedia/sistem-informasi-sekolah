@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -12,7 +12,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, CreditCard, X, History, ListChecks } from 'lucide-react';
+import { ArrowLeft, Loader2, CreditCard, X, History, ListChecks, ShoppingCart, CheckSquare, Square } from 'lucide-react';
 
 // --- INTERFACES ---
 interface Tagihan {
@@ -30,7 +30,8 @@ interface Tagihan {
 
 interface Pembayaran {
   id: string;
-  tagihanId: string;
+  tagihanId?: string;
+  tagihanIds?: string[]; // Mode keranjang: beberapa tagihan dalam satu transaksi
   transactionId?: string; // order_id dari Midtrans
   jumlahBayar: number;
   tanggalBayar: Timestamp;
@@ -63,11 +64,9 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
   const [filterTahun, setFilterTahun] = useState<string>('semua');
   const [totalSisa, setTotalSisa] = useState<number>(0);
 
-  // State untuk modal pembayaran
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [selectedTagihan, setSelectedTagihan] = useState<Tagihan | null>(null);
+  // State keranjang pembayaran
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState(0);
   const [isResumingPayment, setIsResumingPayment] = useState<string | null>(null); // Menyimpan ID pembayaran yang sedang dilanjutkan
 
 
@@ -85,11 +84,11 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
         const snap = await getDocs(q);
         const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tagihan));
 
-        // Urutkan berdasarkan tahun (terbaru) lalu bulan
+        // Urutkan dari yang terbaru ke terlama (tahun desc, lalu bulan desc)
         const monthOrder: { [key: string]: number } = { 'Januari': 1, 'Februari': 2, 'Maret': 3, 'April': 4, 'Mei': 5, 'Juni': 6, 'Juli': 7, 'Agustus': 8, 'September': 9, 'Oktober': 10, 'November': 11, 'Desember': 12 };
         list.sort((a, b) => {
-            if (a.tahun !== b.tahun) return parseInt(a.tahun) - parseInt(b.tahun);
-            return (monthOrder[a.bulan] || 0) - (monthOrder[b.bulan] || 0);
+            if (a.tahun !== b.tahun) return parseInt(b.tahun) - parseInt(a.tahun);
+            return (monthOrder[b.bulan] || 0) - (monthOrder[a.bulan] || 0);
         });
 
         setTagihanList(list);
@@ -173,50 +172,69 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
     setTotalSisa(total);
   }, [tagihanList, filterTahun]);
 
-  const openPaymentModal = (tagihan: Tagihan) => {
-    const sisa = tagihan.nominal - (tagihan.dibayar || 0);
-    setSelectedTagihan(tagihan);
-    setPaymentAmount(sisa > 0 ? sisa : 0);
-    setIsPaymentModalOpen(true);
+  // Hapus pilihan yang tidak lagi valid (misal tagihan sudah lunas / tidak tampil)
+  useEffect(() => {
+    setSelectedIds(prev => prev.filter(id => {
+      const t = tagihanList.find(x => x.id === id);
+      return !!t && t.nominal - (t.dibayar || 0) > 0;
+    }));
+  }, [tagihanList]);
+
+  const sisaTagihan = (t: Tagihan) => t.nominal - (t.dibayar || 0);
+
+  const belumLunasList = useMemo(
+    () => filteredTagihanList.filter(t => sisaTagihan(t) > 0),
+    [filteredTagihanList]
+  );
+
+  const toggleSelect = (tagihan: Tagihan) => {
+    setSelectedIds(prev =>
+      prev.includes(tagihan.id)
+        ? prev.filter(id => id !== tagihan.id)
+        : [...prev, tagihan.id]
+    );
   };
 
-  const closePaymentModal = () => {
-    setIsPaymentModalOpen(false);
-    setSelectedTagihan(null);
-    setPaymentAmount(0);
-  };
-
-  const handlePaymentAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!selectedTagihan) return;
-    const rawValue = e.target.value.replace(/[^0-9]/g, '');
-    let numericValue = rawValue ? parseInt(rawValue, 10) : 0;
-
-    const sisa = selectedTagihan.nominal - (selectedTagihan.dibayar || 0);
-    if (numericValue > sisa) {
-      numericValue = sisa;
+  const selectAll = () => {
+    if (selectedIds.length === belumLunasList.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(belumLunasList.map(t => t.id));
     }
-    setPaymentAmount(numericValue < 0 ? 0 : numericValue);
   };
+
+  const selectedTagihans = useMemo(
+    () => tagihanList.filter(t => selectedIds.includes(t.id)),
+    [tagihanList, selectedIds]
+  );
+
+  const totalSelected = useMemo(
+    () => selectedTagihans.reduce((sum, t) => sum + sisaTagihan(t), 0),
+    [selectedTagihans]
+  );
 
   const handleLanjutPembayaran = async () => {
-    if (!selectedTagihan || !userData) return;
+    if (selectedTagihans.length === 0 || !userData) return;
     setIsSubmittingPayment(true);
 
     try {
+      // Satu transaksi Midtrans untuk semua tagihan terpilih.
+      // Setiap tagihan dibayar PENUH sisanya (tanpa pembayaran parsial).
+      const tagihanItems = selectedTagihans.map(t => ({
+        tagihanId: t.id,
+        name: `${t.jenisBiaya} ${t.bulan} ${t.tahun}`.slice(0, 50), // Midtrans membatasi panjang nama item
+        price: sisaTagihan(t),
+      }));
+
       const response = await fetch('/api/midtrans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tagihanId: selectedTagihan.id,
-          amount: paymentAmount,
-          // TIDAK mengirim order_id, agar backend membuat yang baru
+          tagihanItems,
           userDetails: {
             nama: userData.nama,
-            email: userData.email || 'email@default.com', // Pastikan user punya email
+            email: userData.email || 'email@default.com',
           },
-          itemDetails: {
-            name: `${selectedTagihan.jenisBiaya} ${selectedTagihan.bulan} ${selectedTagihan.tahun}`,
-          }
         }),
       });
 
@@ -230,13 +248,13 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
       // 1. Dapatkan order_id dan token dari backend
       const { token: snapToken, order_id: newOrderId } = data;
 
-      // 2. Buat dokumen pembayaran di Firestore DENGAN order_id DAN token dari backend
+      // 2. Buat SATU dokumen pembayaran yang merujuk beberapa tagihan (tagihanIds)
       await addDoc(collection(db, "pembayaran"), {
-        tagihanId: selectedTagihan.id,
+        tagihanIds: selectedTagihans.map(t => t.id),
         siswaId: userData.id,
         siswaNama: userData.nama,
         siswaEmail: userData.email || 'email@default.com',
-        jumlahBayar: paymentAmount,
+        jumlahBayar: totalSelected,
         tanggalBayar: Timestamp.now(),
         dicatatOleh: "Midtrans Snap",
         transactionId: newOrderId, // Gunakan Order ID dari backend
@@ -245,7 +263,7 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
       });
 
       // Arahkan ke halaman pembayaran khusus yang mengandung Order ID di URL.
-      // Snap akan dibuka di halaman tersebut, bukan di halaman ini.
+      // Satu Snap untuk semua tagihan yang dipilih.
       router.push(`/pembayaran/${newOrderId}`);
     } catch (error) {
       console.error("Payment initiation failed:", error);
@@ -309,7 +327,21 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
             {filterTahun === 'semua' ? 'Belum ada riwayat tagihan.' : `Tidak ada tagihan untuk tahun ${filterTahun}.`}
           </div>
         ) : (
-          filteredTagihanList.map(tagihan => {
+          <>
+            {belumLunasList.length > 0 && (
+              <div className="flex justify-end">
+                <button
+                  onClick={selectAll}
+                  className="flex items-center gap-2 text-sm font-medium text-[#581c87] hover:bg-purple-50 px-3 py-2 rounded-lg transition"
+                >
+                  {selectedIds.length === belumLunasList.length
+                    ? <CheckSquare className="w-4 h-4" />
+                    : <Square className="w-4 h-4" />}
+                  {selectedIds.length === belumLunasList.length ? 'Batal Pilih Semua' : 'Pilih Semua Tagihan'}
+                </button>
+              </div>
+            )}
+            {filteredTagihanList.map(tagihan => {
             const dibayar = tagihan.dibayar || 0;
             const sisa = tagihan.nominal - dibayar;
             const isLunas = sisa <= 0;
@@ -322,13 +354,29 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
                 ? Math.round(tagihan.nominal / ((1 - diskonJenis / 100) * (1 - diskonIndividual / 100)))
                 : tagihan.nominal);
             const nilaiDiskon = nominalAwal - tagihan.nominal;
+            const isSelected = selectedIds.includes(tagihan.id);
 
             return (
-              <div key={tagihan.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+              <div
+                key={tagihan.id}
+                className={`bg-white p-4 rounded-xl shadow-sm border transition ${isSelected ? 'border-[#581c87] ring-2 ring-[#581c87]/30' : 'border-gray-100'} ${!isLunas ? 'cursor-pointer hover:shadow-md' : ''}`}
+                onClick={() => !isLunas && toggleSelect(tagihan)}
+              >
                 <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h3 className="font-bold text-gray-800">{tagihan.jenisBiaya}</h3>
-                    <p className="text-xs text-gray-500">{tagihan.bulan} {tagihan.tahun}</p>
+                  <div className="flex items-start gap-3">
+                    {!isLunas && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleSelect(tagihan); }}
+                        className="mt-1 text-[#581c87] hover:text-[#45156b]"
+                        aria-label={isSelected ? 'Batalkan pilihan' : 'Pilih tagihan'}
+                      >
+                        {isSelected ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5 text-gray-400" />}
+                      </button>
+                    )}
+                    <div>
+                      <h3 className="font-bold text-gray-800">{tagihan.jenisBiaya}</h3>
+                      <p className="text-xs text-gray-500">{tagihan.bulan} {tagihan.tahun}</p>
+                    </div>
                   </div>
                   <span className={`px-2 py-1 text-xs font-semibold rounded-full ${isLunas ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                     {isLunas ? 'Lunas' : 'Belum Lunas'}
@@ -378,15 +426,14 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
                   <div className="flex justify-between"><span className="text-gray-500">Sisa:</span><span className="font-bold text-red-600">{formatCurrency(sisa)}</span></div>
                 </div>
                 {!isLunas && (
-                  <div className="border-t mt-4 pt-4 flex justify-end">
-                    <button onClick={() => openPaymentModal(tagihan)} className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-700 transition text-sm">
-                      <CreditCard className="w-4 h-4" /> Bayar Sekarang
-                    </button>
-                  </div>
+                  <p className="border-t mt-4 pt-3 text-xs text-gray-400 text-center">
+                    Centang tagihan untuk menambahkannya ke pembayaran
+                  </p>
                 )}
               </div>
             );
-          })
+            })}
+          </>
         )}</div>}
 
         {activeTab === 'riwayat' && <div className="space-y-4">
@@ -424,8 +471,7 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
                       <p className="text-xs text-gray-500">{item.bulan} {item.tahun}</p>
                     </div>
                     {getStatusPill(item.status)}
-                  </div>
-                  <div className="space-y-1 text-sm border-t pt-2 mt-2">
+                  </div>                  <div className="space-y-1 text-sm border-t pt-2 mt-2">
                     <div className="flex justify-between"><span>Tanggal Transaksi:</span><span className="font-medium">{new Date(item.tanggalBayar.seconds * 1000).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</span></div>
                     <div className="flex justify-between"><span>Jumlah Bayar:</span><span className="font-bold text-green-600">{formatCurrency(item.jumlahBayar)}</span></div>
                     <div className="flex justify-between"><span>Order ID:</span><span className="font-mono text-xs text-gray-500">{item.transactionId || '-'}</span></div>
@@ -448,38 +494,31 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
         </div>}
       </div>
 
-      {/* Modal Pembayaran */}
-      {isPaymentModalOpen && selectedTagihan && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
-            <div className="p-4 border-b flex justify-between items-center">
-              <h3 className="font-bold text-gray-800">Detail Pembayaran</h3>
-              <button onClick={closePaymentModal} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span>Nama Siswa:</span><span className="font-medium text-right">{userData.nama}</span></div>
-                <div className="flex justify-between"><span>Cabang:</span><span className="font-medium text-right">{userData.cabang}</span></div>
-                <div className="flex justify-between"><span>Jenis Pembayaran:</span><span className="font-medium text-right">{`${selectedTagihan.jenisBiaya} ${selectedTagihan.bulan} ${selectedTagihan.tahun}`}</span></div>
-              </div>
-              <div className="border-t pt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nominal Pembayaran</label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">Rp</span>
-                  <input 
-                    type="text" 
-                    value={new Intl.NumberFormat('id-ID').format(paymentAmount)}
-                    onChange={handlePaymentAmountChange}
-                    className="w-full border rounded-lg p-2 pl-8 text-lg font-bold text-gray-800 text-right focus:ring-2 focus:ring-[#581c87] outline-none" 
-                  />
-                </div>
-              </div>
-              <div className="pt-2">
-                <button onClick={handleLanjutPembayaran} disabled={isSubmittingPayment} className="w-full bg-[#581c87] text-white py-3 rounded-lg hover:bg-[#45156b] transition font-medium disabled:opacity-50 disabled:cursor-not-allowed">
-                  {isSubmittingPayment ? 'Memproses...' : 'Lanjut Pembayaran'}
+      {/* Bar Keranjang Pembayaran (sticky bottom) */}
+      {activeTab === 'tagihan' && selectedIds.length > 0 && (
+        <div className="sticky bottom-0 z-20 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
+          <div className="max-w-2xl mx-auto flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <ShoppingCart className="w-4 h-4" />
+                <span>{selectedIds.length} tagihan dipilih</span>
+                <button onClick={() => setSelectedIds([])} className="text-gray-400 hover:text-gray-600" title="Bersihkan pilihan">
+                  <X className="w-4 h-4" />
                 </button>
               </div>
+              <p className="text-xs text-gray-400 truncate">
+                {selectedTagihans.map(t => `${t.jenisBiaya} ${t.bulan} ${t.tahun}`).join(', ')}
+              </p>
+              <p className="text-lg font-bold text-gray-900">{formatCurrency(totalSelected)}</p>
             </div>
+            <button
+              onClick={handleLanjutPembayaran}
+              disabled={isSubmittingPayment || totalSelected <= 0}
+              className="bg-green-600 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-green-700 transition font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            >
+              {isSubmittingPayment ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+              {isSubmittingPayment ? 'Memproses...' : 'Bayar Sekarang'}
+            </button>
           </div>
         </div>
       )}

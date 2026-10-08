@@ -44,10 +44,75 @@ export async function GET(request: Request) {
   }
 }
 
+interface TagihanItem {
+  tagihanId: string;
+  name: string; // Nama item di Midtrans, mis. "SPP September 2025"
+  price: number; // Sisa tagihan yang dibayar penuh
+}
+
 export async function POST(request: Request) {
   try {
-    const { tagihanId, amount, userDetails, itemDetails, order_id: existingOrderId } = await request.json();
+    const {
+      tagihanId,
+      tagihanItems,
+      amount,
+      userDetails,
+      itemDetails,
+      order_id: existingOrderId,
+    } = await request.json();
 
+    // Mode baru: keranjang (multi tagihan) — tagihanItems berisi rincian tiap tagihan
+    // Mode lama: pembayaran tunggal (tagihanId + amount + itemDetails)
+    const isCartMode = Array.isArray(tagihanItems) && tagihanItems.length > 0;
+
+    if (isCartMode) {
+      if (!userDetails) {
+        return NextResponse.json({ error: 'Data yang dikirim tidak lengkap.' }, { status: 400 });
+      }
+      // Validasi setiap item
+      for (const item of tagihanItems as TagihanItem[]) {
+        if (!item.tagihanId || typeof item.price !== 'number' || item.price <= 0 || !item.name) {
+          return NextResponse.json({ error: 'Rincian tagihan tidak valid.' }, { status: 400 });
+        }
+      }
+      const grossAmount = (tagihanItems as TagihanItem[]).reduce(
+        (sum, item) => sum + item.price,
+        0
+      );
+      if (grossAmount <= 0) {
+        return NextResponse.json({ error: 'Nominal pembayaran tidak valid.' }, { status: 400 });
+      }
+
+      const order_id = `trx-${randomUUID()}`;
+
+      const parameter = {
+        transaction_details: {
+          order_id: order_id,
+          gross_amount: grossAmount,
+        },
+        customer_details: {
+          first_name: userDetails.nama,
+          email: userDetails.email,
+        },
+        item_details: (tagihanItems as TagihanItem[]).map(item => ({
+          id: item.tagihanId,
+          price: item.price,
+          quantity: 1,
+          name: item.name,
+          category: 'Pendidikan',
+          merchant_name: 'Sekolah Riang',
+        })),
+        callbacks: {
+          finish: `${request.headers.get('origin')}/pembayaran/selesai?order_id=${order_id}`,
+        },
+      };
+
+      const transaction = await snap.createTransaction(parameter);
+
+      return NextResponse.json({ token: transaction.token, order_id, gross_amount: grossAmount });
+    }
+
+    // ---- Mode lama (pembayaran tunggal) ----
     if (!tagihanId || !amount || !userDetails || !itemDetails) {
       return NextResponse.json({ error: 'Data yang dikirim tidak lengkap.' }, { status: 400 });
     }

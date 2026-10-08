@@ -57,20 +57,50 @@ export async function POST(request: Request) {
         (statusMidtrans === 'settlement' || statusMidtrans === 'capture') &&
         (!fraudStatus || fraudStatus === 'accept')
       ) {
-        const tagihanRef = adminDb.collection('tagihan_siswa').doc(pembayaranData.tagihanId);
-        const tagihanDoc = await tagihanRef.get();
+        // Mode keranjang: tagihanIds berisi beberapa tagihan, jumlahBayar dibagi ke masing-masing
+        const tagihanIds: string[] = Array.isArray(pembayaranData.tagihanIds)
+          ? pembayaranData.tagihanIds
+          : [];
 
-        if (tagihanDoc.exists) {
-          const tagihanData = tagihanDoc.data();
-          const nominalDibayarSebelumnya = tagihanData?.dibayar || 0;
-          const nominalPembayaranIni = pembayaranData.jumlahBayar;
-          const totalDibayar = nominalDibayarSebelumnya + nominalPembayaranIni;
-          const sisaTagihan = (tagihanData?.nominal || 0) - totalDibayar;
+        if (tagihanIds.length > 0) {
+          let sisaDana = pembayaranData.jumlahBayar || 0;
+          for (const tid of tagihanIds) {
+            const tagihanRef = adminDb.collection('tagihan_siswa').doc(tid);
+            const tagihanDoc = await tagihanRef.get();
+            if (!tagihanDoc.exists || sisaDana <= 0) continue;
 
-          await tagihanRef.update({
-            dibayar: totalDibayar,
-            status: sisaTagihan <= 0 ? 'Lunas' : 'Belum Lunas',
-          });
+            const tagihanData = tagihanDoc.data();
+            const nominalDibayarSebelumnya = tagihanData?.dibayar || 0;
+            const sisaTagihanSebelumnya = Math.max((tagihanData?.nominal || 0) - nominalDibayarSebelumnya, 0);
+
+            const alokasi = Math.min(sisaTagihanSebelumnya, sisaDana);
+            const totalDibayar = nominalDibayarSebelumnya + alokasi;
+            const sisaTagihan = (tagihanData?.nominal || 0) - totalDibayar;
+
+            await tagihanRef.update({
+              dibayar: totalDibayar,
+              status: sisaTagihan <= 0 ? 'Lunas' : 'Belum Lunas',
+            });
+
+            sisaDana -= alokasi;
+          }
+        } else if (pembayaranData.tagihanId) {
+          // Mode tunggal (kompatibel dengan pembayaran lama)
+          const tagihanRef = adminDb.collection('tagihan_siswa').doc(pembayaranData.tagihanId);
+          const tagihanDoc = await tagihanRef.get();
+
+          if (tagihanDoc.exists) {
+            const tagihanData = tagihanDoc.data();
+            const nominalDibayarSebelumnya = tagihanData?.dibayar || 0;
+            const nominalPembayaranIni = pembayaranData.jumlahBayar;
+            const totalDibayar = nominalDibayarSebelumnya + nominalPembayaranIni;
+            const sisaTagihan = (tagihanData?.nominal || 0) - totalDibayar;
+
+            await tagihanRef.update({
+              dibayar: totalDibayar,
+              status: sisaTagihan <= 0 ? 'Lunas' : 'Belum Lunas',
+            });
+          }
         }
 
         // Kirim notifikasi WhatsApp pembayaran (kegagalan WA tidak mengganggu hasil sinkronisasi)

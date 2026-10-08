@@ -24,6 +24,8 @@ interface Tahap {
   id: string;
   lingkup: string;
   deskripsi: string;
+  kelompokUsiaId?: string;
+  periode?: string; // Semester tempat tahap ini berlaku
 }
 
 export default function DetailPerkembanganSiswaPage() {
@@ -37,12 +39,16 @@ export default function DetailPerkembanganSiswaPage() {
   const [semesterList, setSemesterList] = useState<any[]>([]);
   const [selectedSemester, setSelectedSemester] = useState<string>("");
   const [tahapList, setTahapList] = useState<Tahap[]>([]);
+  // Tahap yang sudah difilter sesuai jenjang usia siswa + semester terpilih
+  const [allTahaps, setAllTahaps] = useState<Tahap[]>([]);
   // tahapId -> { nilai: number, docId: string }
   const [nilaiMap, setNilaiMap] = useState<Record<string, { nilai: number; docId: string }>>({});
   const [kriteriaMap, setKriteriaMap] = useState<Record<number, string>>({});
   // Referensi untuk melengkapi data yang dikirim ke firestore
   const [kelasRef, setKelasRef] = useState<{ id: string; namaKelas: string } | null>(null);
   const [cabangRef, setCabangRef] = useState<{ id: string; nama: string } | null>(null);
+  // Master kelompok usia untuk mapping nama jenjangUsia siswa -> ID kelompokUsiaId tahap
+  const [usiaList, setUsiaList] = useState<{ id: string; usia: string }[]>([]);
   const [loadingNilai, setLoadingNilai] = useState(false);
   const [editingTahapId, setEditingTahapId] = useState<string | null>(null);
   const [savingTahapId, setSavingTahapId] = useState<string | null>(null);
@@ -118,7 +124,7 @@ export default function DetailPerkembanganSiswaPage() {
         if (defSem) setSelectedSemester(defSem.id);
         else if (sems.length > 0) setSelectedSemester(sems[0].id);
 
-        // Tahap Perkembangan
+        // Tahap Perkembangan (semua diambil, difilter per semester di useEffect terpisah)
         const snapTahap = await getDocs(collection(db, "tahap_perkembangan"));
         const tahaps = snapTahap.docs.map(d => ({ id: d.id, ...d.data() } as Tahap));
         tahaps.sort((a, b) => {
@@ -126,7 +132,11 @@ export default function DetailPerkembanganSiswaPage() {
           if (a.lingkup > b.lingkup) return 1;
           return (a.deskripsi || "").localeCompare(b.deskripsi || "");
         });
-        setTahapList(tahaps);
+        setAllTahaps(tahaps);
+
+        // Master Kelompok Usia (untuk mapping jenjangUsia siswa -> ID)
+        const snapUsia = await getDocs(query(collection(db, "kelompok_usia"), orderBy("usia", "asc")));
+        setUsiaList(snapUsia.docs.map(d => ({ id: d.id, usia: (d.data() as any).usia || "" })));
 
         // Kriteria Nilai
         const qKat = query(collection(db, "kategori_penilaian"), where("nama", "==", "Nilai Perkembangan"));
@@ -149,6 +159,21 @@ export default function DetailPerkembanganSiswaPage() {
     };
     fetchData();
   }, [guruData, siswaId, router]);
+
+  // 2b. Filter tahap sesuai jenjang usia siswa + semester terpilih (konsisten dengan halaman admin)
+  useEffect(() => {
+    if (!siswa || !selectedSemester || usiaList.length === 0) return;
+    const jenjangUsia = (siswa as any).jenjangUsia || "";
+    // jenjangUsia di siswa berupa NAMA (mis. "4-5 Tahun"), tahap pakai ID — petakan dulu
+    const usiaMatch = usiaList.find(u => u.id === jenjangUsia || u.usia === jenjangUsia);
+    const targetUsiaId = usiaMatch ? usiaMatch.id : jenjangUsia;
+
+    const filtered = allTahaps.filter(t =>
+      t.periode === selectedSemester &&
+      (!targetUsiaId || !t.kelompokUsiaId || t.kelompokUsiaId === targetUsiaId)
+    );
+    setTahapList(filtered);
+  }, [allTahaps, siswa, selectedSemester, usiaList]);
 
   // 3. Fetch Nilai saat semester berubah
   useEffect(() => {
@@ -292,20 +317,19 @@ export default function DetailPerkembanganSiswaPage() {
                         {isEditing ? (
                           /* Mode Edit: pilihan nilai inline */
                           <div className="flex items-center gap-1">
-                            {[
-                              { n: 4, c: 'bg-green-100 text-green-700 hover:bg-green-200' },
-                              { n: 3, c: 'bg-blue-100 text-blue-700 hover:bg-blue-200' },
-                              { n: 2, c: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' },
-                              { n: 1, c: 'bg-red-100 text-red-700 hover:bg-red-200' },
-                            ].map(opt => (
+                            {[3, 2, 1].map(opt => (
                               <button
-                                key={opt.n}
+                                key={opt}
                                 disabled={isSaving}
-                                onClick={() => handleSaveNilai(tahap.id, opt.n)}
-                                title={kriteriaMap[opt.n] || String(opt.n)}
-                                className={`w-7 h-7 rounded-full text-[10px] font-bold transition ${opt.c} disabled:opacity-50`}
+                                onClick={() => handleSaveNilai(tahap.id, opt)}
+                                title={kriteriaMap[opt] || String(opt)}
+                                className={`w-7 h-7 rounded-full text-[10px] font-bold transition ${
+                                  opt === 3 ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' :
+                                  opt === 2 ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' :
+                                  'bg-red-100 text-red-700 hover:bg-red-200'
+                                } disabled:opacity-50`}
                               >
-                                {kriteriaMap[opt.n] || opt.n}
+                                {kriteriaMap[opt] || opt}
                               </button>
                             ))}
                             <button
@@ -326,8 +350,7 @@ export default function DetailPerkembanganSiswaPage() {
                               <>
                                 <span className={`
                                   inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold shadow-sm
-                                  ${nilai >= 4 ? 'bg-green-100 text-green-700' :
-                                    nilai === 3 ? 'bg-blue-100 text-blue-700' :
+                                  ${nilai === 3 ? 'bg-blue-100 text-blue-700' :
                                     nilai === 2 ? 'bg-yellow-100 text-yellow-700' :
                                     'bg-red-100 text-red-700'}
                                 `}>

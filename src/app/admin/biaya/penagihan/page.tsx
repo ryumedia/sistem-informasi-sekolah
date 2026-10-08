@@ -110,6 +110,21 @@ export default function PenagihanPage() {
     return map;
   }, [tagihanList, filterBulan, filterTahun]);
 
+  // Ringkasan sesuai filter: jumlah siswa & total nominal tagihan
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
+  };
+  const ringkasan = useMemo(() => {
+    const jumlahSiswa = filteredSiswaList.length;
+    // Total nominal tagihan dari siswa yang tampil (sesuai filter) untuk periode terpilih
+    let totalNominal = 0;
+    filteredSiswaList.forEach(s => {
+      const t = tagihanBySiswa[s.id];
+      if (t && t.nominal) totalNominal += t.nominal;
+    });
+    return { jumlahSiswa, totalNominal };
+  }, [filteredSiswaList, tagihanBySiswa]);
+
   // --- KIRIM NOTIFIKASI TAGIHAN ---
   const handleKirimTagihan = async (siswaId: string) => {
     // Cari tagihan siswa yang sesuai filter bulan/tahun dan belum lunas
@@ -359,7 +374,18 @@ export default function PenagihanPage() {
           </select>
         </div>
         <div className="flex-1 lg:col-span-2">
-          <label htmlFor="search-siswa" className="block text-sm font-medium text-gray-700 mb-1">Cari Nama Siswa</label>
+          <div className="flex items-center justify-between mb-1">
+            <label htmlFor="search-siswa" className="block text-sm font-medium text-gray-700">Cari Nama Siswa</label>
+            {/* Ringkasan mengikuti filter aktif */}
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-gray-500">
+                Siswa: <span className="font-bold text-[#581c87]">{ringkasan.jumlahSiswa}</span>
+              </span>
+              <span className="text-gray-500">
+                Total Tagihan: <span className="font-bold text-green-700">{formatCurrency(ringkasan.totalNominal)}</span>
+              </span>
+            </div>
+          </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input

@@ -53,6 +53,9 @@ export default function RealisasiPage() {
   const [viewBukti, setViewBukti] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Realisasi tidak boleh melebihi total anggaran agar selisih (sisa) tidak minus
+  const isRealisasiMelebihi = selectedItem ? realisasiInput > selectedItem.total : false;
+
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -194,8 +197,13 @@ export default function RealisasiPage() {
   const totalAnggaran = filteredData
     .filter(item => item.status !== 'Disetujui (Realokasi)')
     .reduce((acc, curr) => acc + (curr.total || 0), 0);
-  // Total Realisasi: Hitung dari semua jenis pengajuan yang sudah direalisasikan
-  const totalRealisasi = filteredData.reduce((acc, curr) => acc + (curr.realisasi || 0), 0);
+  // Total Realisasi: Hitung dari pengajuan biasa yang sudah direalisasikan.
+  // Pengajuan 'Realokasi' dikecualikan agar simetris dengan Total Anggaran (yang juga
+  // mengecualikan Realokasi), karena dananya berasal dari anggaran asal — sehingga
+  // Total Selisih tidak akan pernah minus.
+  const totalRealisasi = filteredData
+    .filter(item => item.status !== 'Disetujui (Realokasi)')
+    .reduce((acc, curr) => acc + (curr.realisasi || 0), 0);
   const totalSelisih = totalAnggaran - totalRealisasi;
 
 
@@ -210,6 +218,11 @@ export default function RealisasiPage() {
   const handleSubmitLaporan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedItem) return;
+    // Validasi terakhir: realisasi tidak boleh melebihi anggaran (selisih tidak boleh minus)
+    if (realisasiInput > selectedItem.total) {
+      alert(`Jumlah realisasi tidak boleh melebihi anggaran disetujui (Rp ${selectedItem.total.toLocaleString("id-ID")}).`);
+      return;
+    }
     setSubmitting(true);
     try {
       const selisih = selectedItem.total - realisasiInput;
@@ -510,15 +523,22 @@ export default function RealisasiPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Realisasi (Rp)</label>
-                  <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                    value={realisasiInput === 0 ? "" : realisasiInput.toLocaleString("id-ID")} 
+                  <input required type="text" className={`w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900 ${isRealisasiMelebihi ? "border-red-400 focus:ring-red-300" : ""}`}
+                    value={realisasiInput === 0 ? "" : realisasiInput.toLocaleString("id-ID")}
                     onChange={(e) => {
                       const rawValue = e.target.value.replace(/\./g, "");
-                      if (!isNaN(Number(rawValue))) {
-                        setRealisasiInput(Number(rawValue));
+                      const numeric = Number(rawValue);
+                      if (!isNaN(numeric)) {
+                        // Cegah input melebihi total anggaran agar selisih (sisa) tidak minus
+                        const maxAllowed = selectedItem.total;
+                        setRealisasiInput(numeric > maxAllowed ? maxAllowed : numeric);
                       }
                     }}
                     placeholder="0" />
+                  <p className={`text-xs mt-1 ${isRealisasiMelebihi ? "text-red-600" : "text-gray-400"}`}>
+                    Maksimal: Rp {selectedItem.total.toLocaleString("id-ID")}
+                    {isRealisasiMelebihi && " — melebihi batas, otomatis dipotong."}
+                  </p>
                 </div>
                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
                   <label className="block text-xs font-medium text-blue-600 mb-1">Selisih (Sisa Anggaran)</label>

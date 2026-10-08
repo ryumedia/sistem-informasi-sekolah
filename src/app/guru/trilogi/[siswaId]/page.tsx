@@ -25,6 +25,9 @@ interface SubTrilogi {
   habit: string;
   deskripsi: string;
   groupName: string;
+  jenjangKelas?: string;
+  periode?: string; // Semester tempat sub trilogi berlaku
+  kelompokUsia?: string; // Jenjang usia (nama, mis. "4-5 Tahun")
 }
 
 export default function DetailTrilogiSiswaPage() {
@@ -38,6 +41,12 @@ export default function DetailTrilogiSiswaPage() {
   const [semesterList, setSemesterList] = useState<any[]>([]);
   const [selectedSemester, setSelectedSemester] = useState<string>("");
   const [trilogiList, setTrilogiList] = useState<SubTrilogi[]>([]);
+  // Semua sub trilogi (sebelum difilter jenjang + semester)
+  const [allSubTrilogi, setAllSubTrilogi] = useState<SubTrilogi[]>([]);
+  // Jenjang kelas siswa (nama, dari koleksi kelas)
+  const [jenjangSiswa, setJenjangSiswa] = useState<string>("");
+  // Jenjang usia siswa (nama, dari koleksi siswa)
+  const [usiaSiswa, setUsiaSiswa] = useState<string>("");
   // subTrilogiId -> { nilai: number, docId: string }
   const [nilaiMap, setNilaiMap] = useState<Record<string, { nilai: number; docId: string }>>({});
   const [kriteriaMap, setKriteriaMap] = useState<Record<number, string>>({});
@@ -85,6 +94,9 @@ export default function DetailTrilogiSiswaPage() {
         }
         const siswaData = { id: siswaSnap.id, ...siswaSnap.data() } as { id: string; cabang?: string; kelas?: string; [key: string]: any };
         setSiswa(siswaData);
+        // Jenjang usia siswa (nama): beberapa kemungkinan nama field untuk keamanan
+        const usiaNama = siswaData.kelompokUsiaId || siswaData.jenjangUsia || siswaData.kelompokUsia || "";
+        setUsiaSiswa(usiaNama);
 
         // Semester
         const snapSem = await getDocs(query(collection(db, "kpi_periode"), orderBy("createdAt", "desc")));
@@ -101,7 +113,8 @@ export default function DetailTrilogiSiswaPage() {
           where("namaKelas", "==", siswaData.kelas)
         );
         const kelasSnap = await getDocs(qKelas);
-        const jenjangSiswa = !kelasSnap.empty ? (kelasSnap.docs[0].data().jenjangKelas || "") : "";
+        const jenjangKelasSiswa = !kelasSnap.empty ? (kelasSnap.docs[0].data().jenjangKelas || "") : "";
+        setJenjangSiswa(jenjangKelasSiswa);
 
         // Referensi kelas & cabang siswa (untuk kelasId, namaKelas, cabangId, namaCabang)
         let kelasInfo: { id: string; namaKelas: string } | null = null;
@@ -127,7 +140,7 @@ export default function DetailTrilogiSiswaPage() {
           groupMap.set(d.id, d.data().nama);
         });
 
-        // Sub Trilogi
+        // Sub Trilogi (semua diambil, difilter jenjang + semester di useEffect terpisah)
         const snapSubTrilogi = await getDocs(collection(db, "sub_trilogi"));
         const subTrilogis = snapSubTrilogi.docs
           .map(d => {
@@ -140,16 +153,17 @@ export default function DetailTrilogiSiswaPage() {
               deskripsi: data.deskripsi || "",
               groupName: groupMap.get(groupId) || "Lainnya",
               jenjangKelas: data.jenjangKelas || "",
-            };
-          })
-          .filter(item => !jenjangSiswa || item.jenjangKelas === jenjangSiswa) as SubTrilogi[];
+              periode: data.periode || "",
+              kelompokUsia: data.kelompokUsia || data.kelompokUsiaId || "",
+            } as SubTrilogi;
+          });
 
         subTrilogis.sort((a, b) => {
           if (a.groupName < b.groupName) return -1;
           if (a.groupName > b.groupName) return 1;
           return (a.habit || "").localeCompare(b.habit || "", undefined, { numeric: true });
         });
-        setTrilogiList(subTrilogis);
+        setAllSubTrilogi(subTrilogis);
 
         // Kriteria Nilai
         const qKat = query(collection(db, "kategori_penilaian"), where("nama", "==", "Nilai Trilogi"));
@@ -172,6 +186,17 @@ export default function DetailTrilogiSiswaPage() {
     };
     fetchData();
   }, [guruData, siswaId, router]);
+
+  // 2b. Filter sub trilogi sesuai jenjang kelas + jenjang usia siswa + semester terpilih
+  useEffect(() => {
+    if (!selectedSemester) return;
+    const filtered = allSubTrilogi.filter(s =>
+      (!jenjangSiswa || !s.jenjangKelas || s.jenjangKelas === jenjangSiswa) &&
+      (!usiaSiswa || !s.kelompokUsia || s.kelompokUsia === usiaSiswa) &&
+      s.periode === selectedSemester
+    );
+    setTrilogiList(filtered);
+  }, [allSubTrilogi, jenjangSiswa, usiaSiswa, selectedSemester]);
 
   // 3. Fetch Nilai saat semester berubah
   useEffect(() => {
@@ -322,20 +347,19 @@ export default function DetailTrilogiSiswaPage() {
                         {isEditing ? (
                           /* Mode Edit: pilihan nilai inline */
                           <div className="flex items-center gap-1">
-                            {[
-                              { n: 4, c: 'bg-green-100 text-green-700 hover:bg-green-200' },
-                              { n: 3, c: 'bg-blue-100 text-blue-700 hover:bg-blue-200' },
-                              { n: 2, c: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' },
-                              { n: 1, c: 'bg-red-100 text-red-700 hover:bg-red-200' },
-                            ].map(opt => (
+                            {[3, 2, 1].map(opt => (
                               <button
-                                key={opt.n}
+                                key={opt}
                                 disabled={isSaving}
-                                onClick={() => handleSaveNilai(item.id, opt.n)}
-                                title={kriteriaMap[opt.n] || String(opt.n)}
-                                className={`w-7 h-7 rounded-full text-[10px] font-bold transition ${opt.c} disabled:opacity-50`}
+                                onClick={() => handleSaveNilai(item.id, opt)}
+                                title={kriteriaMap[opt] || String(opt)}
+                                className={`w-7 h-7 rounded-full text-[10px] font-bold transition ${
+                                  opt === 3 ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' :
+                                  opt === 2 ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' :
+                                  'bg-red-100 text-red-700 hover:bg-red-200'
+                                } disabled:opacity-50`}
                               >
-                                {kriteriaMap[opt.n] || opt.n}
+                                {kriteriaMap[opt] || opt}
                               </button>
                             ))}
                             <button
@@ -356,8 +380,7 @@ export default function DetailTrilogiSiswaPage() {
                               <>
                                 <span className={`
                                   inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold shadow-sm
-                                  ${nilai >= 4 ? 'bg-green-100 text-green-700' :
-                                    nilai === 3 ? 'bg-blue-100 text-blue-700' :
+                                  ${nilai === 3 ? 'bg-blue-100 text-blue-700' :
                                     nilai === 2 ? 'bg-yellow-100 text-yellow-700' :
                                     'bg-red-100 text-red-700'}
                                 `}>
