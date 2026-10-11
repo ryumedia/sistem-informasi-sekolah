@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tema splash: tampil instan sebelum layout siap -->
+    <style name="Theme.Mainriang" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/primary</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="windowSplashScreenAnimationDuration">400</item>
+        <item name="postSplashScreenTheme">@style/Theme.Mainriang.Main</item>
+    </style>
+
+    <style name="Theme.Mainriang.Main" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:statusBarColor">@color/primary_dark</item>
+        <item name="android:windowBackground">@color/white</item>
+    </style>
+</resources>
