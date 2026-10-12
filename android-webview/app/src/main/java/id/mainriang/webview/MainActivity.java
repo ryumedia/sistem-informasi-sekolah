@@ -71,6 +71,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // WAJIB dipanggil setelah super.onCreate saat memakai Theme.SplashScreen
+        androidx.core.splashscreen.SplashScreen.installSplashScreen(this);
+
         setContentView(R.layout.activity_main);
 
         webView = findViewById(R.id.webview);
@@ -131,9 +135,23 @@ public class MainActivity extends AppCompatActivity {
                 progressBar.setVisibility(View.GONE);
                 swipeRefresh.setRefreshing(false);
             }
+
+            // Debug: catat semua error network resource ke Logcat
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
+                android.util.Log.e("MainriangWebView", "Error " + request.getUrl() + ": " + error.getDescription());
+            }
         });
 
         webView.setWebChromeClient(new WebChromeClient() {
+            // Debug: tampilkan console.log/error dari web app di Logcat
+            @Override
+            public boolean onConsoleMessage(android.webkit.ConsoleMessage consoleMessage) {
+                android.util.Log.d("MainriangWebView", "[JS] " + consoleMessage.messageLevel() + ": "
+                        + consoleMessage.message() + " (" + consoleMessage.sourceId() + ":" + consoleMessage.lineNumber() + ")");
+                return true;
+            }
+
             // Progress loading
             @Override
             public void onProgressChanged(WebView view, int newProgress) {

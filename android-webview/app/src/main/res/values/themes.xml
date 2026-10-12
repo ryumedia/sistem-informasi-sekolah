@@ -3,7 +3,7 @@
     <!-- Tema splash: tampil instan sebelum layout siap -->
     <style name="Theme.Mainriang" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/primary</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/splash_logo</item>
         <item name="windowSplashScreenAnimationDuration">400</item>
         <item name="postSplashScreenTheme">@style/Theme.Mainriang.Main</item>
     </style>
