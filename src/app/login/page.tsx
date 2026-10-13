@@ -5,6 +5,7 @@ import { useState } from "react";
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Image from "next/image";
 import { Lock, Mail, Eye, EyeOff } from "lucide-react";
 
@@ -151,6 +152,14 @@ export default function LoginPage() {
             {loading ? "Memproses..." : "Masuk"}
           </button>
         </form>
+
+        <p className="text-xs text-center text-gray-500 mt-4 px-2">
+          Dengan masuk, Anda menyetujui{" "}
+          <Link href="/terms" className="text-[#581c87] hover:underline">Syarat & Ketentuan</Link>
+          {" "}dan{" "}
+          <Link href="/privacy" className="text-[#581c87] hover:underline">Kebijakan Privasi</Link>
+          {" "}kami.
+        </p>
       </div>
 
       {showForgotPasswordModal && (
