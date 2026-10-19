@@ -187,8 +187,14 @@ export default function DetailPenagihanPage() {
       filtered = filtered.filter(t => t.tahun === filterTahun);
     }
 
+    // Filter status berdasarkan sisa pembayaran (satu sumber kebenaran dengan badge di tabel).
+    // Field 'status' di Firestore bisa basi (mis. tagihan nominal 0 karena diskon 100%
+    // tersimpan 'Belum Lunas'), jadi jangan pakai field tersimpan.
     if (filterStatus) {
-      filtered = filtered.filter(t => t.status === filterStatus);
+      filtered = filtered.filter(t => {
+        const sisa = t.nominal - (t.dibayar || 0);
+        return (sisa <= 0 ? 'Lunas' : 'Belum Lunas') === filterStatus;
+      });
     }
 
     setFilteredTagihanList(filtered);
@@ -313,7 +319,8 @@ export default function DetailPenagihanPage() {
           nominalAwal: selectedJb?.nominal || item.nominal,
           diskonJenis: item.diskonJenis || 0,
           diskonIndividual: item.diskonIndividual || 0,
-          status: 'Belum Lunas',
+          // Tagihan nominal 0 (mis. diskon 100%) langsung dianggap Lunas
+          status: (item.nominal || 0) <= 0 ? 'Lunas' : 'Belum Lunas',
           dibayar: 0, // Inisialisasi dibayar dengan 0
           createdAt: new Date(),
         });
