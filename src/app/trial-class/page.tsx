@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, FormEvent, useMemo } from 'react';
+import { useState, useEffect, FormEvent, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import { db } from '@/lib/firebase';
-import { collection, query, getDocs, addDoc, Timestamp, orderBy, where } from 'firebase/firestore';
-import { Loader2 } from 'lucide-react';
+import { collection, query, getDocs, addDoc, Timestamp, orderBy } from 'firebase/firestore';
+import { Loader2, Users, Wallet, Upload, Image as ImageIcon, X } from 'lucide-react';
 
 // --- INTERFACES ---
 interface Lokasi {
@@ -12,16 +12,17 @@ interface Lokasi {
   nama: string;
 }
 
-interface Program {
-  id: string;
-  nama: string;
-}
+// Pilihan rencana program (hardcode)
+const PROGRAM_OPTIONS = ['Daycare', 'Playgroup', 'TK', 'TK + Daycare'] as const;
 
 interface JadwalTrial {
   id: string;
   lokasi: string;
   tanggal: string; // YYYY-MM-DD
   waktu: string; // HH:mm
+  tipe?: 'gratis' | 'berbayar';
+  nominal?: number;
+  kuota?: number;
 }
 
 interface FormData {
@@ -35,21 +36,51 @@ interface FormData {
   nomorWa: string;
 }
 
-export default function TrialClassRegistrationPage() {
-  const [formData, setFormData] = useState<FormData>({
-    lokasi: '',
-    tanggal: '',
-    waktu: '',
-    program: '',
-    namaAnak: '',
-    namaPanggilan: '',
-    alamat: '',
-    nomorWa: '',
+const EMPTY_FORM: FormData = {
+  lokasi: '',
+  tanggal: '',
+  waktu: '',
+  program: '',
+  namaAnak: '',
+  namaPanggilan: '',
+  alamat: '',
+  nomorWa: '',
+};
+
+// Kompres gambar di browser agar payload Firestore tetap di bawah batas 1MB.
+const compressImage = (file: File, maxSize = 1000, quality = 0.7): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Gagal membaca file.'));
+    reader.onload = () => {
+      const img = document.createElement('img');
+      img.onerror = () => reject(new Error('File bukan gambar yang valid.'));
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Canvas tidak didukung browser ini.'));
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
   });
 
+export default function TrialClassRegistrationPage() {
+  const [formData, setFormData] = useState<FormData>(EMPTY_FORM);
+
   const [lokasiOptions, setLokasiOptions] = useState<Lokasi[]>([]);
-  const [programOptions, setProgramOptions] = useState<Program[]>([]);
   const [jadwalOptions, setJadwalOptions] = useState<JadwalTrial[]>([]);
+
+  // Bukti transfer (disimpan sebagai data URL hasil kompresi)
+  const [buktiTransfer, setBuktiTransfer] = useState<string | null>(null);
+  const [buktiFileName, setBuktiFileName] = useState<string>('');
+  const [buktiError, setBuktiError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -61,17 +92,14 @@ export default function TrialClassRegistrationPage() {
       setLoading(true);
       try {
         const lokasiQuery = query(collection(db, "lokasi_pendaftaran"), orderBy("nama", "asc"));
-        const programQuery = query(collection(db, "program_pendaftaran"), orderBy("nama", "asc"));
         const jadwalQuery = query(collection(db, "jadwal_trial"), orderBy("tanggal", "asc"));
 
-        const [lokasiSnapshot, programSnapshot, jadwalSnapshot] = await Promise.all([
+        const [lokasiSnapshot, jadwalSnapshot] = await Promise.all([
           getDocs(lokasiQuery),
-          getDocs(programQuery),
           getDocs(jadwalQuery),
         ]);
 
         setLokasiOptions(lokasiSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lokasi)));
-        setProgramOptions(programSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Program)));
         setJadwalOptions(jadwalSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as JadwalTrial)));
 
       } catch (err) {
@@ -115,6 +143,58 @@ export default function TrialClassRegistrationPage() {
       .map(j => j.waktu);
   }, [formData.lokasi, formData.tanggal, jadwalOptions]);
 
+  // Jadwal yang dipilih user (dipakai untuk info kuota & biaya)
+  const selectedJadwal = useMemo(() => {
+    if (!formData.lokasi || !formData.tanggal || !formData.waktu) return null;
+    return (
+      jadwalOptions.find(
+        j => j.lokasi === formData.lokasi && j.tanggal === formData.tanggal && j.waktu === formData.waktu
+      ) || null
+    );
+  }, [formData.lokasi, formData.tanggal, formData.waktu, jadwalOptions]);
+
+  // Total kuota untuk lokasi yang dipilih (dari semua jadwal di lokasi tsb)
+  const kuotaLokasi = useMemo(() => {
+    if (!formData.lokasi) return 0;
+    return jadwalOptions
+      .filter(j => j.lokasi === formData.lokasi)
+      .reduce((sum, j) => sum + (Number(j.kuota) || 0), 0);
+  }, [formData.lokasi, jadwalOptions]);
+
+  const isBerbayar = selectedJadwal?.tipe === 'berbayar';
+  const nominalPembayaran = isBerbayar ? Number(selectedJadwal?.nominal) || 0 : 0;
+
+  const handleBuktiChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBuktiError(null);
+
+    if (!file.type.startsWith('image/')) {
+      setBuktiError('File harus berupa gambar (JPG, PNG, atau WEBP).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setBuktiError('Ukuran file maksimal 5MB.');
+      return;
+    }
+
+    try {
+      const dataUrl = await compressImage(file);
+      setBuktiTransfer(dataUrl);
+      setBuktiFileName(file.name);
+    } catch (err) {
+      console.error('Error memproses bukti transfer:', err);
+      setBuktiError('Gagal memproses gambar. Silakan coba file lain.');
+    }
+  };
+
+  const removeBukti = () => {
+    setBuktiTransfer(null);
+    setBuktiFileName('');
+    setBuktiError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -122,23 +202,25 @@ export default function TrialClassRegistrationPage() {
     setError(null);
     setSuccessMessage(null);
 
+    // Validasi bukti transfer jika jadwal berbayar
+    if (selectedJadwal?.tipe === 'berbayar' && !buktiTransfer) {
+      setError('Silakan unggah bukti transfer terlebih dahulu karena trial class ini berbayar.');
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       await addDoc(collection(db, "pendaftaran_trial"), {
         ...formData,
+        tipe: selectedJadwal?.tipe || 'gratis',
+        nominal: selectedJadwal?.tipe === 'berbayar' ? nominalPembayaran : 0,
+        buktiTransfer: selectedJadwal?.tipe === 'berbayar' ? buktiTransfer : null,
         tanggalPendaftaran: Timestamp.now(),
         status: "Baru"
       });
       setSuccessMessage("Pendaftaran trial class berhasil! Kami akan segera menghubungi Anda.");
-      setFormData({
-        lokasi: '',
-        tanggal: '',
-        waktu: '',
-        program: '',
-        namaAnak: '',
-        namaPanggilan: '',
-        alamat: '',
-        nomorWa: '',
-      });
+      setFormData(EMPTY_FORM);
+      removeBukti();
     } catch (err) {
       console.error("Error submitting form:", err);
       setError("Gagal mengirim pendaftaran. Silakan coba lagi.");
@@ -190,12 +272,50 @@ export default function TrialClassRegistrationPage() {
                     </div>
                 </div>
 
-                {/* Program */}
+                {/* Info Kuota & Biaya */}
+                {formData.lokasi && (
+                  <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <Users className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+                      <div className="text-sm">
+                        <p className="font-semibold text-gray-800">Kuota Trial Class — {formData.lokasi}</p>
+                        {selectedJadwal && (
+                          <p className="text-gray-600">
+                            Sisa Kuota : <span className="font-semibold text-gray-800">{selectedJadwal.kuota ?? 0}</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {selectedJadwal && (
+                      <div className="flex items-start gap-3 border-t border-blue-100 pt-3">
+                        <Wallet className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+                        <div className="text-sm">
+                          {isBerbayar ? (
+                            <>
+                              <p className="font-semibold text-gray-800">Trial Class Berbayar</p>
+                              <p className="text-gray-600">
+                                Biaya yang harus dibayar:{' '}
+                                <span className="font-bold text-blue-700">Rp {nominalPembayaran.toLocaleString('id-ID')}</span>
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="font-semibold text-green-700">Trial Class Gratis</p>
+                              <p className="text-gray-600">Tidak ada biaya yang perlu dibayarkan.</p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Pilih rencana program yang akan diambil</label>
                     <select name="program" value={formData.program} onChange={handleInputChange} required className="w-full border rounded-lg p-2.5 bg-white focus:ring-2 focus:ring-blue-500 outline-none">
-                        <option value="" disabled>-- Pilih Program--</option>
-                        {programOptions.map(opt => <option key={opt.id} value={opt.nama}>{opt.nama}</option>)}
+                        <option value="" disabled>-- Pilih Program --</option>
+                        {PROGRAM_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                 </div>
 
@@ -220,6 +340,52 @@ export default function TrialClassRegistrationPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Nomor WA Orang Tua</label>
                     <input type="tel" name="nomorWa" value={formData.nomorWa} onChange={handleInputChange} required placeholder="Contoh: 08123456789" className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
+
+                {/* Upload Bukti Transfer (hanya jika berbayar) */}
+                {isBerbayar && (
+                  <div className="border border-dashed border-blue-300 bg-blue-50/40 rounded-lg p-4">
+                    <label className="block text-sm font-semibold text-gray-800 mb-1">
+                      Upload Bukti Transfer <span className="text-red-600">*</span>
+                    </label>
+                    <p className="text-xs text-gray-600 mb-3">
+                      Transfer sebesar <span className="font-semibold">Rp {nominalPembayaran.toLocaleString('id-ID')}</span> lalu unggah bukti transfer (JPG/PNG/WEBP, maks. 5MB).
+                    </p>
+
+                    {buktiTransfer ? (
+                      <div className="flex items-center gap-3 bg-white border rounded-lg p-3">
+                        <Image
+                          src={buktiTransfer}
+                          alt="Bukti transfer"
+                          width={64}
+                          height={64}
+                          unoptimized
+                          className="w-16 h-16 object-cover rounded border"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-800 truncate">{buktiFileName}</p>
+                          <p className="text-xs text-green-600">Bukti transfer berhasil diunggah</p>
+                        </div>
+                        <button type="button" onClick={removeBukti} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center gap-2 cursor-pointer bg-white border rounded-lg p-6 hover:bg-gray-50 transition">
+                        <Upload className="w-6 h-6 text-blue-600" />
+                        <span className="text-sm text-gray-700">Klik untuk memilih file bukti transfer</span>
+                        <span className="text-xs text-gray-500 flex items-center gap-1"><ImageIcon className="w-3 h-3" /> JPG, PNG, atau WEBP</span>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleBuktiChange}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                    {buktiError && <p className="text-red-600 text-xs mt-2">{buktiError}</p>}
+                  </div>
+                )}
 
                 {/* Submit */}
                 <div className="pt-4">

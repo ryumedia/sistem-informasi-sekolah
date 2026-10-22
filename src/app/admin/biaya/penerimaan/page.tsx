@@ -410,7 +410,7 @@ export default function PenerimaanPage() {
 
     const dataForExcel = filteredLaporanList.map((item, i) => ({
       'No.': i + 1,
-      'Tanggal Bayar': format(item.tanggalBayar.toDate(), 'dd MMMM yyyy'),
+      'Tanggal Bayar': format(item.tanggalBayar.toDate(), 'dd MMMM yyyy HH:mm'),
       'Nama Siswa': item.namaSiswa,
       'Cabang': item.cabangSiswa,
       'Kelas': item.kelasSiswa,
@@ -423,7 +423,7 @@ export default function PenerimaanPage() {
 
     const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
     worksheet['!cols'] = [
-      { wch: 5 }, { wch: 16 }, { wch: 25 }, { wch: 15 }, { wch: 10 },
+      { wch: 5 }, { wch: 20 }, { wch: 25 }, { wch: 15 }, { wch: 10 },
       { wch: 28 }, { wch: 25 }, { wch: 18 }, { wch: 16 }, { wch: 22 },
     ];
     const workbook = XLSX.utils.book_new();
@@ -549,7 +549,7 @@ export default function PenerimaanPage() {
                   return (
                     <tr key={item.id} className="hover:bg-gray-50">
                       <td className="p-4 text-center">{i + 1}</td>
-                      <td className="p-4">{format(item.tanggalBayar.toDate(), 'dd MMMM yyyy')}</td>
+                      <td className="p-4">{format(item.tanggalBayar.toDate(), 'dd MMMM yyyy')}<br /><span className="text-xs text-gray-500">{format(item.tanggalBayar.toDate(), 'HH:mm')} WIB</span></td>
                       <td className="p-4 font-medium text-gray-900">{item.namaSiswa}</td>
                       <td className="p-4">{item.cabangSiswa}</td>
                       <td className="p-4">{item.kelasSiswa}</td>
@@ -640,7 +640,7 @@ export default function PenerimaanPage() {
             <div className="p-6 space-y-4">
               {/* Detail Transaksi */}
               <div className="bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
-                <div className="flex justify-between"><span>Tanggal:</span><span className="font-medium text-right">{format(selectedPenerimaan.tanggalBayar.toDate(), 'dd MMMM yyyy')}</span></div>
+                <div className="flex justify-between"><span>Tanggal:</span><span className="font-medium text-right">{format(selectedPenerimaan.tanggalBayar.toDate(), 'dd MMMM yyyy HH:mm')} WIB</span></div>
                 <div className="flex justify-between"><span>Nama Siswa:</span><span className="font-medium text-right">{selectedPenerimaan.namaSiswa}</span></div>                
                 <div className="flex justify-between"><span>Jenis Biaya:</span><span className="font-medium text-right">{selectedPenerimaan.jenisBiaya}</span></div>
                 <div className="flex justify-between text-base"><span>Nominal:</span><span className="font-bold text-green-600 text-right">{formatCurrency(selectedPenerimaan.jumlahBayar)}</span></div>

@@ -22,6 +22,9 @@ interface JadwalTrial {
   lokasi: string;
   tanggal: string; // YYYY-MM-DD
   waktu: string; // HH:mm
+  tipe: 'gratis' | 'berbayar';
+  nominal: number; // 0 jika gratis
+  kuota: number;
 }
 
 interface KuotaTematik {
@@ -153,7 +156,7 @@ export default function LokasiProgramPage() {
   };
 
   // --- JADWAL HANDLERS ---
-  const handleSaveJadwal = async (formData: { lokasi: string; tanggal: string; waktu: string }) => {
+  const handleSaveJadwal = async (formData: { lokasi: string; tanggal: string; waktu: string; tipe: 'gratis' | 'berbayar'; nominal: number; kuota: number }) => {
     try {
       if (editingJadwal) {
         await updateDoc(doc(db, "jadwal_trial", editingJadwal.id), formData);
@@ -320,14 +323,17 @@ export default function LokasiProgramPage() {
                   <th className="p-4">Lokasi</th>
                   <th className="p-4">Tanggal</th>
                   <th className="p-4">Waktu</th>
+                  <th className="p-4">Tipe</th>
+                  <th className="p-4">Nominal</th>
+                  <th className="p-4">Kuota</th>
                   <th className="p-4 w-32 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {loadingJadwal ? (
-                  <tr><td colSpan={5} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" /></td></tr>
+                  <tr><td colSpan={8} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" /></td></tr>
                 ) : jadwalList.length === 0 ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-gray-500">Belum ada jadwal trial.</td></tr>
+                  <tr><td colSpan={8} className="p-8 text-center text-gray-500">Belum ada jadwal trial.</td></tr>
                 ) : (
                   jadwalList.map((item, index) => (
                     <tr key={item.id} className="hover:bg-gray-50">
@@ -335,6 +341,13 @@ export default function LokasiProgramPage() {
                       <td className="p-4 font-medium text-gray-900">{item.lokasi}</td>
                       <td className="p-4">{new Date(item.tanggal + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</td>
                       <td className="p-4">{item.waktu}</td>
+                      <td className="p-4">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${item.tipe === 'berbayar' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                          {item.tipe === 'berbayar' ? 'Berbayar' : 'Gratis'}
+                        </span>
+                      </td>
+                      <td className="p-4">{item.tipe === 'berbayar' ? `Rp ${(item.nominal || 0).toLocaleString('id-ID')}` : '-'}</td>
+                      <td className="p-4 font-semibold text-amber-700">{item.kuota ?? '-'}</td>
                       <td className="p-4 flex justify-center gap-2">
                         <button onClick={() => { setEditingJadwal(item); setIsJadwalModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit"><Edit className="w-4 h-4" /></button>
                         <button onClick={() => handleDeleteJadwal(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus"><Trash2 className="w-4 h-4" /></button>
@@ -536,18 +549,28 @@ function LokasiModal({ data, onClose, onSave }: { data: Lokasi | null, onClose: 
   );
 }
 
-function JadwalModal({ data, lokasiOptions, onClose, onSave }: { data: JadwalTrial | null, lokasiOptions: Lokasi[], onClose: () => void, onSave: (formData: { lokasi: string, tanggal: string, waktu: string }) => void }) {
+function JadwalModal({ data, lokasiOptions, onClose, onSave }: { data: JadwalTrial | null, lokasiOptions: Lokasi[], onClose: () => void, onSave: (formData: { lokasi: string, tanggal: string, waktu: string, tipe: 'gratis' | 'berbayar', nominal: number, kuota: number }) => void }) {
   const [formData, setFormData] = useState({
     lokasi: data?.lokasi || '',
     tanggal: data?.tanggal || '',
-    waktu: data?.waktu || ''
+    waktu: data?.waktu || '',
+    tipe: (data?.tipe || 'gratis') as 'gratis' | 'berbayar',
+    nominal: data?.nominal ?? 0,
+    kuota: data?.kuota ?? 0
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    await onSave(formData);
+    await onSave({
+      lokasi: formData.lokasi,
+      tanggal: formData.tanggal,
+      waktu: formData.waktu,
+      tipe: formData.tipe,
+      nominal: formData.tipe === 'berbayar' ? Number(formData.nominal) : 0,
+      kuota: Number(formData.kuota)
+    });
     setIsSubmitting(false);
     onClose();
   };
@@ -577,6 +600,52 @@ function JadwalModal({ data, lokasiOptions, onClose, onSave }: { data: JadwalTri
               <input type="time" required value={formData.waktu} onChange={e => setFormData({ ...formData, waktu: e.target.value })} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-purple-500 outline-none" />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipe Trial</label>
+              <select
+                required
+                value={formData.tipe}
+                onChange={e => {
+                  const tipe = e.target.value as 'gratis' | 'berbayar';
+                  setFormData({ ...formData, tipe, nominal: tipe === 'gratis' ? 0 : formData.nominal });
+                }}
+                className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+              >
+                <option value="gratis">Gratis</option>
+                <option value="berbayar">Berbayar</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Kuota</label>
+              <input
+                type="number"
+                required
+                min="0"
+                value={formData.kuota}
+                onChange={e => setFormData({ ...formData, kuota: Number(e.target.value) })}
+                className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-purple-500 outline-none"
+              />
+            </div>
+          </div>
+          {formData.tipe === 'berbayar' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nominal Pembayaran (Rp)</label>
+              <input
+                type="number"
+                required
+                min="0"
+                step="1000"
+                placeholder="Contoh: 150000"
+                value={formData.nominal || ''}
+                onChange={e => setFormData({ ...formData, nominal: Number(e.target.value) })}
+                className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-purple-500 outline-none"
+              />
+              {formData.nominal > 0 && (
+                <p className="text-xs text-gray-500 mt-1">Rp {Number(formData.nominal).toLocaleString('id-ID')}</p>
+              )}
+            </div>
+          )}
           <div className="pt-2 flex justify-end gap-3">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-200">Batal</button>
             <button type="submit" disabled={isSubmitting} className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700 transition disabled:opacity-50">
