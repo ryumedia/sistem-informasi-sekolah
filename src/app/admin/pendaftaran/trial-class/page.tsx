@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, orderBy, getDocs } from 'firebase/firestore';
-import { Loader2, Filter, RotateCcw, MapPin, Calendar, Clock } from 'lucide-react';
+import { Loader2, Filter, RotateCcw, MapPin, Calendar, Clock, Image as ImageIcon, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { useLokasiKepalaSekolah, normalizeLokasi } from '@/hooks/useLokasiKepalaSekolah';
@@ -19,6 +19,9 @@ interface TrialClassParticipant {
   nomorWa: string;
   program: string; // Program yang dipilih
   tanggalPendaftaran: any; // Timestamp of registration submission
+  tipe?: 'gratis' | 'berbayar';
+  nominal?: number;
+  buktiTransfer?: string | null;
 }
 
 function WhatsAppIcon({ className = "w-4 h-4" }: { className?: string }) {
@@ -35,6 +38,7 @@ export default function TrialClassPage() {
   const [masterJadwal, setMasterJadwal] = useState<{ lokasi?: string; tanggal?: string; waktu?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [previewBukti, setPreviewBukti] = useState<TrialClassParticipant | null>(null);
 
   // Filter States
   const [filterLokasi, setFilterLokasi] = useState<string>('');
@@ -291,17 +295,18 @@ export default function TrialClassPage() {
                 <th className="p-4">Pilihan Lokasi</th>
                 <th className="p-4">Pilihan Tanggal</th>
                 <th className="p-4">Pilihan Waktu</th>
+                <th className="p-4">Program</th>
                 <th className="p-4">Alamat</th>
                 <th className="p-4">Nomor WA</th>
-                <th className="p-4 text-center w-36">Hubungi WA</th>
+                <th className="p-4 text-center w-28">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading || !roleReady ? (
-                <tr><td colSpan={8} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
+                <tr><td colSpan={9} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
               ) : filteredParticipants.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-gray-500">
+                  <td colSpan={9} className="p-8 text-center text-gray-500">
                     {participants.length === 0 ? "Belum ada pendaftar trial class." : "Tidak ada pendaftar yang sesuai dengan filter yang dipilih."}
                   </td>
                 </tr>
@@ -315,23 +320,37 @@ export default function TrialClassPage() {
                     <td className="p-4">{p.lokasi || '-'}</td>
                     <td className="p-4">{formatTrialDate(p.tanggal)}</td>
                     <td className="p-4">{p.waktu || '-'}</td>
+                    <td className="p-4">{p.program || '-'}</td>
                     <td className="p-4">{p.alamat || '-'}</td>
                     <td className="p-4">{p.nomorWa || '-'}</td>
-                    <td className="p-4 text-center">
-                      {p.nomorWa ? (
-                        <a
-                          href={getWhatsAppUrl(p.nomorWa, p.namaAnak)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm hover:shadow transition"
-                          title={`Hubungi ${p.namaAnak} via WhatsApp (${p.nomorWa})`}
-                        >
-                          <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
-                          <span>Hubungi WA</span>
-                        </a>
-                      ) : (
-                        <span className="text-gray-400 text-xs">-</span>
-                      )}
+                    <td className="p-4">
+                      <div className="flex items-center justify-center gap-1">
+                        {p.nomorWa ? (
+                          <a
+                            href={getWhatsAppUrl(p.nomorWa, p.namaAnak)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                            title={`Hubungi ${p.namaAnak} via WhatsApp (${p.nomorWa})`}
+                          >
+                            <WhatsAppIcon className="w-4 h-4 fill-current" />
+                          </a>
+                        ) : (
+                          <span className="p-2 text-gray-300" title="Nomor WA tidak tersedia">
+                            <WhatsAppIcon className="w-4 h-4 fill-current" />
+                          </span>
+                        )}
+                        {p.buktiTransfer ? (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewBukti(p)}
+                            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition"
+                            title="Lihat bukti transfer"
+                          >
+                            <ImageIcon className="w-4 h-4" />
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -340,6 +359,47 @@ export default function TrialClassPage() {
           </table>
         </div>
       </div>
+
+      {/* Modal Preview Bukti Transfer */}
+      {previewBukti && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+          onClick={() => setPreviewBukti(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-4 border-b flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-gray-800">Bukti Transfer</h3>
+                <p className="text-xs text-gray-500">
+                  {previewBukti.namaAnak} • {previewBukti.program || '-'}
+                  {previewBukti.tipe === 'berbayar' && previewBukti.nominal
+                    ? ` • Rp ${Number(previewBukti.nominal).toLocaleString('id-ID')}`
+                    : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewBukti(null)}
+                className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
+                title="Tutup"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 bg-gray-50">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={previewBukti.buktiTransfer as string}
+                alt={`Bukti transfer ${previewBukti.namaAnak}`}
+                className="w-full max-h-[70vh] object-contain rounded-lg border bg-white"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ interface Lokasi {
   id: string;
   nama: string;
   alamat: string;
+  nomorWa?: string;
 }
 
 interface Program {
@@ -100,7 +101,7 @@ export default function LokasiProgramPage() {
   }, []);
 
   // --- LOKASI HANDLERS ---
-  const handleSaveLokasi = async (formData: { nama: string; alamat: string }) => {
+  const handleSaveLokasi = async (formData: { nama: string; alamat: string; nomorWa: string }) => {
     try {
       if (editingLokasi) {
         await updateDoc(doc(db, "lokasi_pendaftaran", editingLokasi.id), formData);
@@ -279,20 +280,22 @@ export default function LokasiProgramPage() {
                   <th className="p-4 w-12 text-center">No.</th>
                   <th className="p-4">Lokasi</th>
                   <th className="p-4">Alamat</th>
+                  <th className="p-4">Nomor WA</th>
                   <th className="p-4 w-32 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {loadingLokasi ? (
-                  <tr><td colSpan={4} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" /></td></tr>
+                  <tr><td colSpan={5} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" /></td></tr>
                 ) : lokasiList.length === 0 ? (
-                  <tr><td colSpan={4} className="p-8 text-center text-gray-500">Belum ada lokasi.</td></tr>
+                  <tr><td colSpan={5} className="p-8 text-center text-gray-500">Belum ada lokasi.</td></tr>
                 ) : (
                   lokasiList.map((item, index) => (
                     <tr key={item.id} className="hover:bg-gray-50">
                       <td className="p-4 text-center">{index + 1}</td>
                       <td className="p-4 font-medium text-gray-900">{item.nama}</td>
                       <td className="p-4">{item.alamat}</td>
+                      <td className="p-4">{item.nomorWa || '-'}</td>
                       <td className="p-4 flex justify-center gap-2">
                         <button onClick={() => { setEditingLokasi(item); setIsLokasiModalOpen(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit"><Edit className="w-4 h-4" /></button>
                         <button onClick={() => handleDeleteLokasi(item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus"><Trash2 className="w-4 h-4" /></button>
@@ -509,8 +512,12 @@ export default function LokasiProgramPage() {
 
 // --- MODAL COMPONENTS ---
 
-function LokasiModal({ data, onClose, onSave }: { data: Lokasi | null, onClose: () => void, onSave: (formData: { nama: string, alamat: string }) => void }) {
-  const [formData, setFormData] = useState({ nama: data?.nama || '', alamat: data?.alamat || '' });
+function LokasiModal({ data, onClose, onSave }: { data: Lokasi | null, onClose: () => void, onSave: (formData: { nama: string, alamat: string, nomorWa: string }) => void }) {
+  const [formData, setFormData] = useState({
+    nama: data?.nama || '',
+    alamat: data?.alamat || '',
+    nomorWa: data?.nomorWa || ''
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
@@ -536,6 +543,17 @@ function LokasiModal({ data, onClose, onSave }: { data: Lokasi | null, onClose: 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Alamat</label>
             <textarea required value={formData.alamat} onChange={e => setFormData({ ...formData, alamat: e.target.value })} className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none" rows={3}></textarea>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nomor WA</label>
+            <input
+              type="tel"
+              value={formData.nomorWa}
+              onChange={e => setFormData({ ...formData, nomorWa: e.target.value })}
+              placeholder="Contoh: 08123456789"
+              className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <p className="text-xs text-gray-500 mt-1">Dipakai sebagai kontak admin pada form pendaftaran Trial Class di lokasi ini.</p>
           </div>
           <div className="pt-2 flex justify-end gap-3">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-200">Batal</button>

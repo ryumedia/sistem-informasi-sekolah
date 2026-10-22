@@ -3,13 +3,14 @@
 import { useState, useEffect, FormEvent, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import { db } from '@/lib/firebase';
-import { collection, query, getDocs, addDoc, Timestamp, orderBy } from 'firebase/firestore';
-import { Loader2, Users, Wallet, Upload, Image as ImageIcon, X } from 'lucide-react';
+import { collection, query, getDocs, addDoc, Timestamp, orderBy, where, updateDoc, doc, increment } from 'firebase/firestore';
+import { Loader2, Users, Wallet, Upload, Image as ImageIcon, X, AlertCircle, Phone } from 'lucide-react';
 
 // --- INTERFACES ---
 interface Lokasi {
   id: string;
   nama: string;
+  nomorWa?: string;
 }
 
 // Pilihan rencana program (hardcode)
@@ -46,6 +47,12 @@ const EMPTY_FORM: FormData = {
   alamat: '',
   nomorWa: '',
 };
+
+// Nomor admin yang ditampilkan saat kuota habis (ubah sesuai kebutuhan).
+const ADMIN_WA_NUMBER = '6281234567890';
+const ADMIN_WA_TEXT = encodeURIComponent(
+  'Halo Admin, saya ingin mendaftar Trial Class namun kuota sudah habis. Mohon informasi ketersediaan selanjutnya.'
+);
 
 // Kompres gambar di browser agar payload Firestore tetap di bawah batas 1MB.
 const compressImage = (file: File, maxSize = 1000, quality = 0.7): Promise<string> =>
@@ -86,7 +93,6 @@ export default function TrialClassRegistrationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -153,16 +159,25 @@ export default function TrialClassRegistrationPage() {
     );
   }, [formData.lokasi, formData.tanggal, formData.waktu, jadwalOptions]);
 
-  // Total kuota untuk lokasi yang dipilih (dari semua jadwal di lokasi tsb)
-  const kuotaLokasi = useMemo(() => {
-    if (!formData.lokasi) return 0;
-    return jadwalOptions
-      .filter(j => j.lokasi === formData.lokasi)
-      .reduce((sum, j) => sum + (Number(j.kuota) || 0), 0);
-  }, [formData.lokasi, jadwalOptions]);
-
   const isBerbayar = selectedJadwal?.tipe === 'berbayar';
   const nominalPembayaran = isBerbayar ? Number(selectedJadwal?.nominal) || 0 : 0;
+
+  // Field `kuota` pada jadwal_trial adalah kuota tersisa (sudah dikurangi tiap pendaftaran),
+  // jadi nilai ini sudah sama dengan yang tampil di halaman admin. Jangan dikurangi lagi.
+  const sisaKuotaJadwal = (jadwal: JadwalTrial) => Number(jadwal.kuota) || 0;
+
+  const sisaKuotaSelected = selectedJadwal ? sisaKuotaJadwal(selectedJadwal) : null;
+  const kuotaHabis = !!selectedJadwal && (sisaKuotaSelected ?? 0) <= 0;
+
+  // Nomor admin mengikuti nomor WA pada lokasi yang dipilih (fallback ke nomor default)
+  const adminWaNumber = useMemo(() => {
+    const lokasi = lokasiOptions.find(l => l.nama === formData.lokasi);
+    const raw = (lokasi?.nomorWa || '').replace(/\D/g, '');
+    if (!raw) return ADMIN_WA_NUMBER;
+    if (raw.startsWith('0')) return '62' + raw.slice(1);
+    if (raw.startsWith('62')) return raw;
+    return '62' + raw;
+  }, [lokasiOptions, formData.lokasi]);
 
   const handleBuktiChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -202,8 +217,45 @@ export default function TrialClassRegistrationPage() {
     setError(null);
     setSuccessMessage(null);
 
+    // Semua field wajib diisi (termasuk tanggal & waktu)
+    const wajib: Array<[keyof FormData, string]> = [
+      ['lokasi', 'Lokasi'],
+      ['tanggal', 'Tanggal'],
+      ['waktu', 'Waktu'],
+      ['program', 'Rencana program'],
+      ['namaAnak', 'Nama lengkap anak'],
+      ['namaPanggilan', 'Nama panggilan'],
+      ['alamat', 'Alamat'],
+      ['nomorWa', 'Nomor WA orang tua'],
+    ];
+    const kosong = wajib.filter(([key]) => !String(formData[key] || '').trim()).map(([, label]) => label);
+    if (kosong.length > 0) {
+      setError(`Mohon lengkapi data berikut: ${kosong.join(', ')}.`);
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!selectedJadwal) {
+      setError('Jadwal Trial Class yang dipilih tidak ditemukan. Silakan pilih ulang jadwal.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Cek ulang sisa kuota terbaru sebelum menyimpan
+    try {
+      const snapJadwal = await getDocs(query(collection(db, "jadwal_trial"), where("__name__", "==", selectedJadwal.id)));
+      const kuotaTersisa = Number(snapJadwal.docs[0]?.data()?.kuota) || 0;
+      if (kuotaTersisa <= 0) {
+        setError('Kuota Trial Class Sudah Habis, Silakan untuk menghubungi Admin.');
+        setIsSubmitting(false);
+        return;
+      }
+    } catch (err) {
+      console.error('Error memeriksa kuota:', err);
+    }
+
     // Validasi bukti transfer jika jadwal berbayar
-    if (selectedJadwal?.tipe === 'berbayar' && !buktiTransfer) {
+    if (selectedJadwal.tipe === 'berbayar' && !buktiTransfer) {
       setError('Silakan unggah bukti transfer terlebih dahulu karena trial class ini berbayar.');
       setIsSubmitting(false);
       return;
@@ -212,12 +264,33 @@ export default function TrialClassRegistrationPage() {
     try {
       await addDoc(collection(db, "pendaftaran_trial"), {
         ...formData,
-        tipe: selectedJadwal?.tipe || 'gratis',
-        nominal: selectedJadwal?.tipe === 'berbayar' ? nominalPembayaran : 0,
-        buktiTransfer: selectedJadwal?.tipe === 'berbayar' ? buktiTransfer : null,
+        jadwalId: selectedJadwal.id,
+        tipe: selectedJadwal.tipe || 'gratis',
+        nominal: selectedJadwal.tipe === 'berbayar' ? nominalPembayaran : 0,
+        buktiTransfer: selectedJadwal.tipe === 'berbayar' ? buktiTransfer : null,
         tanggalPendaftaran: Timestamp.now(),
         status: "Baru"
       });
+
+      // Kurangi kuota pada dokumen jadwal_trial
+      try {
+        await updateDoc(doc(db, "jadwal_trial", selectedJadwal.id), { kuota: increment(-1) });
+        setJadwalOptions(prev =>
+          prev.map(j =>
+            j.id === selectedJadwal.id ? { ...j, kuota: Math.max(0, (Number(j.kuota) || 0) - 1) } : j
+          )
+        );
+      } catch (err) {
+        console.error('Error mengurangi kuota jadwal:', err);
+      }
+
+      // Perbarui tampilan kuota agar langsung sesuai dengan nilai terbaru di database
+      setJadwalOptions(prev =>
+        prev.map(j =>
+          j.id === selectedJadwal.id ? { ...j, kuota: Math.max(0, (Number(j.kuota) || 0) - 1) } : j
+        )
+      );
+
       setSuccessMessage("Pendaftaran trial class berhasil! Kami akan segera menghubungi Anda.");
       setFormData(EMPTY_FORM);
       removeBukti();
@@ -274,14 +347,14 @@ export default function TrialClassRegistrationPage() {
 
                 {/* Info Kuota & Biaya */}
                 {formData.lokasi && (
-                  <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4 space-y-3">
+                  <div className={`rounded-lg border p-4 space-y-3 ${kuotaHabis ? 'border-red-200 bg-red-50/70' : 'border-blue-100 bg-blue-50/60'}`}>
                     <div className="flex items-start gap-3">
-                      <Users className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+                      <Users className={`w-5 h-5 mt-0.5 shrink-0 ${kuotaHabis ? 'text-red-600' : 'text-blue-600'}`} />
                       <div className="text-sm">
                         <p className="font-semibold text-gray-800">Kuota Trial Class — {formData.lokasi}</p>
                         {selectedJadwal && (
                           <p className="text-gray-600">
-                            Sisa Kuota : <span className="font-semibold text-gray-800">{selectedJadwal.kuota ?? 0}</span>
+                            Sisa Kuota Sesi Ini : <span className={`font-semibold ${kuotaHabis ? 'text-red-700' : 'text-gray-800'}`}>{Math.max(0, sisaKuotaSelected ?? 0)}</span>
                           </p>
                         )}
                       </div>
@@ -305,6 +378,23 @@ export default function TrialClassRegistrationPage() {
                               <p className="text-gray-600">Tidak ada biaya yang perlu dibayarkan.</p>
                             </>
                           )}
+                        </div>
+                      </div>
+                    )}
+
+                    {kuotaHabis && (
+                      <div className="flex items-start gap-3 border-t border-red-200 pt-3">
+                        <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
+                        <div className="text-sm">
+                          <p className="font-bold text-red-700">Kuota Trial Class Sudah Habis, Silakan untuk menghubungi Admin.</p>
+                          <a
+                            href={`https://wa.me/${adminWaNumber}?text=${ADMIN_WA_TEXT}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 mt-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition"
+                          >
+                            <Phone className="w-3.5 h-3.5" /> Hubungi Admin
+                          </a>
                         </div>
                       </div>
                     )}
@@ -391,8 +481,8 @@ export default function TrialClassRegistrationPage() {
                 <div className="pt-4">
                     {successMessage && <div className="mb-4 text-center text-green-700 bg-green-100 p-3 rounded-lg">{successMessage}</div>}
                     {error && <div className="mb-4 text-center text-red-700 bg-red-100 p-3 rounded-lg">{error}</div>}
-                    <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center gap-2">
-                        {isSubmitting ? <><Loader2 className="w-5 h-5 animate-spin" /> Mendaftar...</> : 'Daftar Trial Class'}
+                    <button type="submit" disabled={isSubmitting || kuotaHabis} className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                        {isSubmitting ? <><Loader2 className="w-5 h-5 animate-spin" /> Mendaftar...</> : kuotaHabis ? 'Kuota Sudah Habis' : 'Daftar Trial Class'}
                     </button>
                 </div>
             </form>
