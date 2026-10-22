@@ -284,13 +284,6 @@ export default function TrialClassRegistrationPage() {
         console.error('Error mengurangi kuota jadwal:', err);
       }
 
-      // Perbarui tampilan kuota agar langsung sesuai dengan nilai terbaru di database
-      setJadwalOptions(prev =>
-        prev.map(j =>
-          j.id === selectedJadwal.id ? { ...j, kuota: Math.max(0, (Number(j.kuota) || 0) - 1) } : j
-        )
-      );
-
       setSuccessMessage("Pendaftaran trial class berhasil! Kami akan segera menghubungi Anda.");
       setFormData(EMPTY_FORM);
       removeBukti();
@@ -370,6 +363,9 @@ export default function TrialClassRegistrationPage() {
                               <p className="text-gray-600">
                                 Biaya yang harus dibayar:{' '}
                                 <span className="font-bold text-blue-700">Rp {nominalPembayaran.toLocaleString('id-ID')}</span>
+                              </p>
+                              <p className="text-gray-600 mt-1">
+                                Transfer ke No. Rekening Bank Permata <span className="font-semibold text-gray-800">4177384114</span> a.n <span className="font-semibold text-gray-800">Yayasan Teman Ilmu Indonesia</span>
                               </p>
                             </>
                           ) : (
