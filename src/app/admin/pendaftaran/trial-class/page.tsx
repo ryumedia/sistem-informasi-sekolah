@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, query, orderBy, getDocs } from 'firebase/firestore';
-import { Loader2, Filter, RotateCcw, MapPin, Calendar, Clock, Image as ImageIcon, X } from 'lucide-react';
+import { collection, query, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { Loader2, Filter, RotateCcw, MapPin, Calendar, Clock, Image as ImageIcon, X, Download, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { useLokasiKepalaSekolah, normalizeLokasi } from '@/hooks/useLokasiKepalaSekolah';
@@ -39,6 +39,7 @@ export default function TrialClassPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [previewBukti, setPreviewBukti] = useState<TrialClassParticipant | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Filter States
   const [filterLokasi, setFilterLokasi] = useState<string>('');
@@ -170,6 +171,68 @@ export default function TrialClassPage() {
   // Lokasi yang terkunci tidak dihitung sebagai "filter aktif"
   const hasActiveFilter = (!isLokasiLocked && filterLokasi) || filterTanggal || filterWaktu;
 
+  // Aksi hapus data pendaftar
+  const handleDelete = async (p: TrialClassParticipant) => {
+    if (!window.confirm(`Hapus data pendaftar "${p.namaAnak}"? Tindakan ini tidak dapat dibatalkan.`)) {
+      return;
+    }
+    setDeletingId(p.id);
+    try {
+      await deleteDoc(doc(db, "pendaftaran_trial", p.id));
+      setParticipants(prev => prev.filter(item => item.id !== p.id));
+      setPreviewBukti(prev => (prev?.id === p.id ? null : prev));
+    } catch (err) {
+      console.error("Error deleting pendaftaran trial: ", err);
+      alert("Gagal menghapus data pendaftar. Silakan coba lagi.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  // Download Excel sesuai filter yang aktif
+  const handleDownloadExcel = async () => {
+    if (filteredParticipants.length === 0) {
+      alert("Tidak ada data untuk didownload.");
+      return;
+    }
+
+    try {
+      // @ts-ignore
+      const XLSX = await import("xlsx");
+      const dataForExcel = filteredParticipants.map((p, i) => ({
+        'No.': i + 1,
+        'Nama Anak': p.namaAnak || '-',
+        'Nama Panggilan': p.namaPanggilan || '-',
+        'Lokasi': p.lokasi || '-',
+        'Tanggal Trial': formatTrialDate(p.tanggal),
+        'Waktu': p.waktu || '-',
+        'Program': p.program || '-',
+        'Alamat': p.alamat || '-',
+        'Nomor WA': p.nomorWa || '-',
+        'Tipe Pendaftaran': p.tipe === 'berbayar' ? 'Berbayar' : 'Gratis',
+        'Nominal Pembayaran': p.tipe === 'berbayar' && p.nominal ? Number(p.nominal) : 0,
+        'Bukti Transfer': p.buktiTransfer ? 'Ada' : 'Tidak Ada',
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
+      worksheet['!cols'] = [
+        { wch: 5 }, { wch: 22 }, { wch: 16 }, { wch: 20 }, { wch: 26 },
+        { wch: 10 }, { wch: 22 }, { wch: 30 }, { wch: 16 }, { wch: 16 },
+        { wch: 18 }, { wch: 14 },
+      ];
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Pendaftar Trial Class');
+
+      const lokasiNama = effectiveLokasi ? effectiveLokasi.replace(/\s+/g, '_') : 'Semua_Lokasi';
+      const tanggalNama = filterTanggal || 'Semua_Tanggal';
+      const waktuNama = filterWaktu ? filterWaktu.replace(/[:.]/g, '-') : 'Semua_Waktu';
+      XLSX.writeFile(workbook, `Pendaftar_Trial_${lokasiNama}_${tanggalNama}_${waktuNama}.xlsx`);
+    } catch (err) {
+      console.error("Error exporting pendaftar trial to Excel: ", err);
+      alert("Gagal mengekspor data ke Excel.");
+    }
+  };
+
   // Helper to format WhatsApp URL and open chat
   const getWhatsAppUrl = (nomorWa: string, namaAnak?: string) => {
     if (!nomorWa) return "";
@@ -202,15 +265,27 @@ export default function TrialClassPage() {
             <Filter className="w-4 h-4 text-[#581c87]" />
             <span>Filter Data Pendaftar</span>
           </div>
-          {hasActiveFilter && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={resetFilters}
-              className="flex items-center gap-1.5 text-xs font-medium text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition"
+              type="button"
+              onClick={handleDownloadExcel}
+              disabled={loading || !roleReady || filteredParticipants.length === 0}
+              className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Download data sesuai filter yang aktif"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Reset Filter
+              <Download className="w-3.5 h-3.5" />
+              Download Excel
             </button>
-          )}
+            {hasActiveFilter && (
+              <button
+                onClick={resetFilters}
+                className="flex items-center gap-1.5 text-xs font-medium text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reset Filter
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
@@ -298,7 +373,7 @@ export default function TrialClassPage() {
                 <th className="p-4">Program</th>
                 <th className="p-4">Alamat</th>
                 <th className="p-4">Nomor WA</th>
-                <th className="p-4 text-center w-28">Aksi</th>
+                <th className="p-4 text-center w-32">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -350,6 +425,19 @@ export default function TrialClassPage() {
                             <ImageIcon className="w-4 h-4" />
                           </button>
                         ) : null}
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(p)}
+                          disabled={deletingId === p.id}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={`Hapus data ${p.namaAnak}`}
+                        >
+                          {deletingId === p.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
                       </div>
                     </td>
                   </tr>

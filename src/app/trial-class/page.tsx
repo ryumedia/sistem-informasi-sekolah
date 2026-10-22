@@ -262,7 +262,7 @@ export default function TrialClassRegistrationPage() {
     }
 
     try {
-      await addDoc(collection(db, "pendaftaran_trial"), {
+      const pendaftaranRef = await addDoc(collection(db, "pendaftaran_trial"), {
         ...formData,
         jadwalId: selectedJadwal.id,
         tipe: selectedJadwal.tipe || 'gratis',
@@ -271,6 +271,21 @@ export default function TrialClassRegistrationPage() {
         tanggalPendaftaran: Timestamp.now(),
         status: "Baru"
       });
+
+      // Kirim notifikasi WhatsApp via server (API key Starsender tetap rahasia)
+      try {
+        const notificationResponse = await fetch('/api/notifikasi/trial-class', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pendaftaranId: pendaftaranRef.id }),
+        });
+        if (!notificationResponse.ok) {
+          console.error('Notifikasi WhatsApp trial class gagal:', await notificationResponse.text());
+        }
+      } catch (notificationError) {
+        // Pendaftaran tetap berhasil meskipun layanan WhatsApp sedang bermasalah.
+        console.error('Error mengirim notifikasi WhatsApp trial class:', notificationError);
+      }
 
       // Kurangi kuota pada dokumen jadwal_trial
       try {
