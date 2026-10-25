@@ -256,10 +256,15 @@ export default function HalamanRekrutmenPublik() {
                 {renderPertanyaanInput(p)}
               </div>
             ))}
-            <div className="pt-4 flex justify-end">
-              <button type="submit" disabled={isSubmitting} className="bg-[#581c87] text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-[#45156b] transition disabled:opacity-50">
-                {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengirim...</> : <><Send className="w-4 h-4" /> Kirim Lamaran</>}
-              </button>
+            <div className="pt-4 space-y-3">
+              <p className="text-sm font-bold text-gray-800">
+                Catatan: Hanya Pelamar yang memenuhi kualifikasi dan lolos seleksi Administrasi yang akan dihubungi dan melanjutkan Wawancara
+              </p>
+              <div className="flex justify-end">
+                <button type="submit" disabled={isSubmitting} className="bg-[#581c87] text-white px-6 py-2 rounded-lg flex items-center gap-2 hover:bg-[#45156b] transition disabled:opacity-50">
+                  {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengirim...</> : <><Send className="w-4 h-4" /> Kirim Lamaran</>}
+                </button>
+              </div>
             </div>
           </form>
         )}
