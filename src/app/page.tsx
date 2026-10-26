@@ -8,7 +8,7 @@ import Image from "next/image";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
 import { collection, query, where, getDocs } from "firebase/firestore";
-import { BookOpen, Calendar, Bell, User, LogOut, Shield, Home, KeyRound, Activity, FileText, FilePlus, CreditCard, Ticket, QrCode, X } from "lucide-react";
+import { BookOpen, Calendar, Bell, User, LogOut, Shield, Home, KeyRound, Activity, FileText, FilePlus, CreditCard, Ticket, QrCode, X, Timer } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react"; // Ganti impor ke QRCodeSVG
 
 import ChangePasswordModal from "../components/dashboard/changePasswordModal";
@@ -23,6 +23,7 @@ import AcaraView from "../components/dashboard/AcaraView";
 import PengumumanDetailModal from "../components/dashboard/PengumumanDetailModal";
 import PembayaranView from "../components/dashboard/PembayaranView";
 import EditProfileModal from "../components/dashboard/EditProfileModal"; // Import EditProfileModal
+import OvertimeView from "../components/dashboard/OvertimeView";
 
 export default function UserHome() {
   const router = useRouter();
@@ -55,7 +56,7 @@ export default function UserHome() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get("tab");
-    if (tabParam && ["home", "jadwal", "akademik", "pembayaran", "report", "kegiatan", "pengumuman", "acara", "akun"].includes(tabParam)) {
+    if (tabParam && ["home", "jadwal", "akademik", "pembayaran", "report", "kegiatan", "pengumuman", "acara", "akun", "overtime"].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, []);
@@ -261,6 +262,10 @@ export default function UserHome() {
           <AcaraView userData={userData} onBack={() => setActiveTab("home")} />
         )}
 
+        {activeTab === "overtime" && (
+          <OvertimeView user={user} userData={userData} onBack={() => setActiveTab("akun")} />
+        )}
+
         {activeTab === "akun" && (
           <div className="flex-1 bg-gray-50">
             <header className="bg-white p-6 shadow-sm sticky top-0 z-10">
@@ -355,6 +360,18 @@ export default function UserHome() {
                   </div>
                 </button>
                 
+                {["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Asisten Guru", "Caregiver"].includes(userData?.role) && (
+                  <button onClick={() => setActiveTab("overtime")} className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition text-left">
+                    <div className="bg-orange-100 p-2 rounded-lg text-orange-600">
+                      <Timer className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-medium text-gray-800">Overtime</h3>
+                      <p className="text-xs text-gray-500">Catat biaya overtime siswa</p>
+                    </div>
+                  </button>
+                )}
+
                 <button onClick={() => setPasswordModalOpen(true)} className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition text-left">
                   <div className="bg-gray-100 p-2 rounded-lg text-gray-600">
                     <KeyRound className="w-5 h-5" />
