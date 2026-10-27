@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   collection,
   getDocs,
@@ -10,7 +11,6 @@ import {
   doc,
   query,
   orderBy,
-  where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Plus, Pencil, Trash2, X, Loader2, ListPlus } from "lucide-react";
@@ -18,21 +18,6 @@ import { Plus, Pencil, Trash2, X, Loader2, ListPlus } from "lucide-react";
 interface TrilogiGroup {
   id: string;
   nama: string;
-}
-
-interface SubTrilogi {
-  id: string;
-  groupId: string;
-  kelompokUsia: string;
-  habit: string;
-  deskripsi: string;
-  periode: string;
-}
-
-interface Periode {
-  id: string;
-  namaPeriode: string;
-  isDefault?: boolean;
 }
 
 export default function TrilogiMainriangPage() {
@@ -43,43 +28,6 @@ export default function TrilogiMainriangPage() {
   const [groupFormData, setGroupFormData] = useState({ nama: "" });
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [isSubmittingGroup, setIsSubmittingGroup] = useState(false);
-  const [usiaList, setUsiaList] = useState<any[]>([]);
-  const [habitList, setHabitList] = useState<any[]>([]);
-
-  // State untuk Child (Sub Trilogi)
-  const [selectedGroup, setSelectedGroup] = useState<TrilogiGroup | null>(null);
-  const [subTrilogiList, setSubTrilogiList] = useState<SubTrilogi[]>([]);
-  const [loadingSubs, setLoadingSubs] = useState(false);
-  const [isSubModalOpen, setIsSubModalOpen] = useState(false);
-  const [subFormData, setSubFormData] = useState({ kelompokUsia: "", habit: "", deskripsi: "", periode: "" });
-  const [editingSubId, setEditingSubId] = useState<string | null>(null);
-  const [isSubmittingSub, setIsSubmittingSub] = useState(false);
-
-  // State untuk Periode KPI
-  const [periodeList, setPeriodeList] = useState<Periode[]>([]);
-  const [selectedPeriode, setSelectedPeriode] = useState<string>('');
-  const [periodeMap, setPeriodeMap] = useState<Map<string, string>>(new Map());
-
-  useEffect(() => {
-    const fetchPeriode = async () => {
-      try {
-        const q = query(collection(db, 'kpi_periode'), orderBy('isDefault', 'desc'));
-        const querySnapshot = await getDocs(q);
-        const periods = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Periode));
-        const newPeriodeMap = new Map(periods.map(p => [p.id, p.namaPeriode]));
-        
-        setPeriodeList(periods);
-        setPeriodeMap(newPeriodeMap);
-
-        const defaultId = periods.length > 0 ? periods[0].id : '';
-        setSelectedPeriode(defaultId);
-
-      } catch (error) {
-        console.error("Error fetching kpi_periode: ", error);
-      }
-    };
-    fetchPeriode();
-  }, []);
 
   // --- Functions untuk Parent ---
 
@@ -102,24 +50,7 @@ export default function TrilogiMainriangPage() {
 
   useEffect(() => {
     fetchGroups();
-    fetchMasterData();
   }, []);
-
-  const fetchMasterData = async () => {
-    try {
-      // Fetch Kelompok Usia
-      const qUsia = query(collection(db, "kelompok_usia"), orderBy("usia", "asc"));
-      const snapUsia = await getDocs(qUsia);
-      setUsiaList(snapUsia.docs.map(d => ({ id: d.id, ...d.data() })));
-
-      // Fetch 7 Habits
-      const qHabits = query(collection(db, "seven_habits"), orderBy("nama", "asc"));
-      const snapHabits = await getDocs(qHabits);
-      setHabitList(snapHabits.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (error) {
-      console.error("Error fetching master data:", error);
-    }
-  };
 
   const handleSaveGroup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,83 +99,6 @@ export default function TrilogiMainriangPage() {
       setGroupFormData({ nama: "" });
     }
     setIsGroupModalOpen(true);
-  };
-
-  // --- Functions untuk Child ---
-
-  const openSubModal = async (group: TrilogiGroup) => {
-    setSelectedGroup(group);
-    setIsSubModalOpen(true);
-    setSubFormData({ kelompokUsia: "", habit: "", deskripsi: "", periode: selectedPeriode });
-    setEditingSubId(null);
-    await fetchSubTrilogi(group.id);
-  };
-
-  const fetchSubTrilogi = async (groupId: string) => {
-    setLoadingSubs(true);
-    try {
-      const q = query(
-        collection(db, "sub_trilogi"),
-        where("groupId", "==", groupId)
-      );
-      const querySnapshot = await getDocs(q);
-      const items: SubTrilogi[] = [];
-      querySnapshot.forEach((doc) => {
-        items.push({ id: doc.id, ...doc.data() } as SubTrilogi);
-      });
-      // Sort manual by kelompokUsia
-      items.sort((a, b) => (a.kelompokUsia || "").localeCompare(b.kelompokUsia || ""));
-      setSubTrilogiList(items);
-    } catch (error) {
-      console.error("Error fetching sub trilogi:", error);
-    } finally {
-      setLoadingSubs(false);
-    }
-  };
-
-  const handleSaveSub = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedGroup) return;
-    setIsSubmittingSub(true);
-    try {
-      if (editingSubId) {
-        await updateDoc(doc(db, "sub_trilogi", editingSubId), {
-          ...subFormData,
-          groupId: selectedGroup.id,
-        });
-        alert("Sub Trilogi berhasil diperbarui!");
-      } else {
-        await addDoc(collection(db, "sub_trilogi"), {
-          ...subFormData,
-          groupId: selectedGroup.id,
-          createdAt: new Date(),
-        });
-        alert("Sub Trilogi berhasil ditambahkan!");
-      }
-      setSubFormData({ kelompokUsia: "", habit: "", deskripsi: "", periode: selectedPeriode });
-      setEditingSubId(null);
-      fetchSubTrilogi(selectedGroup.id);
-    } catch (error) {
-      console.error("Error saving sub trilogi:", error);
-      alert("Gagal menyimpan data.");
-    } finally {
-      setIsSubmittingSub(false);
-    }
-  };
-
-  const handleEditSub = (item: SubTrilogi) => {
-    setEditingSubId(item.id);
-    setSubFormData({ kelompokUsia: item.kelompokUsia, habit: item.habit, deskripsi: item.deskripsi, periode: item.periode || selectedPeriode });
-  };
-
-  const handleDeleteSub = async (id: string) => {
-    if (!confirm("Hapus sub trilogi ini?")) return;
-    try {
-      await deleteDoc(doc(db, "sub_trilogi", id));
-      if (selectedGroup) fetchSubTrilogi(selectedGroup.id);
-    } catch (error) {
-      console.error("Error deleting sub trilogi:", error);
-    }
   };
 
   return (
@@ -297,13 +151,13 @@ export default function TrilogiMainriangPage() {
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={() => openSubModal(item)}
+                      <Link
+                        href={`/admin/Akademik/trilogi/${item.id}`}
                         className="p-2 text-[#581c87] hover:bg-[#581c87]/10 rounded-lg transition"
-                        title="Tambah Sub Trilogi"
+                        title="Kelola Sub Trilogi"
                       >
                         <ListPlus className="w-4 h-4" />
-                      </button>
+                      </Link>
                       <button
                         onClick={() => handleDeleteGroup(item.id)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
@@ -357,187 +211,6 @@ export default function TrilogiMainriangPage() {
                 {isSubmittingGroup ? "Menyimpan..." : "Simpan"}
               </button>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Child */}
-      {isSubModalOpen && selectedGroup && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-              <h3 className="font-bold text-gray-800">
-                Sub Trilogi: {selectedGroup.nama}
-              </h3>
-              <button
-                onClick={() => setIsSubModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Form Child */}
-              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                <h4 className="font-semibold text-gray-700 mb-3 text-sm">
-                  {editingSubId ? "Edit Sub Trilogi" : "Tambah Sub Trilogi Baru"}
-                </h4>
-                <form onSubmit={handleSaveSub} className="space-y-3">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Kelompok Usia
-                      </label>
-                      <select
-                        required
-                        className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                        value={subFormData.kelompokUsia}
-                        onChange={(e) =>
-                          setSubFormData({ ...subFormData, kelompokUsia: e.target.value })
-                        }
-                      >
-                        <option value="">Pilih Usia</option>
-                        {usiaList.map((u) => (
-                          <option key={u.id} value={u.usia}>{u.usia}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Habit
-                      </label>
-                      <select
-                        required
-                        className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                        value={subFormData.habit}
-                        onChange={(e) =>
-                          setSubFormData({ ...subFormData, habit: e.target.value })
-                        }
-                      >
-                        <option value="">Pilih Habit</option>
-                        {habitList.map((h) => (
-                          <option key={h.id} value={h.nama}>{h.nama}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Deskripsi
-                      </label>
-                      <input
-                        required
-                        type="text"
-                        className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                        placeholder="Deskripsi trilogi..."
-                        value={subFormData.deskripsi}
-                        onChange={(e) =>
-                          setSubFormData({ ...subFormData, deskripsi: e.target.value })
-                        }
-                      />
-                    </div>
-                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Semester
-                      </label>
-                      <select
-                        required
-                        className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                        value={subFormData.periode}
-                        onChange={(e) =>
-                          setSubFormData({ ...subFormData, periode: e.target.value })
-                        }
-                      >
-                        {periodeList.map((p) => (
-                          <option key={p.id} value={p.id}>{p.namaPeriode}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    {editingSubId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingSubId(null);
-                          setSubFormData({ kelompokUsia: "", habit: "", deskripsi: "", periode: selectedPeriode || "" });
-                        }}
-                        className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
-                      >
-                        Batal
-                      </button>
-                    )}
-                    <button
-                      disabled={isSubmittingSub}
-                      type="submit"
-                      className="bg-[#581c87] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#45156b] transition disabled:opacity-50"
-                    >
-                      {isSubmittingSub ? "Menyimpan..." : editingSubId ? "Update" : "Tambah"}
-                    </button>
-                  </div>
-                </form>
-              </div>
-
-              {/* Table Child */}
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-left text-sm text-gray-600">
-                  <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
-                    <tr>
-                      <th className="p-3 w-12 text-center">No</th>
-                      <th className="p-3 w-32">Usia</th>
-                      <th className="p-3 w-48">Habit</th>
-                      <th className="p-3">Deskripsi</th>
-                      <th className="p-3 w-40">Semester</th>
-                      <th className="p-3 w-24 text-center">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {loadingSubs ? (
-                      <tr>
-                        <td colSpan={6} className="p-6 text-center">
-                          <Loader2 className="w-5 h-5 animate-spin mx-auto text-[#581c87]" />
-                        </td>
-                      </tr>
-                    ) : subTrilogiList.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="p-6 text-center text-gray-500">
-                          Belum ada sub trilogi.
-                        </td>
-                      </tr>
-                    ) : (
-                      subTrilogiList.map((item, index) => {
-                        const habitDetail = habitList.find((h) => h.nama === item.habit);
-                        return (
-                          <tr key={item.id} className="hover:bg-gray-50">
-                            <td className="p-3 text-center">{index + 1}</td>
-                            <td className="p-3 font-medium">{item.kelompokUsia}</td>
-                            <td className="p-3 text-gray-600 text-xs">{item.habit}</td>
-                            <td className="p-3">{item.deskripsi}</td>
-                            <td className="p-3">{periodeMap.get(item.periode) || 'N/A'}</td>
-                            <td className="p-3 flex justify-center gap-2">
-                              <button
-                                onClick={() => handleEditSub(item)}
-                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
-                              title="Edit"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteSub(item.id)}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded transition"
-                              title="Hapus"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </div>
         </div>
       )}

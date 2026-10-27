@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   collection,
   getDocs,
@@ -10,7 +11,6 @@ import {
   doc,
   query,
   orderBy,
-  where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Plus, Pencil, Trash2, X, Loader2, ListPlus } from "lucide-react";
@@ -18,20 +18,6 @@ import { Plus, Pencil, Trash2, X, Loader2, ListPlus } from "lucide-react";
 interface KelompokUsia {
   id: string;
   usia: string;
-}
-
-interface TahapPerkembangan {
-  id: string;
-  kelompokUsiaId: string;
-  lingkup: string;
-  deskripsi: string;
-  periode: string;
-}
-
-interface Periode {
-  id: string;
-  namaPeriode: string;
-  isDefault?: boolean;
 }
 
 export default function TahapPerkembanganPage() {
@@ -42,41 +28,6 @@ export default function TahapPerkembanganPage() {
   const [ageFormData, setAgeFormData] = useState({ usia: "" });
   const [editingAgeId, setEditingAgeId] = useState<string | null>(null);
   const [isSubmittingAge, setIsSubmittingAge] = useState(false);
-
-  // State untuk Detail Perkembangan (Child)
-  const [selectedAgeGroup, setSelectedAgeGroup] = useState<KelompokUsia | null>(null);
-  const [details, setDetails] = useState<TahapPerkembangan[]>([]);
-  const [loadingDetails, setLoadingDetails] = useState(false);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [detailFormData, setDetailFormData] = useState({ lingkup: "", deskripsi: "", periode: "" });
-  const [editingDetailId, setEditingDetailId] = useState<string | null>(null);
-  const [isSubmittingDetail, setIsSubmittingDetail] = useState(false);
-
-  // State untuk Periode KPI
-  const [periodeList, setPeriodeList] = useState<Periode[]>([]);
-  const [selectedPeriode, setSelectedPeriode] =useState<string>('');
-  const [periodeMap, setPeriodeMap] = useState<Map<string, string>>(new Map());
-
-  useEffect(() => {
-    const fetchPeriode = async () => {
-      try {
-        const q = query(collection(db, 'kpi_periode'), orderBy('isDefault', 'desc'));
-        const querySnapshot = await getDocs(q);
-        const periods = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Periode));
-        const newPeriodeMap = new Map(periods.map(p => [p.id, p.namaPeriode]));
-        
-        setPeriodeList(periods);
-        setPeriodeMap(newPeriodeMap);
-
-        const defaultId = periods.length > 0 ? periods[0].id : '';
-        setSelectedPeriode(defaultId);
-
-      } catch (error) {
-        console.error("Error fetching kpi_periode: ", error);
-      }
-    };
-    fetchPeriode();
-  }, []);
 
   // --- Functions untuk Kelompok Usia ---
 
@@ -151,81 +102,6 @@ export default function TahapPerkembanganPage() {
     setIsAgeModalOpen(true);
   };
 
-  // --- Functions untuk Detail Perkembangan ---
-
-  const openDetailModal = async (ageGroup: KelompokUsia) => {
-    setSelectedAgeGroup(ageGroup);
-    setIsDetailModalOpen(true);
-    setDetailFormData({ lingkup: "", deskripsi: "", periode: selectedPeriode });
-    setEditingDetailId(null);
-    await fetchDetails(ageGroup.id);
-  };
-
-  const fetchDetails = async (ageGroupId: string) => {
-    setLoadingDetails(true);
-    try {
-      const q = query(
-        collection(db, "tahap_perkembangan"),
-        where("kelompokUsiaId", "==", ageGroupId)
-      );
-      const querySnapshot = await getDocs(q);
-      const items: TahapPerkembangan[] = [];
-      querySnapshot.forEach((doc) => {
-        items.push({ id: doc.id, ...doc.data() } as TahapPerkembangan);
-      });
-      setDetails(items);
-    } catch (error) {
-      console.error("Error fetching details:", error);
-    } finally {
-      setLoadingDetails(false);
-    }
-  };
-
-  const handleSaveDetail = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedAgeGroup) return;
-    setIsSubmittingDetail(true);
-    try {
-      if (editingDetailId) {
-        await updateDoc(doc(db, "tahap_perkembangan", editingDetailId), {
-          ...detailFormData,
-          kelompokUsiaId: selectedAgeGroup.id,
-        });
-        alert("Detail perkembangan berhasil diperbarui!");
-      } else {
-        await addDoc(collection(db, "tahap_perkembangan"), {
-          ...detailFormData,
-          kelompokUsiaId: selectedAgeGroup.id,
-          createdAt: new Date(),
-        });
-        alert("Detail perkembangan berhasil ditambahkan!");
-      }
-      setDetailFormData({ lingkup: "", deskripsi: "", periode: selectedPeriode });
-      setEditingDetailId(null);
-      fetchDetails(selectedAgeGroup.id);
-    } catch (error) {
-      console.error("Error saving detail:", error);
-      alert("Gagal menyimpan detail.");
-    } finally {
-      setIsSubmittingDetail(false);
-    }
-  };
-
-  const handleEditDetail = (item: TahapPerkembangan) => {
-    setEditingDetailId(item.id);
-    setDetailFormData({ lingkup: item.lingkup, deskripsi: item.deskripsi, periode: item.periode || selectedPeriode });
-  };
-
-  const handleDeleteDetail = async (id: string) => {
-    if (!confirm("Hapus detail perkembangan ini?")) return;
-    try {
-      await deleteDoc(doc(db, "tahap_perkembangan", id));
-      if (selectedAgeGroup) fetchDetails(selectedAgeGroup.id);
-    } catch (error) {
-      console.error("Error deleting detail:", error);
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Header Utama */}
@@ -276,13 +152,13 @@ export default function TahapPerkembanganPage() {
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={() => openDetailModal(item)}
+                      <Link
+                        href={`/admin/Akademik/perkembangan/${item.id}`}
                         className="p-2 text-[#581c87] hover:bg-[#581c87]/10 rounded-lg transition"
                         title="Kelola Daftar Perkembangan"
                       >
                         <ListPlus className="w-4 h-4" />
-                      </button>
+                      </Link>
                       <button
                         onClick={() => handleDeleteAgeGroup(item.id)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
@@ -340,181 +216,6 @@ export default function TahapPerkembanganPage() {
         </div>
       )}
 
-      {/* Modal Kelola Detail Perkembangan */}
-      {isDetailModalOpen && selectedAgeGroup && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-              <h3 className="font-bold text-gray-800">
-                Daftar Perkembangan: {selectedAgeGroup.usia}
-              </h3>
-              <button
-                onClick={() => setIsDetailModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Form Tambah Detail */}
-              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                <h4 className="font-semibold text-gray-700 mb-3 text-sm">
-                  {editingDetailId ? "Edit Item Perkembangan" : "Tambah Item Perkembangan Baru"}
-                </h4>
-                <form onSubmit={handleSaveDetail} className="space-y-3">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Lingkup
-                      </label>
-                      <select
-                        required
-                        className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                        value={detailFormData.lingkup}
-                        onChange={(e) =>
-                          setDetailFormData({ ...detailFormData, lingkup: e.target.value })
-                        }
-                      >
-                        <option value="">Pilih Lingkup</option>
-                        <option value="Motorik Kasar">Motorik Kasar</option>
-                        <option value="Motorik Halus">Motorik Halus</option>
-                        <option value="Berpikir Logis">Berpikir Logis</option>
-                        <option value="Memahami Bahasa">Memahami Bahasa</option>
-                        <option value="Perilaku Prososial">Perilaku Prososial</option>
-                      </select>
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Deskripsi
-                      </label>
-                      <input
-                        required
-                        type="text"
-                        className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                        placeholder="Deskripsi pencapaian..."
-                        value={detailFormData.deskripsi}
-                        onChange={(e) =>
-                          setDetailFormData({ ...detailFormData, deskripsi: e.target.value })
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Semester
-                    </label>
-                    <select
-                      required
-                      className="w-full border rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
-                      value={detailFormData.periode}
-                      onChange={(e) =>
-                        setDetailFormData({ ...detailFormData, periode: e.target.value })
-                      }
-                    >
-                      {periodeList.map((p) => (
-                        <option key={p.id} value={p.id}>{p.namaPeriode}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    {editingDetailId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingDetailId(null);
-                          setDetailFormData({ lingkup: "", deskripsi: "", periode: selectedPeriode });
-                        }}
-                        className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
-                      >
-                        Batal
-                      </button>
-                    )}
-                    <button
-                      disabled={isSubmittingDetail}
-                      type="submit"
-                      className="bg-[#581c87] text-white px-4 py-2 rounded-lg text-sm hover:bg-[#45156b] transition disabled:opacity-50"
-                    >
-                      {isSubmittingDetail ? "Menyimpan..." : editingDetailId ? "Update Item" : "Tambah Item"}
-                    </button>
-                  </div>
-                </form>
-              </div>
-
-              {/* Tabel Detail */}
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-left text-sm text-gray-600">
-                  <thead className="bg-gray-50 text-gray-900 font-semibold border-b">
-                    <tr>
-                      <th className="p-3 w-12 text-center">No</th>
-                      <th className="p-3 w-40">Lingkup</th>
-                      <th className="p-3">Deskripsi</th>
-                      <th className="p-3 w-40">Semester</th>
-                      <th className="p-3 w-24 text-center">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {loadingDetails ? (
-                      <tr>
-                        <td colSpan={5} className="p-6 text-center">
-                          <Loader2 className="w-5 h-5 animate-spin mx-auto text-[#581c87]" />
-                        </td>
-                      </tr>
-                    ) : details.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="p-6 text-center text-gray-500">
-                          Belum ada item perkembangan untuk usia ini.
-                        </td>
-                      </tr>
-                    ) : (
-                      details
-                        .slice()
-                        .sort((a, b) => {
-                          const order = [
-                            "Motorik Kasar",
-                            "Motorik Halus",
-                            "Berpikir Logis",
-                            "Memahami Bahasa",
-                            "Perilaku Prososial",
-                          ];
-                          const lingkupComparison = order.indexOf(a.lingkup) - order.indexOf(b.lingkup);
-                          if (lingkupComparison !== 0) {
-                            return lingkupComparison;
-                          }
-                          return a.deskripsi.localeCompare(b.deskripsi);
-                        })
-                        .map((item, index) => (
-                        <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="p-3 text-center">{index + 1}</td>
-                          <td className="p-3 font-medium">{item.lingkup}</td>
-                          <td className="p-3">{item.deskripsi}</td>
-                          <td className="p-3">{periodeMap.get(item.periode) || 'N/A'}</td>
-                          <td className="p-3 flex justify-center gap-2">
-                            <button
-                              onClick={() => handleEditDetail(item)}
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition"
-                              title="Edit"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteDetail(item.id)}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded transition"
-                              title="Hapus"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
