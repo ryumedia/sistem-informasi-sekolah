@@ -69,7 +69,9 @@ export default function EditProfileModal({ user, userData, onClose, onProfileUpd
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData((prev: any) => ({ ...prev, [name]: value }));
+    // Field nomor WhatsApp hanya menerima angka (karakter lain otomatis dibuang)
+    const sanitized = name === 'noWA' ? value.replace(/\D/g, '') : value;
+    setFormData((prev: any) => ({ ...prev, [name]: sanitized }));
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, fieldName: string) => {
@@ -216,7 +218,7 @@ export default function EditProfileModal({ user, userData, onClose, onProfileUpd
         <h4 className="text-md font-semibold text-gray-800">D. Kontak</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-900">
           <div><label className="block font-medium text-gray-700 mb-1">Nomor Telepon Rumah (Optional)</label><input type="text" name="noTelpRumah" value={formData.noTelpRumah || ''} onChange={handleChange} className="w-full p-2 border rounded-md text-gray-900" /></div>
-          <div><label className="block font-medium text-gray-700 mb-1">Nomor WA</label><input type="text" name="noWA" value={formData.noWA || ''} onChange={handleChange} className="w-full p-2 border rounded-md text-gray-900" /></div>
+          <div><label className="block font-medium text-gray-700 mb-1">Nomor WA</label><input type="tel" name="noWA" value={formData.noWA || ''} onChange={handleChange} inputMode="numeric" pattern="[0-9]*" maxLength={20} className="w-full p-2 border rounded-md text-gray-900" /></div>
         </div>
       </div>
 
