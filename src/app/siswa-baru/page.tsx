@@ -170,7 +170,11 @@ export default function PendaftaranSiswaBaruPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    // Field nomor WhatsApp hanya menerima angka (karakter lain otomatis dibuang)
+    const sanitized = name === 'noWaAyah' || name === 'noWaIbu'
+      ? value.replace(/\D/g, '')
+      : value;
+    setFormData(prev => ({ ...prev, [name]: sanitized }));
   };
 
   // Helper: jalankan operasi async dengan retry otomatis (untuk jaringan tidak stabil / server sesak)
@@ -445,12 +449,12 @@ export default function PendaftaranSiswaBaruPage() {
                 <div></div>
                 <div>
                     <label htmlFor="noWaAyah" className="block text-sm font-medium text-gray-700 dark:text-gray-700">No. WA Ayah</label>
-                    <input type="tel" name="noWaAyah" id="noWaAyah" value={formData.noWaAyah} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm text-gray-900 dark:text-gray-900" />
+                    <input type="tel" name="noWaAyah" id="noWaAyah" value={formData.noWaAyah} onChange={handleChange} inputMode="numeric" pattern="[0-9]*" maxLength={20} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm text-gray-900 dark:text-gray-900" />
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">Jika tidak ada, isi dengan angka 0.</p>
                 </div>
                 <div>
                     <label htmlFor="noWaIbu" className="block text-sm font-medium text-gray-700 dark:text-gray-700">No. WA Ibu</label>
-                    <input type="tel" name="noWaIbu" id="noWaIbu" value={formData.noWaIbu} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm text-gray-900 dark:text-gray-900" />
+                    <input type="tel" name="noWaIbu" id="noWaIbu" value={formData.noWaIbu} onChange={handleChange} inputMode="numeric" pattern="[0-9]*" maxLength={20} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm text-gray-900 dark:text-gray-900" />
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">Jika tidak ada, isi dengan angka 0.</p>
                 </div>
             </div>
