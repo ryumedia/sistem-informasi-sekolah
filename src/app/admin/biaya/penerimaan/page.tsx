@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { db, auth } from "@/lib/firebase";
 import {
   collection,
@@ -94,6 +94,7 @@ export default function PenerimaanPage() {
   // State sinkronisasi manual dengan Midtrans
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
+  const pendingScrollRestoreRef = useRef(false);
   const [selectedCabangInModal, setSelectedCabangInModal] = useState<string>("");
   const [nomenklaturPemasukanList, setNomenklaturPemasukanList] = useState<Nomenklatur[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -263,10 +264,16 @@ export default function PenerimaanPage() {
     setFilteredLaporanList(filtered); // This line is fine, the dependency array is the issue.
   }, [filterCabang, filterTanggalMulai, filterTanggalSelesai, filterStatus, laporanList, cabangList]);
 
-  // Reset ke halaman 1 saat filter/data berubah
+  // Reset ke halaman 1 hanya saat filter berubah.
+  // Perubahan data (mis. setelah menambahkan ke Arus Kas) tidak boleh mereset halaman.
+  const isFirstFilterEffect = useRef(true);
   useEffect(() => {
+    if (isFirstFilterEffect.current) {
+      isFirstFilterEffect.current = false;
+      return;
+    }
     setCurrentPage(1);
-  }, [filterCabang, filterTanggalMulai, filterTanggalSelesai, filterStatus, laporanList]);
+  }, [filterCabang, filterTanggalMulai, filterTanggalSelesai, filterStatus]);
 
   // Pagination Logic
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -317,6 +324,10 @@ export default function PenerimaanPage() {
     }
     setIsSubmitting(true);
     try {
+      // Simpan posisi scroll agar tabel tidak meloncat setelah data diperbarui onSnapshot
+      const scrollYBefore = typeof window !== "undefined" ? window.scrollY : 0;
+      pendingScrollRestoreRef.current = true;
+
       const arusKasCollection = collection(db, 'arus_kas');
       await addDoc(arusKasCollection, {
         tanggal: selectedPenerimaan.tanggalBayar,
@@ -344,10 +355,20 @@ export default function PenerimaanPage() {
         )
       );
 
-      alert('Pemasukan berhasil ditambahkan ke Arus Kas!');
       closeModal();
 
+      // Kembalikan posisi scroll setelah daftar ter-render ulang (halaman tetap sama)
+      requestAnimationFrame(() => {
+        if (pendingScrollRestoreRef.current) {
+          window.scrollTo({ top: scrollYBefore, behavior: "instant" as ScrollBehavior });
+          pendingScrollRestoreRef.current = false;
+        }
+      });
+
+      alert('Pemasukan berhasil ditambahkan ke Arus Kas!');
+
     } catch (error) {
+      pendingScrollRestoreRef.current = false;
       console.error("Error adding to cash flow: ", error);
       alert("Gagal menambahkan pemasukan. Silakan coba lagi.");
     } finally {
