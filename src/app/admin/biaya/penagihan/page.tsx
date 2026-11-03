@@ -1,4 +1,4 @@
-﻿﻿﻿"use client";
+﻿﻿"use client";
 
 import { useState, useEffect, useMemo } from 'react';
 import { db, auth } from "@/lib/firebase";
@@ -10,8 +10,10 @@ import {
   doc,
   where,
   writeBatch,
+  onSnapshot,
 } from "firebase/firestore";
 import { onAuthStateChanged } from 'firebase/auth';
+import { format } from 'date-fns';
 import Link from 'next/link';
 import { Eye, Send, Loader2, Plus, X, Search } from 'lucide-react';
 
@@ -32,6 +34,13 @@ interface Tagihan {
   status: 'Lunas' | 'Belum Lunas';
   nominal?: number;
   jenisBiaya?: string;
+  // Riwayat/status notifikasi penagihan terakhir (ditulis oleh API /api/notifikasi/tagihan)
+  notifikasiTagihan?: {
+    status?: 'terkirim' | 'gagal' | 'dilewati' | string;
+    sentAt?: { toDate?: () => Date } | Date | string;
+    recipient?: string;
+    reason?: string;
+  };
 }
 
 interface Cabang {
@@ -68,6 +77,24 @@ interface SiswaWithStatus extends Siswa {
 const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 const currentYear = new Date().getFullYear();
 const years = Array.from({ length: 5 }, (_, i) => (currentYear - 2 + i).toString());
+
+// Ambil Date dari nilai timestamp Firestore / Date / string
+type DateLike = Date | { toDate: () => Date } | { seconds: number } | string | null | undefined;
+const toDate = (value: DateLike): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof (value as { toDate?: () => Date }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  if (typeof (value as { seconds: number }).seconds === 'number') {
+    return new Date((value as { seconds: number }).seconds * 1000);
+  }
+  return null;
+};
 
 export default function PenagihanPage() {
   // --- STATE MANAGEMENT ---
@@ -198,21 +225,19 @@ export default function PenagihanPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [cabangSnap, kelasSnap, siswaSnap, tagihanSnap, jenisBiayaSnap] = await Promise.all([
+        const [cabangSnap, kelasSnap, siswaSnap, jenisBiayaSnap] = await Promise.all([
           getDocs(query(collection(db, "cabang"), orderBy("nama", "asc"))),
           getDocs(query(collection(db, "kelas"), orderBy("namaKelas", "asc"))),
           getDocs(query(collection(db, "siswa"), where("status", "==", "Aktif"), orderBy("nama", "asc"))),
-          getDocs(collection(db, "tagihan_siswa")), // Ambil semua data tagihan
+          // Tagihan diambil via listener real-time di bawah agar kolom "Terkirim" ikut ter-update
           getDocs(query(collection(db, "jenis_biaya"), orderBy("nama", "asc"))),
         ]);
 
         const cabangData = cabangSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabang));
         const kelasData = kelasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kelas));
         const siswaData = siswaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Siswa));
-        const tagihanData = tagihanSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tagihan));
         const jenisBiayaData = jenisBiayaSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as JenisBiaya));
 
-        setTagihanList(tagihanData);
         setCabangList(cabangData);
         setKelasList(kelasData);
         setSiswaList(siswaData);
@@ -227,6 +252,23 @@ export default function PenagihanPage() {
     };
 
     fetchData();
+  }, [currentUser]);
+
+  // Listener real-time tagihan_siswa:
+  // - status pembayaran ter-update otomatis
+  // - kolom "Terkirim" ter-update tepat setelah notifikasi penagihan dikirim
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsubscribe = onSnapshot(
+      collection(db, "tagihan_siswa"),
+      (snapshot) => {
+        setTagihanList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Tagihan)));
+      },
+      (error) => {
+        console.error("Error listening to tagihan_siswa:", error);
+      }
+    );
+    return () => unsubscribe();
   }, [currentUser]);
 
   // --- FILTERING LOGIC ---
@@ -412,13 +454,14 @@ export default function PenagihanPage() {
                 <th className="p-4">Kelas</th>
                 <th className="p-4">Status Pembayaran</th>
                 <th className="p-4 w-48 text-center">Aksi</th>
+                <th className="p-4 w-40">Terkirim</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={6} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
+                <tr><td colSpan={7} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-[#581c87]" /></td></tr>
               ) : filteredSiswaList.length === 0 ? (
-                <tr><td colSpan={6} className="p-8 text-center text-gray-500">Tidak ada data siswa yang cocok.</td></tr>
+                <tr><td colSpan={7} className="p-8 text-center text-gray-500">Tidak ada data siswa yang cocok.</td></tr>
               ) : (
                 currentItems.map((siswa, i) => (
                   <tr key={siswa.id} className="hover:bg-gray-50">
@@ -439,7 +482,7 @@ export default function PenagihanPage() {
                       <Link href={`/admin/biaya/penagihan/${siswa.id}`} className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition" title="Lihat Detail Tagihan">
                         <Eye className="w-4 h-4" />
                       </Link>
-                                            {siswa.statusPembayaran !== 'Lunas' && (
+                      {siswa.statusPembayaran !== 'Lunas' && (
                         <button
                           onClick={() => handleKirimTagihan(siswa.id)}
                           disabled={sendingTagihanId !== null}
@@ -451,6 +494,32 @@ export default function PenagihanPage() {
                             : <Send className="w-4 h-4" />}
                         </button>
                       )}
+                    </td>
+                    <td className="p-4">
+                      {(() => {
+                        const notif = tagihanBySiswa[siswa.id]?.notifikasiTagihan;
+                        const sentAt = toDate(notif?.sentAt as DateLike);
+                        if (!sentAt) {
+                          return <span className="text-xs text-gray-400">Belum dikirim</span>;
+                        }
+                        const statusColor = notif?.status === 'terkirim'
+                          ? 'text-emerald-700'
+                          : notif?.status === 'gagal'
+                            ? 'text-red-600'
+                            : 'text-yellow-700';
+                        const statusLabel = notif?.status === 'terkirim'
+                          ? 'Terkirim'
+                          : notif?.status === 'gagal'
+                            ? 'Gagal'
+                            : 'Dilewati';
+                        return (
+                          <div className="text-xs leading-5" title={notif?.reason || undefined}>
+                            <div className="text-gray-700 font-medium">{format(sentAt, 'dd MMM yyyy')}</div>
+                            <div className="text-gray-500">{format(sentAt, 'HH:mm')} WIB</div>
+                            <div className={`font-semibold ${statusColor}`}>{statusLabel}</div>
+                          </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))
