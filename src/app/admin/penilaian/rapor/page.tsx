@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { db, auth } from '@/lib/firebase';
-import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, where, enableNetwork } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Printer, Loader2 } from 'lucide-react';
 import TemplateRapor from '@/components/TemplateRapor';
@@ -74,6 +74,10 @@ const RaporPage = () => {
   const [fetchingSiswa, setFetchingSiswa] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>("");
+  // Nama guru yang sedang login (untuk membatasi kelas yang boleh dipilih)
+  const [guruNama, setGuruNama] = useState<string>("");
+  // Penanda agar fetch master data hanya berjalan sekali (StrictMode dev menjalankan effect 2x)
+  const hasFetchedRef = useRef(false);
 
   // Master Data State
   const [cabangList, setCabangList] = useState<Cabang[]>([]);
@@ -84,7 +88,18 @@ const RaporPage = () => {
 
   const componentRef = useRef<HTMLDivElement>(null);
 
+  // Pastikan koneksi Firestore aktif saat halaman dibuka.
+  // Jika sebelumnya koneksi sempat terputus (mis. tab lama / jaringan berubah),
+  // WebChannel bisa gagal dengan 404 pada RPC 'Listen' dan semua getDocs ikut gagal.
   useEffect(() => {
+    enableNetwork(db).catch((err) => {
+      console.warn("Gagal mengaktifkan jaringan Firestore:", err);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
     const fetchSiswa = async () => {
       setFetchingSiswa(true);
       setFetchError(null);
@@ -129,6 +144,7 @@ const RaporPage = () => {
           if (!querySnapshot.empty) {
             const userData = querySnapshot.docs[0].data();
             setUserRole(userData.role);
+            setGuruNama(userData.nama || "");
 
             if (userData.role === "Kepala Sekolah" || userData.role === "Guru") {
               const userCabangName = userData.cabang;
@@ -139,9 +155,12 @@ const RaporPage = () => {
                 
                 if (userData.role === "Guru") {
                    const guruName = userData.nama;
-                   const foundKelas = kelasListData.find(k => k.guruKelas && k.guruKelas.includes(guruName) && k.cabang === userCabangName);
-                   if (foundKelas) {
-                     setSelectedKelas(foundKelas.namaKelas);
+                   // Ambil SEMUA kelas yang diampu guru ini di cabangnya
+                   const guruKelasList = kelasListData.filter(k => k.guruKelas && k.guruKelas.includes(guruName) && k.cabang === userCabangName);
+                   // Jika hanya 1 kelas, langsung pilih kelas tersebut.
+                   // Jika lebih dari 1, biarkan kosong agar guru memilih sendiri.
+                   if (guruKelasList.length === 1) {
+                     setSelectedKelas(guruKelasList[0].namaKelas);
                    }
                 }
               }
@@ -155,13 +174,26 @@ const RaporPage = () => {
     return () => unsubscribe();
   }, [cabangList, kelasListData]);
 
-  // Filter Kelas based on Selected Cabang
+  // Daftar kelas yang diampu guru yang sedang login (kosong jika bukan Guru)
+  const guruKelasOptions = useMemo(() => {
+    if (userRole !== "Guru" || !guruNama) return [];
+    return kelasListData.filter(k => k.guruKelas && k.guruKelas.includes(guruNama));
+  }, [userRole, guruNama, kelasListData]);
+
+  // Guru hanya boleh memilih kelasnya sendiri; jika hanya punya 1 kelas, dropdown dikunci
+  const isKelasLocked = userRole === "Guru" && guruKelasOptions.length <= 1;
+
+  // Filter Kelas based on Selected Cabang (dan dibatasi ke kelas milik guru)
   const filteredKelasOptions = useMemo(() => {
     if (!selectedCabangId) return [];
     const selectedCabang = cabangList.find(c => c.id === selectedCabangId);
     if (!selectedCabang) return [];
-    return kelasListData.filter(k => k.cabang === selectedCabang.nama);
-  }, [selectedCabangId, cabangList, kelasListData]);
+    const kelasCabang = kelasListData.filter(k => k.cabang === selectedCabang.nama);
+    if (userRole === "Guru") {
+      return kelasCabang.filter(k => k.guruKelas && k.guruKelas.includes(guruNama));
+    }
+    return kelasCabang;
+  }, [selectedCabangId, cabangList, kelasListData, userRole, guruNama]);
 
   const filteredSiswa = useMemo(() => {
     let students = siswaList;
@@ -177,10 +209,14 @@ const RaporPage = () => {
     // Filter by Selected Kelas
     if (selectedKelas) {
       students = students.filter(s => s.kelas === selectedKelas);
+    } else if (userRole === "Guru") {
+      // Guru tanpa kelas terpilih: batasi ke siswa di kelas yang diampu saja
+      const kelasGuru = guruKelasOptions.map(k => k.namaKelas);
+      students = students.filter(s => kelasGuru.includes(s.kelas));
     }
     
     return students;
-  }, [siswaList, selectedCabangId, cabangList, selectedKelas]);
+  }, [siswaList, selectedCabangId, cabangList, selectedKelas, userRole, guruKelasOptions]);
 
   const selectedSiswa = useMemo(() => {
     if (!selectedSiswaId) return null;
@@ -356,10 +392,10 @@ const RaporPage = () => {
               id="kelas-select"
               value={selectedKelas}
               onChange={handleKelasChange}
-              disabled={!selectedCabangId || userRole === "Guru"}
-              className={`w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 transition ${!selectedCabangId || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
+              disabled={!selectedCabangId || isKelasLocked}
+              className={`w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 transition ${!selectedCabangId || isKelasLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
             >
-              <option value="">-- Semua Kelas --</option>
+              <option value="">{userRole === "Guru" ? "-- Pilih Kelas --" : "-- Semua Kelas --"}</option>
               {filteredKelasOptions.map(k => (
                 <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>
               ))}

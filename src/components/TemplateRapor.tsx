@@ -59,7 +59,12 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
   const [semesterName, setSemesterName] = useState<string>("-");
   const [loading, setLoading] = useState(true);
 
+  // Dependency effect memakai id siswa (bukan objek siswa) agar tidak fetch ulang
+  // setiap parent re-render dan tidak ada setState setelah komponen unmount.
+  const siswaId = siswa?.id;
+
   useEffect(() => {
+    let cancelled = false;
     const fetchNilai = async () => {
       if (!siswa) return;
       setLoading(true);
@@ -268,12 +273,16 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
       } catch (error) {
         console.error("Error fetching nilai:", error);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchNilai();
-  }, [siswa, semesterId]);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siswaId, semesterId]);
 
   const groupedIndikator = useMemo(() => {
     const groups = new Map<string, NilaiIndikator[]>();

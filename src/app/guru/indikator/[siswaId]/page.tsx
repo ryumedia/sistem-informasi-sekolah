@@ -43,6 +43,10 @@ export default function DetailIndikatorSiswaPage() {
   const [allSubIndikators, setAllSubIndikators] = useState<SubIndikator[]>([]);
   // IDs indikator_groups yang cocok dengan jenjang kelas siswa
   const [matchedGroupIds, setMatchedGroupIds] = useState<string[]>([]);
+  // Jenjang kelas siswa (nama) — dipakai untuk memastikan sub indikator hanya muncul jika jenjangnya cocok
+  const [jenjangSiswa, setJenjangSiswa] = useState<string>("");
+  // true setelah proses pencocokan jenjang selesai (agar tidak menampilkan semua sub indikator sementara)
+  const [jenjangResolved, setJenjangResolved] = useState(false);
   // indikatorId -> { nilai: number, docId: string }
   const [nilaiMap, setNilaiMap] = useState<Record<string, { nilai: number; docId: string }>>({});
   const [kriteriaMap, setKriteriaMap] = useState<Record<number, string>>({});
@@ -109,6 +113,7 @@ export default function DetailIndikatorSiswaPage() {
           jenjangKelas = kelasDoc.data().jenjangKelas || "";
         }
         setKelasRef(kelasInfo);
+        setJenjangSiswa(jenjangKelas);
 
         // Cari ID jenjang kelas di koleksi 'jenjang_kelas' berdasarkan nama (atau ID sebagai fallback)
         let matchedJenjangId: string = "";
@@ -167,6 +172,7 @@ export default function DetailIndikatorSiswaPage() {
           }
         });
         setMatchedGroupIds(groupIdsForJenjang);
+        setJenjangResolved(true);
         console.log("[Indikator] jenjangKelas:", jenjangKelas, "| matchedJenjangId:", matchedJenjangId, "| groups cocok:", groupIdsForJenjang.length, "dari", snapGroups.size);
 
         // Sub Indikators (semua diambil, difilter jenjang + semester di useEffect terpisah)
@@ -190,7 +196,8 @@ export default function DetailIndikatorSiswaPage() {
           return (a.deskripsi || "").localeCompare(b.deskripsi || "");
         });
         setAllSubIndikators(subIndikators);
-        setIndikatorList(subIndikators);
+        // Jangan tampilkan semua sub indikator dulu; tunggu filter jenjang + semester (useEffect 2b)
+        setIndikatorList([]);
 
         // Kriteria Nilai
         const qKat = query(collection(db, "kategori_penilaian"), where("nama", "==", "Nilai Indikator"));
@@ -216,19 +223,26 @@ export default function DetailIndikatorSiswaPage() {
 
   // 2b. Filter sub indikator sesuai jenjang kelas siswa + semester terpilih
   useEffect(() => {
+    // Tunggu sampai data jenjang kelas siswa selesai dicocokkan
+    if (!jenjangResolved) return;
     if (!selectedSemester || allSubIndikators.length === 0) {
-      if (allSubIndikators.length === 0) setIndikatorList([]);
+      setIndikatorList([]);
       return;
     }
     // Cari nama semester terpilih untuk pencocokan toleran
     const semObj = semesterList.find(s => s.id === selectedSemester);
     const semNama = semObj?.namaPeriode || defaultSemesterNama;
 
-    let filtered = allSubIndikators;
-    if (matchedGroupIds.length > 0) {
-      // Filter berdasarkan grup indikator yang sesuai jenjang kelas siswa
-      filtered = filtered.filter(s => matchedGroupIds.includes(s.groupId));
+    // Wajib cocok jenjang: jika jenjang kelas siswa tidak diketahui atau tidak ada
+    // grup indikator yang jenjangnya sama, jangan tampilkan sub indikator apa pun.
+    if (!jenjangSiswa || matchedGroupIds.length === 0) {
+      console.warn("[Indikator] Jenjang kelas siswa tidak cocok dengan jenjang indikator mana pun. jenjangSiswa:", jenjangSiswa);
+      setIndikatorList([]);
+      return;
     }
+
+    // Filter berdasarkan grup indikator yang sesuai jenjang kelas siswa
+    let filtered = allSubIndikators.filter(s => matchedGroupIds.includes(s.groupId));
     const sebelumSemester = filtered.length;
     // Filter berdasarkan periode (semester) — toleran terhadap ID atau nama periode
     filtered = filtered.filter(s => s.periode === selectedSemester || (semNama && s.periode === semNama));
@@ -238,7 +252,7 @@ export default function DetailIndikatorSiswaPage() {
         "| selectedSemester:", selectedSemester, "| semNama:", semNama);
     }
     setIndikatorList(filtered);
-  }, [allSubIndikators, matchedGroupIds, selectedSemester, semesterList, defaultSemesterNama]);
+  }, [allSubIndikators, matchedGroupIds, jenjangSiswa, jenjangResolved, selectedSemester, semesterList, defaultSemesterNama]);
 
   // 3. Fetch Nilai saat semester berubah
   useEffect(() => {
@@ -440,7 +454,13 @@ export default function DetailIndikatorSiswaPage() {
                 );
               })}
               {indikatorList.length === 0 && (
-                <p className="text-center text-gray-500 text-sm py-4">Belum ada data indikator belajar.</p>
+                <p className="text-center text-gray-500 text-sm py-4">
+                  {!jenjangSiswa
+                    ? "Jenjang kelas siswa belum diketahui, sehingga indikator tidak dapat ditampilkan."
+                    : matchedGroupIds.length === 0
+                      ? `Belum ada indikator untuk jenjang ${jenjangSiswa}.`
+                      : "Belum ada data indikator belajar."}
+                </p>
               )}
             </div>
           )}
