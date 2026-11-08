@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import Image from 'next/image';
+import React, { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, documentId, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, documentId, doc, getDoc, orderBy } from 'firebase/firestore';
 
 interface Siswa {
   id: string;
@@ -11,11 +10,15 @@ interface Siswa {
   nisn: string;
   foto?: string;
   cabang?: string;
+  // Jenjang usia siswa, bisa berupa ID dokumen kelompok_usia atau nama (mis. "4-5 Tahun")
+  jenjangUsia?: string;
+  kelompokUsiaId?: string;
+  kelompokUsia?: string;
 }
 
 interface TemplateRaporProps {
   siswa: Siswa | null | undefined;
-  narasi: string;
+  catatanGuru: string;
   semesterId: string;
 }
 
@@ -34,6 +37,9 @@ interface NilaiTrilogi {
     namaTrilogi: string;
     namaSubTrilogi: string;
     nilai: number;
+    subTrilogiId?: string;
+    // Nama habit dari master sub_trilogi (mis. "Mengenal konsep Pengurangan Statis")
+    habit?: string;
 }
 interface InfoTambahan {
   beratBadan: string;
@@ -44,7 +50,26 @@ interface InfoTambahan {
   alpa: number;
 }
 
-const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId }) => {
+/**
+ * CATATAN PENTING SOAL RENDER PDF (html2canvas):
+ * html2canvas TIDAK mendukung `vertical-align`. Ia menempatkan teks dari
+ * `Range.getClientRects()` tiap text node. Kalau inline box teks lebih pendek dari
+ * kotak blok-nya, teks menempel ke BAWAH kotak (baseline normal), sehingga terlihat
+ * rata bawah saat kotak tinggi.
+ *
+ * Jangan pakai `height` yang lebih besar dari isi + `lineHeight` (itu memotong teks),
+ * dan jangan pakai `lineHeight` besar berikut `overflow: hidden` (teks terpotong).
+ * Cukup pakai `minHeight` kecil yang sama untuk SEMUA baris, sehingga setiap kotak
+ * teks setinggi isinya dan baris satu kolom tetap sejajar dengan kolom sebelahnya.
+ */
+const CELL_MIN_HEIGHT = 24; // px — 1 baris 12px + sedikit ruang; tidak ada sisa ruang besar
+// Untuk sel/element satu baris. Tanpa lineHeight dan tanpa overflow, jadi tidak memotong teks.
+const cellBoxSingle: CSSProperties = { minHeight: CELL_MIN_HEIGHT };
+const cellTextRight: CSSProperties = { ...cellBoxSingle, textAlign: 'right' };
+// Sel multi-baris (Domain + Lingkup, Sub Indikator): rapatkan line-height agar tidak melar.
+const cellBoxMulti: CSSProperties = { minHeight: CELL_MIN_HEIGHT, lineHeight: 1.35 };
+
+const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, catatanGuru, semesterId }) => {
   const [nilaiPerkembangan, setNilaiPerkembangan] = useState<Nilai[]>([]);
   const [nilaiIndikator, setNilaiIndikator] = useState<NilaiIndikator[]>([]);
   const [nilaiTrilogi, setNilaiTrilogi] = useState<NilaiTrilogi[]>([]);
@@ -56,7 +81,9 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
   const [kota, setKota] = useState<string>("-");
   const [titimangsa, setTitimangsa] = useState<string>("-");
   const [infoTambahan, setInfoTambahan] = useState<InfoTambahan | null>(null);
-  const [semesterName, setSemesterName] = useState<string>("-");
+  const [jenjangUsia, setJenjangUsia] = useState<string>("");
+  // Jenjang kelas siswa (mis. "Playgroup", "TK A") diambil dari master koleksi "kelas"
+  const [jenjangKelas, setJenjangKelas] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   // Dependency effect memakai id siswa (bukan objek siswa) agar tidak fetch ulang
@@ -69,7 +96,8 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
       if (!siswa) return;
       setLoading(true);
       setInfoTambahan(null);
-      setSemesterName("-");
+      setJenjangUsia("");
+      setJenjangKelas("");
       setKota("-");
       setTitimangsa("-");
       try {
@@ -143,6 +171,21 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
             }
         }
 
+        // --- Jenjang usia siswa (dari master kelompok_usia) ---
+        // Field jenjangUsia di data siswa bisa berisi ID dokumen atau nama (mis. "4-5 Tahun").
+        // Jika tidak ada, ambil dari kelompokUsiaId milik tahap perkembangan yang dinilai.
+        const usiaRef = siswa.jenjangUsia || siswa.kelompokUsiaId || siswa.kelompokUsia || "";
+        const usiaIdDariTahap = Array.from(tahapMap.values())
+            .map(t => t?.kelompokUsiaId)
+            .find((id): id is string => typeof id === "string" && id !== "");
+        const usiaKey = usiaRef || usiaIdDariTahap || "";
+        if (usiaKey) {
+            const usiaSnap = await getDocs(query(collection(db, "kelompok_usia"), orderBy("usia", "asc")));
+            const usiaList = usiaSnap.docs.map(d => ({ id: d.id, usia: (d.data().usia as string) || "" }));
+            const match = usiaList.find(u => u.id === usiaKey || u.usia === usiaKey);
+            setJenjangUsia(match ? match.usia : usiaKey);
+        }
+
         const rawPerkembangan = perkembanganSnap.docs.map(doc => {
             const data = doc.data();
             const tahap = tahapMap.get(data.tahapId);
@@ -195,7 +238,30 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
                 uniqueTrilogi.set(key, item);
             }
         });
-        setNilaiTrilogi(Array.from(uniqueTrilogi.values()));
+
+        // --- Ambil nama Habit dari master sub_trilogi ---
+        // namaSubTrilogi di nilai_trilogi berisi deskripsi, sedangkan habit disimpan terpisah.
+        const subTrilogiIds = new Set<string>();
+        uniqueTrilogi.forEach(item => {
+            if (item.subTrilogiId) subTrilogiIds.add(item.subTrilogiId);
+        });
+        const habitMap = new Map<string, string>();
+        if (subTrilogiIds.size > 0) {
+            const ids = Array.from(subTrilogiIds);
+            for (let i = 0; i < ids.length; i += 10) {
+                const chunk = ids.slice(i, i + 10);
+                const q = query(collection(db, "sub_trilogi"), where(documentId(), "in", chunk));
+                const snap = await getDocs(q);
+                snap.forEach(d => {
+                    habitMap.set(d.id, (d.data().habit as string) || "");
+                });
+            }
+        }
+
+        setNilaiTrilogi(Array.from(uniqueTrilogi.values()).map(item => ({
+            ...item,
+            habit: item.subTrilogiId ? habitMap.get(item.subTrilogiId) || "" : "",
+        })));
 
         // Fetch Kepala Sekolah & Wali Kelas
         if (siswa.cabang) {
@@ -220,6 +286,7 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
             const kelasSnap = await getDocs(kelasQuery);
             if (!kelasSnap.empty) {
                 const kelasData = kelasSnap.docs[0].data();
+                setJenjangKelas((kelasData.jenjangKelas as string) || "");
                 const dataWali = kelasData.guruKelas || kelasData.waliKelas;
                 // Handle jika waliKelas berupa array (banyak guru) atau string tunggal
                 if (Array.isArray(dataWali)) {
@@ -243,7 +310,7 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
             const semSnap = await getDoc(semRef);
             if (semSnap.exists()) {
                 const semName = semSnap.data().namaPeriode;
-                setSemesterName(semName);
+                
                 
                 const infoQuery = query(
                     collection(db, "info_tambahan_rapor"),
@@ -295,16 +362,40 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
     return groups;
   }, [nilaiIndikator]);
 
+  // Trilogi dikelompokkan per nama Trilogi (mis. "5 Basic Area"),
+  // tiap sub trilogi ditampilkan sebagai kalimat: "Ananda <Nilai> dalam <Sub Trilogi>."
   const groupedTrilogi = useMemo(() => {
-    const groups = new Map<string, NilaiTrilogi[]>();
+    const groups = new Map<string, { habit: string; sentence: string }[]>();
     nilaiTrilogi.forEach((item) => {
-      if (!groups.has(item.namaTrilogi)) {
-        groups.set(item.namaTrilogi, []);
+      const groupName = item.namaTrilogi || "Lainnya";
+      if (!groups.has(groupName)) {
+        groups.set(groupName, []);
       }
-      groups.get(item.namaTrilogi)!.push(item);
+      const nilaiText = kriteriaTrilogi[item.nilai] || String(item.nilai);
+      const subTrilogi = (item.namaSubTrilogi || "").trim().replace(/[.;]+$/, "");
+      groups.get(groupName)!.push({
+        habit: (item.habit || "").trim(),
+        sentence: `Ananda ${nilaiText} dalam ${subTrilogi}.`,
+      });
+    });
+    // Urutkan sub trilogi di tiap grup secara alfabetis berdasarkan Habit
+    // (mis. "Bahasa" di atas "5 Basic Area", "Dimensi 1" di atas "Gembira Beraksi").
+    // localeCompare dengan numeric:true membuat "Dimensi 2" tetap sebelum "Dimensi 10".
+    groups.forEach((items) => {
+      items.sort((a, b) => a.habit.localeCompare(b.habit, "id", { numeric: true, sensitivity: "base" }));
     });
     return groups;
-  }, [nilaiTrilogi]);
+  }, [nilaiTrilogi, kriteriaTrilogi]);
+
+  // Rapor Playgroup tidak menampilkan Indikator Belajar & Kehadiran.
+  // Pencocokan dibuat longgar (huruf kecil, tanpa spasi) agar "Play Group" / "PLAYGROUP" tetap terdeteksi.
+  const isPlaygroup = useMemo(() => {
+    const normalize = (value: string) => value.toLowerCase().replace(/[^a-z]/g, "");
+    const jenjang = normalize(jenjangKelas);
+    if (jenjang) return jenjang.includes("playgroup");
+    // Fallback: jika data kelas tidak punya jenjangKelas, cek nama kelasnya
+    return normalize(siswa?.kelas || "").includes("playgroup");
+  }, [jenjangKelas, siswa?.kelas]);
 
   const formatTitimangsa = (dateStr: string) => {
     if (!dateStr || dateStr === "-") return "-";
@@ -324,9 +415,92 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
   return (
     <>
     <style>{`
-      /* Paksa rata tengah secara vertikal untuk semua sel tabel */
+      /* Paksa rata tengah secara vertikal untuk semua sel tabel.
+         Ditaruh juga di dalam @media print karena html2canvas (yang dipakai html2pdf)
+         merender lewat media "print" — tanpa ini, aturan Tailwind .align-middle
+         kalah/tidak terbaca dan sel jatuh ke default browser (baseline/bottom),
+         sehingga di PDF teks terlihat menempel ke garis bawah sel. */
       .rapor-print-view td, .rapor-print-view th {
         vertical-align: middle !important;
+      }
+      .rapor-print-view tr, .rapor-print-view tbody, .rapor-print-view thead {
+        vertical-align: middle !important;
+      }
+
+      /* Warna sekunder #ff9402 dengan opacity rendah untuk baris tabel */
+      .rapor-print-view .row-accent {
+        background-color: rgba(255, 148, 2, 0.12) !important;
+      }
+      .rapor-print-view .row-accent-strong {
+        background-color: rgba(255, 148, 2, 0.22) !important;
+      }
+      /* ===== Trilogi Mainriang =====
+         JANGAN memakai elemen block (div/h4/ul/li) untuk judul grup dan habit.
+         html2canvas selalu menempelkan teks ke dasar kotak block dan tidak mendukung
+         vertical-align, sehingga judul/habit tampak "tenggelam".
+         Solusinya: rendam semuanya dalam <table> (satu sel per baris). Di dalam sel tabel,
+         posisi baris teks dihitung per baris, jadi padding atas/bawah benar-benar diterapkan
+         dan teks otomatis berada di tengah — ini pola yang sudah terbukti benar di section
+         Tahap Perkembangan, Antropometri, dan Kehadiran. */
+      .rapor-print-view .trilogi-table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+      .rapor-print-view .trilogi-table col.trilogi-col-mark {
+        width: 18px;
+      }
+      .rapor-print-view .trilogi-table td {
+        padding: 0 !important;
+        border: none !important;
+        vertical-align: middle !important;
+      }
+      /* Judul grup Trilogi.
+         html2canvas menempelkan teks ke dasar kotak dan mengabaikan vertical-align,
+         jadi cat warna tidak boleh satu lapisan dengan teksnya.
+
+         Struktur TERBUKTI di rapor ini (permintaan sebelumnya):
+         "Berat Badan" di dalam <td> dengan padding + div minHeight ⇒ rata tengah.
+         "Nilai" (teks tabel) juga rata tengah.
+
+         Maka judul grup dibuat sebagai SEL TABEL dengan padding atas-bawah yang sama
+         seperti sel lain, tinggi TIDAK dikunci (tanpa height/line-height/overflow),
+         dan cat oranye dipasang sebagai border-left tebal + background sel.
+         Tidak ada lapisan yang ditumpuk, tidak ada overflow yang memotong teks. */
+      .rapor-print-view .trilogi-table td.trilogi-group-cell {
+        padding: 0px 10px 15px 15px !important;
+        background-color: #ff9402 !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 14px !important;
+        line-height: 1.35 !important;
+        border-left: 4px solid #7a4600 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      /* Baris habit + kalimat */
+      .rapor-print-view .trilogi-table td.trilogi-item-cell {
+        padding: 2px 0 !important;
+        font-size: 12px !important;
+        line-height: 1.45 !important;
+      }
+      .rapor-print-view .trilogi-table td.trilogi-mark-cell {
+        padding: 2px 0 !important;
+        text-align: center;
+        font-size: 12px !important;
+        line-height: 1.45 !important;
+        vertical-align: top !important;
+      }
+      .rapor-print-view .trilogi-habit-text {
+        color: #581c87;
+        font-weight: 600;
+        font-size: 11px !important;
+        line-height: 1.35 !important;
+        margin-bottom: 1px;
+      }
+      .rapor-print-view .trilogi-group-spacer td {
+        height: 8px;
+        padding: 0 !important;
       }
 
       @media print {
@@ -361,67 +535,45 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
         .rapor-print-view * {
           visibility: visible;
         }
+        /* Ulangi aturan vertical-align di media print agar ikut terbaca kanvas/generator PDF */
+        .rapor-print-view td, .rapor-print-view th {
+          vertical-align: middle !important;
+        }
       }
     `}</style>
-    <div className="rapor-print-view bg-white font-sans text-[#111827] mx-auto shadow-lg" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', boxSizing: 'border-box' }}>
-      {/* Header */}
-      <div className="flex justify-between items-center border-b-4 border-[#000000] pb-3 mb-5">
-        <div className="flex items-center">
-          <Image src="/logo.png" alt="Logo Sekolah" width={80} height={80} />
-          <div className="ml-4">
-            <h1 className="text-2xl font-bold">LAPORAN PERKEMBANGAN ANAK</h1>
-            <h2 className="text-xl font-semibold">KB-TK MAINRIANG</h2>
-          </div>
-        </div>
-      </div>
-
-      {/* Informasi Siswa */}
-      <div className="flex justify-between mb-6 text-sm">
-        <div className="flex flex-row grid grid-cols-2 gap-x-0 gap-y-1">
-          <div className="font-bold">Nama</div><div>: {siswa.nama}</div>
-          <div className="font-bold">NISN</div><div>: {siswa.nisn}</div>
-          <div className="font-bold">Kelas</div><div>: {siswa.kelas}</div>
-          <div className="font-bold">Semester</div><div>: {semesterName}</div>
-          <div className="font-bold">Sekolah</div><div>: {siswa.cabang || "-"}</div>
-        </div>
-        <div className="w-24 h-32 relative border-2 border-[#d1d5db] rounded-lg overflow-hidden">
-            <Image src={siswa.foto && siswa.foto !== "" ? siswa.foto : '/images/default-profile.png'} alt="Foto Siswa" layout="fill" objectFit="cover" crossOrigin="anonymous" />
-        </div>
-      </div>
-
-      {/* A. Narasi Perkembangan */}
+    <div className="rapor-print-view bg-white font-sans text-[#111827] mx-auto shadow-lg" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', boxSizing: 'border-box', borderSpacing: 0 }}>
+      {/* Tahap Perkembangan */}
       <div className="mb-6 break-inside-avoid">
-        <h3 className="text-lg font-bold text-[#581c87] mb-2 border-b-2 border-[#f3f4f6] pb-1">A. Narasi Perkembangan</h3>
-        <p className="text-justify indent-6 text-sm">
-          {narasi}
-        </p>
-      </div>
-
-      {/* B. Tahap Perkembangan */}
-      <div className="mb-6 break-inside-avoid">
-        <h3 className="text-lg font-bold text-[#581c87] mb-2 border-b-2 border-[#f3f4f6] pb-1">B. Tahap Perkembangan</h3>
+        <h3 className="text-lg font-bold text-[#581c87] mb-2 border-b-2 border-[#f3f4f6] pb-1">
+          Tahap Perkembangan {siswa.nama}
+          {jenjangUsia && (
+            <span className="block text-sm font-semibold text-[#4b5563] mt-0.5">{jenjangUsia}</span>
+          )}
+        </h3>
         <table className="w-full text-xs border-collapse border border-[#d1d5db] rounded-lg overflow-hidden">
           <thead className="bg-[#581c87] text-[#ffffff]">
             <tr>
-              <th className="p-2 text-left align-middle">Domain / Aspek Perkembangan</th>
-              <th className="p-2 w-24 text-center align-middle">Nilai</th>
+              <th className="p-2 text-left align-middle"><div style={cellBoxSingle}>Domain / Aspek Perkembangan</div></th>
+              <th className="p-2 w-24 text-center align-middle"><div style={cellBoxSingle}>Nilai</div></th>
             </tr>
           </thead>
           <tbody>
             {nilaiPerkembangan.length === 0 ? (
-              <tr><td colSpan={2} className="p-3 text-center italic text-[#6b7280] border border-[#d1d5db]">Tidak ada data penilaian.</td></tr>
+              <tr><td colSpan={2} className="p-3 text-center italic text-[#6b7280] border border-[#d1d5db]"><div style={cellBoxSingle}>Tidak ada data penilaian.</div></td></tr>
             ) : (
                 nilaiPerkembangan.map((item, idx) => (
-                <tr key={idx} className={idx % 2 === 0 ? "bg-[#ffffff]" : "bg-[#f9fafb]"}>
-                  <td className="border border-[#d1d5db] p-2 align-middle">
-                    <div className="font-semibold text-[#1f2937]">{item.namaDomain}</div>
-                    {item.lingkup && (
-                        <div className="text-[#581c87] text-[10px] mt-0.5 font-medium">Lingkup: {item.lingkup}</div>
-                    )}
-                    {item.namaAspek && <div className="text-[#4b5563] pl-3 mt-0.5 text-[10px]">• {item.namaAspek}</div>}
+                <tr key={idx} className={idx % 2 === 0 ? "bg-[#ffffff]" : "row-accent"}>
+                  <td className="border border-[#d1d5db] px-3 pb-3 align-middle">
+                    <div style={cellBoxMulti}>
+                      {item.lingkup && (
+                          <div className="text-[#581c87] text-[10px] mt-0.5 font-medium leading-tight">Lingkup: {item.lingkup}</div>
+                      )}
+                      {item.namaAspek && <div className="text-[#4b5563] pl-3 mt-0.5 text-[10px] leading-tight">• {item.namaAspek}</div>}
+                      <div className="font-semibold text-[#1f2937] leading-tight">{item.namaDomain}</div>
+                    </div>
                   </td>
-                  <td className="border border-[#d1d5db] p-2 text-center font-bold align-middle text-xs">
-                    {kriteriaPerkembangan[item.nilai] || item.nilai}
+                  <td className="border border-[#d1d5db] px-3 pb-3 text-center font-bold align-middle text-xs">
+                    <div style={cellBoxSingle}>{kriteriaPerkembangan[item.nilai] || item.nilai}</div>
                   </td>
                 </tr>
               ))
@@ -430,121 +582,135 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, narasi, semesterId
         </table>
       </div>
 
-      {/* C. Indikator Belajar */}
-      <div className="mb-6 break-inside-avoid">
-        <h3 className="text-lg font-bold text-[#581c87] mb-2 border-b-2 border-[#f3f4f6] pb-1">C. Indikator Belajar</h3>
-        <table className="w-full text-xs border-collapse border border-[#d1d5db] rounded-lg overflow-hidden">
-          <thead className="bg-[#581c87] text-[#ffffff]">
-            <tr>
-              <th className="p-2 text-left align-middle">Indikator / Sub Indikator</th>
-              <th className="p-2 w-24 text-center align-middle">Nilai</th>
-            </tr>
-          </thead>
-          <tbody>
-            {nilaiIndikator.length === 0 ? (
-              <tr><td colSpan={2} className="p-3 text-center italic text-[#6b7280] border border-[#d1d5db]">Tidak ada data penilaian.</td></tr>
-            ) : (
-              Array.from(groupedIndikator.entries()).map(([indikator, items], groupIdx) => (
-                <React.Fragment key={groupIdx}>
-                  <tr className="bg-[#f3f4f6]">
-                    <td colSpan={2} className="border border-[#d1d5db] p-2 font-bold text-[#1f2937] align-middle">{indikator}</td>
-                  </tr>
-                  {items.map((item, idx) => (
-                    <tr key={`${groupIdx}-${idx}`} className="bg-[#ffffff]">
-                      <td className="border border-[#d1d5db] p-2 pl-6 align-middle">
-                        <div className="text-[#4b5563] text-[10px]">• {item.namaSubIndikator}</div>
-                      </td>
-                      <td className="border border-[#d1d5db] p-2 text-center font-bold align-middle text-xs">
-                        {kriteriaIndikator[item.nilai] || item.nilai}
-                      </td>
+      {/* Indikator Belajar (tidak ditampilkan untuk Playgroup) */}
+      {!isPlaygroup && (
+        <div className="mb-6 break-inside-avoid">
+          <h3 className="text-lg font-bold text-[#581c87] mb-2 border-b-2 border-[#f3f4f6] pb-1">Indikator Belajar</h3>
+          <table className="w-full text-xs border-collapse border border-[#d1d5db] rounded-lg overflow-hidden">
+            <thead className="bg-[#581c87] text-[#ffffff]">
+              <tr>
+                <th className="p-2 text-left align-middle"><div style={cellBoxSingle}>Indikator / Sub Indikator</div></th>
+                <th className="p-2 w-24 text-center align-middle"><div style={cellBoxSingle}>Nilai</div></th>
+              </tr>
+            </thead>
+            <tbody>
+              {nilaiIndikator.length === 0 ? (
+                <tr><td colSpan={2} className="p-3 text-center italic text-[#6b7280] border border-[#d1d5db]"><div style={cellBoxSingle}>Tidak ada data penilaian.</div></td></tr>
+              ) : (
+                Array.from(groupedIndikator.entries()).map(([indikator, items], groupIdx) => (
+                  <React.Fragment key={groupIdx}>
+                    <tr className="row-accent-strong">
+                      <td colSpan={2} className="border border-[#d1d5db] p-2 font-bold text-[#1f2937] align-middle"><div style={cellBoxSingle}>{indikator}</div></td>
                     </tr>
-                  ))}
-                </React.Fragment>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* D. Trilogi Mainriang */}
-      <div className="mb-6 break-inside-avoid">
-        <h3 className="text-lg font-bold text-[#581c87] mb-2 border-b-2 border-[#f3f4f6] pb-1">D. Trilogi Mainriang</h3>
-        <table className="w-full text-xs border-collapse border border-[#d1d5db] rounded-lg overflow-hidden">
-          <thead className="bg-[#581c87] text-[#ffffff]">
-            <tr>
-              <th className="p-2 text-left align-middle">Trilogi / Sub Trilogi</th>
-              <th className="p-2 w-24 text-center align-middle">Nilai</th>
-            </tr>
-          </thead>
-          <tbody>
-             {nilaiTrilogi.length === 0 ? (
-              <tr><td colSpan={2} className="p-3 text-center italic text-[#6b7280] border border-[#d1d5db]">Tidak ada data penilaian.</td></tr>
-            ) : (
-              Array.from(groupedTrilogi.entries()).map(([trilogi, items], groupIdx) => (
-                <React.Fragment key={groupIdx}>
-                  <tr className="bg-[#f3f4f6]">
-                    <td colSpan={2} className="border border-[#d1d5db] p-2 font-bold text-[#1f2937] align-middle">{trilogi}</td>
-                  </tr>
-                  {items.map((item, idx) => (
-                    <tr key={`${groupIdx}-${idx}`} className="bg-[#ffffff]">
-                      <td className="border border-[#d1d5db] p-2 pl-6 align-middle">
-                        <div className="text-[#4b5563] text-[10px]">• {item.namaSubTrilogi}</div>
-                      </td>
-                      <td className="border border-[#d1d5db] p-2 text-center font-bold align-middle text-xs">
-                        {kriteriaTrilogi[item.nilai] || item.nilai}
-                      </td>
-                    </tr>
-                  ))}
-                </React.Fragment>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* E. Informasi Tambahan */}
-      <div className="mb-6 break-inside-avoid">
-        <h3 className="text-lg font-bold text-[#581c87] mb-2 border-b-2 border-[#f3f4f6] pb-1">E. Informasi Tambahan</h3>
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <h4 className="font-bold mb-1 text-xs">Antropometri</h4>
-            <table className="w-full text-xs border-collapse border border-[#d1d5db]">
-              <tbody>
-                <tr>
-                  <td className="border border-[#d1d5db] p-1.5 align-middle">Berat Badan</td>
-                  <td className="border border-[#d1d5db] p-1.5 text-center align-middle">{infoTambahan?.beratBadan || "-"} kg</td>
-                </tr>
-                <tr>
-                  <td className="border border-[#d1d5db] p-1.5 align-middle">Tinggi Badan</td>
-                  <td className="border border-[#d1d5db] p-1.5 text-center align-middle">{infoTambahan?.tinggiBadan || "-"} cm</td>
-                </tr>
-                <tr>
-                  <td className="border border-[#d1d5db] p-1.5 align-middle">Lingkar Kepala</td>
-                  <td className="border border-[#d1d5db] p-1.5 text-center align-middle">{infoTambahan?.lingkarKepala || "-"} cm</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div>
-            <h4 className="font-bold mb-1 text-xs">Kehadiran</h4>
-            <table className="w-full text-xs border-collapse border border-[#d1d5db]">
-              <tbody>
-                <tr>
-                  <td className="border border-[#d1d5db] p-1.5 align-middle">Sakit</td>
-                  <td className="border border-[#d1d5db] p-1.5 text-center align-middle">{infoTambahan?.sakit || 0} hari</td>
-                </tr>
-                <tr>
-                  <td className="border border-[#d1d5db] p-1.5 align-middle">Ijin</td>
-                  <td className="border border-[#d1d5db] p-1.5 text-center align-middle">{infoTambahan?.ijin || 0} hari</td>
-                </tr>
-                <tr>
-                  <td className="border border-[#d1d5db] p-1.5 align-middle">Tanpa Keterangan</td>
-                  <td className="border border-[#d1d5db] p-1.5 text-center align-middle">{infoTambahan?.alpa || 0} hari</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                    {items.map((item, idx) => (
+                      <tr key={`${groupIdx}-${idx}`} className="bg-[#ffffff]">
+                        <td className="border border-[#d1d5db] p-2 pl-6 align-middle">
+                          <div style={cellBoxMulti}><span className="text-[#4b5563] text-[10px]">• {item.namaSubIndikator}</span></div>
+                        </td>
+                        <td className="border border-[#d1d5db] p-2 text-center font-bold align-middle text-xs">
+                          <div style={cellBoxSingle}>{kriteriaIndikator[item.nilai] || item.nilai}</div>
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
+      )}
+
+      {/* Trilogi Mainriang */}
+      <div className="mb-6 break-inside-avoid">
+        <h3 className="text-lg font-bold text-[#581c87] mb-2 border-b-2 border-[#f3f4f6] pb-1">Trilogi Mainriang</h3>
+        {groupedTrilogi.size === 0 ? (
+          <p className="text-xs italic text-[#6b7280]">Tidak ada data penilaian.</p>
+        ) : (
+          <table className="trilogi-table">
+            <colgroup>
+              <col className="trilogi-col-mark" />
+              <col />
+            </colgroup>
+            <tbody>
+              {Array.from(groupedTrilogi.entries()).map(([trilogi, items], groupIdx) => (
+                <React.Fragment key={groupIdx}>
+                  {/* Judul grup = satu <td> biasa dengan padding (pola yang sudah terbukti
+                      rata tengah di rapor). Cat oranye dari background sel, bukan lapisan
+                      yang ditumpuk. */}
+                  <tr className="break-inside-avoid">
+                    <td colSpan={2} className="trilogi-group-cell">{trilogi}</td>
+                  </tr>
+                  {items.map((item, idx) => (
+                    <tr key={idx} className="break-inside-avoid">
+                      <td className="trilogi-mark-cell">•</td>
+                      <td className="trilogi-item-cell">
+                        {item.habit && (
+                          <div className="trilogi-habit-text">{item.habit}</div>
+                        )}
+                        <div>{item.sentence}</div>
+                      </td>
+                    </tr>
+                  ))}
+                  {groupIdx < groupedTrilogi.size - 1 && (
+                    <tr className="trilogi-group-spacer"><td colSpan={2} /></tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Antropometri */}
+      <div className="mb-6 break-inside-avoid">
+        <h3 className="text-lg font-bold text-[#581c87] mb-2 border-b-2 border-[#f3f4f6] pb-1">Antropometri</h3>
+        <table className="w-full text-xs border-collapse border border-[#d1d5db] rounded-lg overflow-hidden">
+          <tbody>
+            <tr className="bg-[#ffffff]">
+              <td className="border border-[#d1d5db] p-2 align-middle"><div style={cellBoxSingle}>Berat Badan</div></td>
+              <td className="border border-[#d1d5db] p-2 text-center font-bold align-middle"><div style={cellTextRight}>{infoTambahan?.beratBadan || "-"} kg</div></td>
+            </tr>
+            <tr className="row-accent">
+              <td className="border border-[#d1d5db] p-2 align-middle"><div style={cellBoxSingle}>Tinggi Badan</div></td>
+              <td className="border border-[#d1d5db] p-2 text-center font-bold align-middle"><div style={cellTextRight}>{infoTambahan?.tinggiBadan || "-"} cm</div></td>
+            </tr>
+            <tr className="bg-[#ffffff]">
+              <td className="border border-[#d1d5db] p-2 align-middle"><div style={cellBoxSingle}>Lingkar Kepala</div></td>
+              <td className="border border-[#d1d5db] p-2 text-center font-bold align-middle"><div style={cellTextRight}>{infoTambahan?.lingkarKepala || "-"} cm</div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Kehadiran (tidak ditampilkan untuk Playgroup) */}
+      {!isPlaygroup && (
+        <div className="mb-6 break-inside-avoid">
+          <h3 className="text-lg font-bold text-[#581c87] mb-2 border-b-2 border-[#f3f4f6] pb-1">Kehadiran</h3>
+          <table className="w-full text-xs border-collapse border border-[#d1d5db] rounded-lg overflow-hidden">
+            <tbody>
+              <tr className="bg-[#ffffff]">
+                <td className="border border-[#d1d5db] p-2 align-middle"><div style={cellBoxSingle}>Sakit</div></td>
+                <td className="border border-[#d1d5db] p-2 text-center font-bold align-middle"><div style={cellTextRight}>{infoTambahan?.sakit || 0} hari</div></td>
+              </tr>
+              <tr className="row-accent">
+                <td className="border border-[#d1d5db] p-2 align-middle"><div style={cellBoxSingle}>Ijin</div></td>
+                <td className="border border-[#d1d5db] p-2 text-center font-bold align-middle"><div style={cellTextRight}>{infoTambahan?.ijin || 0} hari</div></td>
+              </tr>
+              <tr className="bg-[#ffffff]">
+                <td className="border border-[#d1d5db] p-2 align-middle"><div style={cellBoxSingle}>Tanpa Keterangan</div></td>
+                <td className="border border-[#d1d5db] p-2 text-center font-bold align-middle"><div style={cellTextRight}>{infoTambahan?.alpa || 0} hari</div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Catatan Guru */}
+      <div className="mb-6 break-inside-avoid">
+        <h3 className="text-lg font-bold text-[#581c87] mb-2 border-b-2 border-[#f3f4f6] pb-1">Catatan Guru</h3>
+        <p className="text-justify indent-6 text-sm whitespace-pre-line">
+          {catatanGuru}
+        </p>
       </div>
 
        {/* TTD */}

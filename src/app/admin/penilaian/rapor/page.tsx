@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { db, auth } from '@/lib/firebase';
-import { collection, getDocs, query, orderBy, where, enableNetwork } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Printer, Loader2 } from 'lucide-react';
 import TemplateRapor from '@/components/TemplateRapor';
@@ -67,9 +67,8 @@ const RaporPage = () => {
   const [siswaList, setSiswaList] = useState<Siswa[]>([]);
   const [selectedSiswaId, setSelectedSiswaId] = useState<string | null>(null);
   const [selectedKelas, setSelectedKelas] = useState<string>('');
-  const [narasi, setNarasi] = useState<string>('');
+  const [catatanGuru, setCatatanGuru] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
-  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [fetchingSiswa, setFetchingSiswa] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -88,14 +87,12 @@ const RaporPage = () => {
 
   const componentRef = useRef<HTMLDivElement>(null);
 
-  // Pastikan koneksi Firestore aktif saat halaman dibuka.
-  // Jika sebelumnya koneksi sempat terputus (mis. tab lama / jaringan berubah),
-  // WebChannel bisa gagal dengan 404 pada RPC 'Listen' dan semua getDocs ikut gagal.
-  useEffect(() => {
-    enableNetwork(db).catch((err) => {
-      console.warn("Gagal mengaktifkan jaringan Firestore:", err);
-    });
-  }, []);
+  // Catatan: JANGAN memanggil enableNetwork(db) di sini.
+  // Dengan persistentMultipleTabManager, memanggil enableNetwork() saat Firestore
+  // sudah online membuat SDK mendaftarkan ulang target query yang sama sehingga
+  // muncul error: [code=already-exists] Target ID already exists: <n>.
+  // Error itu membuat listener/getDocs gagal dan data siswa tidak termuat.
+  // Koneksi Firestore sudah otomatis aktif saat aplikasi diinisialisasi.
 
   useEffect(() => {
     if (hasFetchedRef.current) return;
@@ -228,13 +225,10 @@ const RaporPage = () => {
     setShowPreview(false); 
   };
 
+  // Catatan guru dikosongkan setiap kali siswa berganti agar tidak terbawa ke siswa lain
   useEffect(() => {
-    if (selectedSiswa) {
-      setNarasi(`Berikut adalah laporan perkembangan untuk ananda ${selectedSiswa.nama}. Secara umum, ananda menunjukkan perkembangan yang positif dan antusias dalam mengikuti kegiatan belajar.`);
-    } else {
-      setNarasi('');
-    }
-  }, [selectedSiswa]);
+    setCatatanGuru('');
+  }, [selectedSiswaId]);
 
   const handleCabangChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedCabangId(e.target.value);
@@ -247,38 +241,16 @@ const RaporPage = () => {
     setSelectedKelas(e.target.value);
     setSelectedSiswaId(null); // Reset pilihan siswa saat kelas diganti
     setShowPreview(false);
-    setNarasi('');
+    setCatatanGuru('');
   };
 
-  const generateNarasiAI = async () => {
-    if (!selectedSiswa) {
-      alert("Pilih siswa terlebih dahulu.");
-      return;
-    }
-    setIsGeneratingAI(true);
-    
-    // Simulating a call to an AI API
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    const aiText = "Dalam aspek kognitif, ananda menunjukkan kemampuan pemecahan masalah yang baik untuk usianya. Interaksi sosial dengan teman sebaya juga sangat aktif dan positif.";
-    
-    setNarasi(prevNarasi => {
-      if (prevNarasi.includes(aiText)) {
-        return prevNarasi;
-      }
-      return `${prevNarasi} ${aiText}`;
-    });
-    
-    setIsGeneratingAI(false);
-  };
-  
   const handlePreview = () => {
     if (!selectedSiswaId) {
       alert("Pilih siswa terlebih dahulu.");
       return;
     }
-    if (!narasi) {
-      alert("Narasi tidak boleh kosong. Buat narasi secara manual atau gunakan AI.");
+    if (!catatanGuru.trim()) {
+      alert("Catatan guru tidak boleh kosong.");
       return;
     }
     setShowPreview(true);
@@ -315,12 +287,17 @@ const RaporPage = () => {
         await worker.get('pdf').then((pdf: any) => {
           const totalPages = pdf.internal.getNumberOfPages();
           const siswaName = selectedSiswa?.nama || "";
+          const namaKelas = selectedSiswa?.kelas || "-";
+          const namaSemester =
+            semesterList.find(s => s.id === selectedSemesterId)?.namaPeriode || "-";
+          // Footer: "<halaman> - Nama | Kelas | Semester"
+          const footerText = `${siswaName} | ${namaKelas} | ${namaSemester}`;
           
           for (let i = 1; i <= totalPages; i++) {
             pdf.setPage(i);
             pdf.setFontSize(9);
             pdf.setTextColor(150);
-            pdf.text(`${i} - ${siswaName}`, 10, 292);
+            pdf.text(`${i} - ${footerText}`, 10, 292);
           }
         });
 
@@ -423,27 +400,17 @@ const RaporPage = () => {
         </div>
       )}
       
-      {/* Editor Narasi */}
+      {/* Editor Catatan Guru */}
       {selectedSiswaId && (
         <div className="mb-8 p-6 bg-white rounded-xl shadow-md">
-           <h2 className="text-2xl font-semibold mb-4 text-gray-700">Narasi Rapor</h2>
+           <h2 className="text-2xl font-semibold mb-4 text-gray-700">Catatan Guru</h2>
            <textarea
-             value={narasi}
-             onChange={(e) => setNarasi(e.target.value)}
+             value={catatanGuru}
+             onChange={(e) => setCatatanGuru(e.target.value)}
              rows={6}
              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 transition"
-             placeholder="Tuliskan narasi perkembangan siswa di sini..."
+             placeholder="Tuliskan catatan guru mengenai perkembangan siswa di sini..."
            />
-           <div className="mt-4 flex justify-end">
-             <button 
-                onClick={generateNarasiAI} 
-                disabled={isGeneratingAI}
-                className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition flex items-center gap-2 disabled:opacity-50"
-              >
-                {isGeneratingAI ? <Loader2 className="w-5 h-5 animate-spin"/> : "✨"}
-                {isGeneratingAI ? "Membuat Narasi..." : "Buat dengan AI"}
-             </button>
-           </div>
         </div>
       )}
 
@@ -451,7 +418,7 @@ const RaporPage = () => {
       <div className="flex gap-4 mb-8">
         <button 
           onClick={handlePreview}
-          disabled={!selectedSiswaId || !narasi}
+          disabled={!selectedSiswaId || !catatanGuru.trim()}
           className="flex-1 bg-indigo-600 text-white px-4 py-3 rounded-lg hover:bg-indigo-700 transition font-bold disabled:opacity-50"
         >
           Tampilkan Preview Rapor
@@ -473,7 +440,7 @@ const RaporPage = () => {
           <div ref={componentRef} className="flex justify-center">
             <TemplateRapor 
               siswa={selectedSiswa} 
-              narasi={narasi} 
+              catatanGuru={catatanGuru} 
               semesterId={selectedSemesterId}
             />
           </div>
