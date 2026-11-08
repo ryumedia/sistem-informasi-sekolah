@@ -119,14 +119,24 @@ export default function CatatanGuruPage() {
         const fetchData = async () => {
             try {
                 // A. Fetch Siswa (Logic from daftar-siswa)
-                // Cari kelas dimana guru ini terdaftar
-                const qKelas = query(
-                    collection(db, "kelas"),
-                    where("cabang", "==", guruData.cabang),
-                    where("guruKelas", "array-contains", guruData.nama)
-                );
-                const kelasSnap = await getDocs(qKelas);
-                const classes = kelasSnap.docs.map(doc => doc.data().namaKelas);
+                // Cari kelas dimana guru ini terdaftar (sebagai guru kelas maupun asisten guru)
+                const [kelasSnapGuru, kelasSnapAsisten] = await Promise.all([
+                    getDocs(query(
+                        collection(db, "kelas"),
+                        where("cabang", "==", guruData.cabang),
+                        where("guruKelas", "array-contains", guruData.nama)
+                    )),
+                    getDocs(query(
+                        collection(db, "kelas"),
+                        where("cabang", "==", guruData.cabang),
+                        where("asistenGuru", "array-contains", guruData.nama)
+                    )),
+                ]);
+                const kelasDocs = [...kelasSnapGuru.docs];
+                kelasSnapAsisten.docs.forEach(d => {
+                    if (!kelasDocs.some(existing => existing.id === d.id)) kelasDocs.push(d);
+                });
+                const classes = kelasDocs.map(doc => doc.data().namaKelas);
                 let list: any[] = []; // Deklarasikan list di sini
 
                 if (classes.length > 0) {

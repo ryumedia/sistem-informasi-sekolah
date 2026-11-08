@@ -54,15 +54,24 @@ export default function RPPHGuruPage() {
 
     const fetchRPPH = async () => {
       try {
-        // 1. Cari kelas dimana guru ini mengajar untuk mendapatkan jenjang kelasnya
-        const qKelas = query(
-          collection(db, "kelas"),
-          where("guruKelas", "array-contains", guruData.nama)
-        );
-        const kelasSnap = await getDocs(qKelas);
+        // 1. Cari kelas dimana guru ini mengajar (sebagai guru kelas maupun asisten guru)
+        const [kelasSnapGuru, kelasSnapAsisten] = await Promise.all([
+          getDocs(query(
+            collection(db, "kelas"),
+            where("guruKelas", "array-contains", guruData.nama)
+          )),
+          getDocs(query(
+            collection(db, "kelas"),
+            where("asistenGuru", "array-contains", guruData.nama)
+          )),
+        ]);
+        const kelasDocs = [...kelasSnapGuru.docs];
+        kelasSnapAsisten.docs.forEach(d => {
+          if (!kelasDocs.some(existing => existing.id === d.id)) kelasDocs.push(d);
+        });
 
         // 2. Kumpulkan semua jenjang kelas yang unik dari kelas-kelas tersebut
-        const jenjangKelasGuru = [...new Set(kelasSnap.docs.map(doc => doc.data().jenjangKelas))];
+        const jenjangKelasGuru = [...new Set(kelasDocs.map(doc => doc.data().jenjangKelas))];
 
         if (jenjangKelasGuru.length > 0) {
           // 3. Ambil RPPH yang jenjang kelasnya cocok dengan daftar jenjang yang diajar guru

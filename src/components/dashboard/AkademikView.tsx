@@ -8,6 +8,13 @@ import { ArrowLeft, Shield, User, BarChart, Target, Triangle, Users, StickyNote,
 import { format } from "date-fns";
 import { formatDate } from "@/lib/dateUtils";
 
+/**
+ * Role yang memakai menu Akademik dengan tampilan guru.
+ * "Asisten Guru" mendapat menu & fungsi yang sama seperti "Guru"
+ * (data kelas diambil dari field `guruKelas` pada dokumen kelas).
+ */
+export const GURU_LIKE_ROLES = ["Guru", "Asisten Guru"];
+
 interface GrowthRecord {
     id: string;
     siswaId: string;
@@ -69,12 +76,12 @@ export default function AkademikView({ user, userData, onBack }: { user: any, us
     }
   }, [userData]);
 
-  if (!["Siswa", "Guru"].includes(userData?.role)) {
+  if (!["Siswa", ...GURU_LIKE_ROLES].includes(userData?.role)) {
     return (
       <div className="flex-1 bg-gray-50 min-h-screen flex flex-col items-center justify-center p-6 text-center">
          <Shield className="w-16 h-16 text-gray-300 mb-4" />
          <h2 className="text-xl font-bold text-gray-800">Akses Dibatasi</h2>
-         <p className="text-gray-500 mt-2">Halaman ini hanya dapat diakses oleh Siswa dan Guru.</p>
+         <p className="text-gray-500 mt-2">Halaman ini hanya dapat diakses oleh Siswa, Guru, dan Asisten Guru.</p>
          <button onClick={onBack} className="mt-6 text-[#581c87] font-medium hover:underline">Kembali ke Home</button>
       </div>
     );

@@ -45,16 +45,26 @@ export default function GuruTrilogiPage() {
     if (!guruData) return;
     const fetchSiswa = async () => {
       try {
-        // Cari kelas dimana guru ini terdaftar
-        const qKelas = query(
-          collection(db, "kelas"),
-          where("cabang", "==", guruData.cabang),
-          where("guruKelas", "array-contains", guruData.nama)
-        );
-        const kelasSnap = await getDocs(qKelas);
+        // Cari kelas dimana guru ini terdaftar (sebagai guru kelas maupun asisten guru)
+        const [kelasSnapGuru, kelasSnapAsisten] = await Promise.all([
+          getDocs(query(
+            collection(db, "kelas"),
+            where("cabang", "==", guruData.cabang),
+            where("guruKelas", "array-contains", guruData.nama)
+          )),
+          getDocs(query(
+            collection(db, "kelas"),
+            where("cabang", "==", guruData.cabang),
+            where("asistenGuru", "array-contains", guruData.nama)
+          )),
+        ]);
+        const kelasDocs = [...kelasSnapGuru.docs];
+        kelasSnapAsisten.docs.forEach(d => {
+          if (!kelasDocs.some(existing => existing.id === d.id)) kelasDocs.push(d);
+        });
 
         const classes: string[] = [];
-        kelasSnap.docs.forEach(doc => {
+        kelasDocs.forEach(doc => {
             const d = doc.data();
             if (d.namaKelas) classes.push(d.namaKelas);
         });

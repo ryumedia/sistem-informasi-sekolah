@@ -47,15 +47,25 @@ export default function DaftarSiswaGuruPage() {
 
     const fetchData = async () => {
       try {
-        // Cari kelas dimana guru ini terdaftar (field 'guruKelas' array-contains nama guru)
-        const qKelas = query(
-          collection(db, "kelas"),
-          where("cabang", "==", guruData.cabang),
-          where("guruKelas", "array-contains", guruData.nama)
-        );
-        const kelasSnap = await getDocs(qKelas);
-        
-        const classes = kelasSnap.docs.map(doc => doc.data().namaKelas);
+        // Cari kelas dimana guru ini terdaftar (sebagai guru kelas maupun asisten guru)
+        const [kelasSnapGuru, kelasSnapAsisten] = await Promise.all([
+          getDocs(query(
+            collection(db, "kelas"),
+            where("cabang", "==", guruData.cabang),
+            where("guruKelas", "array-contains", guruData.nama)
+          )),
+          getDocs(query(
+            collection(db, "kelas"),
+            where("cabang", "==", guruData.cabang),
+            where("asistenGuru", "array-contains", guruData.nama)
+          )),
+        ]);
+        const kelasDocs = [...kelasSnapGuru.docs];
+        kelasSnapAsisten.docs.forEach(d => {
+          if (!kelasDocs.some(existing => existing.id === d.id)) kelasDocs.push(d);
+        });
+
+        const classes = kelasDocs.map(doc => doc.data().namaKelas);
         setNamaKelas(classes.join(", "));
 
         if (classes.length > 0) {

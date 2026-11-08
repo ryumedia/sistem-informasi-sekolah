@@ -441,8 +441,8 @@ export default function UserHome() {
              <span className="text-[10px]">Home</span>
            </button>
            
-           {/* Menu Akademik: Untuk Guru atau Siswa (kecuali Siswa murni Daycare) */}
-           {["Siswa", "Guru"].includes(userData?.role) && jenjangKelas !== "Daycare" && (
+           {/* Menu Akademik: Untuk Guru, Asisten Guru, atau Siswa (kecuali Siswa murni Daycare) */}
+           {["Siswa", "Guru", "Asisten Guru"].includes(userData?.role) && jenjangKelas !== "Daycare" && (
              <button 
                onClick={() => setActiveTab("akademik")}
                className={`flex flex-col items-center ${activeTab === "akademik" ? "text-[#581c87]" : "text-gray-400"}`}
