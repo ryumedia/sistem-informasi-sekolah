@@ -238,7 +238,7 @@ export default function SiswaBaruPage() {
       namaAyah: pendaftar.namaAyah,
       namaIbu: pendaftar.namaIbu,
       email: pendaftar.email,
-      noWA: pendaftar.noWaAyah || pendaftar.noWaIbu,
+      noWA: pendaftar.noWaIbu || pendaftar.noWaAyah,
       cabang: pendaftar.lokasi,
     };
 
