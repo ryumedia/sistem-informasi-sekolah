@@ -330,7 +330,7 @@ export default function PembayaranView({ userData, onBack }: { user: any, userDa
             </select>
           </div>
           <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-center flex flex-col justify-center">
-            <p className="text-sm text-red-800 font-medium">Total Sisa Pembayaran Bulan Ini</p>
+            <p className="text-sm text-red-800 font-medium">Sisa Pembayaran Bulan Ini</p>
             <p className="text-2xl font-bold text-red-700 mt-1">{formatCurrency(totalSisa)}</p>
           </div>
         </div>

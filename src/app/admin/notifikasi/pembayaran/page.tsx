@@ -80,8 +80,14 @@ export default function NotifikasiPembayaranPage() {
               className="w-full min-w-[280px] resize-y min-h-[180px] border rounded-lg p-3 text-sm text-gray-900 focus:ring-2 focus:ring-[#581c87] focus:border-[#581c87] outline-none"
             />
             <p className="text-xs text-gray-500 mt-2">
-              Variabel yang tersedia: <code className="bg-gray-100 px-1 py-0.5 rounded">{'{siswaNama}'}</code>{" "}
-              dan <code className="bg-gray-100 px-1 py-0.5 rounded">{'{jumlahBayar}'}</code>
+              Variabel yang tersedia: <code className="bg-gray-100 px-1 py-0.5 rounded">{'{siswaNama}'}</code>,{" "}
+              <code className="bg-gray-100 px-1 py-0.5 rounded">{'{jumlahBayar}'}</code>, dan{" "}
+              <code className="bg-gray-100 px-1 py-0.5 rounded">{'{jenisTagihan}'}</code>
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              <code className="bg-gray-100 px-1 py-0.5 rounded">{'{jenisTagihan}'}</code> berisi jenis biaya beserta
+              periodenya, contoh: <span className="italic">SPP Oktober 2026, Uang Kegiatan 2026</span>. Bila satu transaksi
+              memuat beberapa tagihan, semua nama tagihan digabung dengan tanda koma.
             </p>
             <button
               type="button"

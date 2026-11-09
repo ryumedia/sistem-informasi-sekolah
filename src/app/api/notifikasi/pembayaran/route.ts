@@ -12,7 +12,38 @@ const normalizePhoneNumber = (value: unknown) => {
 const renderTemplate = (template: string, data: Record<string, unknown>) =>
   template
     .replaceAll("{siswaNama}", String(data.siswaNama ?? ""))
-    .replaceAll("{jumlahBayar}", String(data.jumlahBayar ?? ""));
+    .replaceAll("{jumlahBayar}", String(data.jumlahBayar ?? ""))
+    .replaceAll("{jenisTagihan}", String(data.jenisTagihan ?? ""));
+
+// Pembayaran menyimpan tagihanIds (array), bukan nama tagihan.
+// Ambil dokumen tagihan_siswa untuk tiap ID lalu susun nama jenis biaya beserta periode.
+const resolveJenisTagihan = async (payment: Record<string, unknown>) => {
+  const tagihanIds: string[] =
+    Array.isArray(payment.tagihanIds) && payment.tagihanIds.length > 0
+      ? (payment.tagihanIds as string[])
+      : typeof payment.tagihanId === "string"
+        ? [payment.tagihanId]
+        : [];
+
+  if (tagihanIds.length === 0) return "";
+
+  const tagihanSnaps = await Promise.all(
+    tagihanIds.map((id) => db.collection("tagihan_siswa").doc(id).get().catch(() => null)),
+  );
+
+  const labels = tagihanSnaps
+    .map((snap) => {
+      if (!snap?.exists) return "";
+      const tagihan = snap.data() || {};
+      return [tagihan.jenisBiaya, tagihan.bulan, tagihan.tahun]
+        .map((part) => String(part ?? "").trim())
+        .filter(Boolean)
+        .join(" ");
+    })
+    .filter(Boolean);
+
+  return labels.join(", ");
+};
 
 export async function POST(request: Request) {
   try {
@@ -86,7 +117,12 @@ export async function POST(request: Request) {
     }
 
     // 5. Siapkan dan kirim pesan
-    const message = renderTemplate(template, { ...payment, siswaNama: payment.siswaNama ?? siswa?.nama ?? "" });
+    const jenisTagihan = await resolveJenisTagihan(payment);
+    const message = renderTemplate(template, {
+      ...payment,
+      siswaNama: payment.siswaNama ?? siswa?.nama ?? "",
+      jenisTagihan,
+    });
     const endpoint = process.env.STARSENDER_API_URL || "https://api.starsender.online/api/send";
 
     const response = await fetch(endpoint, {
