@@ -74,6 +74,10 @@ interface SiswaWithStatus extends Siswa {
   statusPembayaran: 'Lunas' | 'Belum Lunas';
 }
 
+// Cek apakah nama tagihan (jenis biaya) mengandung kata "SPP" (mis. "SPP Bulanan", "SPP + Kegiatan")
+const isTagihanSPP = (tagihan: Pick<Tagihan, 'jenisBiaya'>) =>
+  /\bSPP\b/i.test(tagihan.jenisBiaya || '');
+
 const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 const currentYear = new Date().getFullYear();
 const years = Array.from({ length: 5 }, (_, i) => (currentYear - 2 + i).toString());
@@ -115,6 +119,8 @@ export default function PenagihanPage() {
   const [userRole, setUserRole] = useState<string>("");
   const [userCabangNama, setUserCabangNama] = useState<string>("");
   const [filterKelas, setFilterKelas] = useState<string>("");
+  // Hanya SPP: hanya hitung tagihan yang nama tagihannya (jenisBiaya) mengandung kata "SPP"
+  const [hanyaSPP, setHanyaSPP] = useState<boolean>(false);
   const [filteredSiswaList, setFilteredSiswaList] = useState<SiswaWithStatus[]>([]);
   const [kelasOptions, setKelasOptions] = useState<Kelas[]>([]);
 
@@ -126,16 +132,23 @@ export default function PenagihanPage() {
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [sendingTagihanId, setSendingTagihanId] = useState<string | null>(null);
 
+  // Tagihan pada periode (bulan/tahun) terpilih, mengikuti filter "Hanya SPP"
+  const tagihanPeriode = useMemo(() => {
+    return tagihanList.filter(t => {
+      if (t.bulan !== filterBulan || t.tahun !== filterTahun) return false;
+      if (hanyaSPP && !isTagihanSPP(t)) return false;
+      return true;
+    });
+  }, [tagihanList, filterBulan, filterTahun, hanyaSPP]);
+
   // Peta siswaId -> tagihan sesuai filter bulan/tahun yang dipilih
   const tagihanBySiswa = useMemo(() => {
     const map: Record<string, Tagihan | undefined> = {};
-    tagihanList.forEach(t => {
-      if (t.bulan === filterBulan && t.tahun === filterTahun) {
-        map[t.siswaId] = t;
-      }
+    tagihanPeriode.forEach(t => {
+      map[t.siswaId] = t;
     });
     return map;
-  }, [tagihanList, filterBulan, filterTahun]);
+  }, [tagihanPeriode]);
 
   // Ringkasan sesuai filter: jumlah siswa & total nominal tagihan
   const formatCurrency = (value: number) => {
@@ -285,12 +298,10 @@ export default function PenagihanPage() {
   }, [filterCabang, cabangList, kelasList]);
 
   useEffect(() => {
-    // Proses siswa untuk menambahkan status pembayaran
+    // Proses siswa untuk menambahkan status pembayaran (berdasarkan tagihan periode + filter SPP)
     const siswaWithStatus: SiswaWithStatus[] = siswaList.map(siswa => {
-      const hasUnpaidBill = tagihanList.some(tagihan =>
+      const hasUnpaidBill = tagihanPeriode.some(tagihan =>
         tagihan.siswaId === siswa.id &&
-        tagihan.tahun === filterTahun &&
-        tagihan.bulan === filterBulan &&
         tagihan.status === 'Belum Lunas'
       );
       return {
@@ -331,12 +342,12 @@ export default function PenagihanPage() {
     }
 
     setFilteredSiswaList(filtered);
-  }, [filterCabang, filterKelas, filterTahun, filterBulan, searchTerm, statusFilter, siswaList, tagihanList, cabangList, kelasList]);
+  }, [filterCabang, filterKelas, tagihanPeriode, searchTerm, statusFilter, siswaList, cabangList, kelasList]);
 
   // Reset ke halaman 1 saat filter/data berubah
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterCabang, filterKelas, filterTahun, filterBulan, searchTerm, statusFilter, siswaList]);
+  }, [filterCabang, filterKelas, filterTahun, filterBulan, searchTerm, statusFilter, hanyaSPP, siswaList]);
 
   // Pagination Logic
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -414,6 +425,16 @@ export default function PenagihanPage() {
             <option value="paid">Lunas</option>
             <option value="unpaid">Belum Lunas</option>
           </select>
+          <label htmlFor="hanya-spp" className="mt-2 inline-flex items-center gap-2 text-xs text-gray-700 cursor-pointer select-none">
+            <input
+              id="hanya-spp"
+              type="checkbox"
+              checked={hanyaSPP}
+              onChange={(e) => setHanyaSPP(e.target.checked)}
+              className="w-4 h-4 accent-[#581c87] cursor-pointer"
+            />
+            Hanya SPP
+          </label>
         </div>
         <div className="flex-1 lg:col-span-2">
           <div className="flex items-center justify-between mb-1">

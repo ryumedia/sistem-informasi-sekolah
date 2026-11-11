@@ -86,14 +86,14 @@ export default function AcaraView({ userData, onBack }: { userData: any, onBack:
           <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <h1 className="text-lg font-bold text-gray-800">Acara Mendatang</h1>
+          <h1 className="text-lg font-bold text-gray-800">Acara Mainriang</h1>
        </header>
 
        <div className="p-4 space-y-4">
           {loading ? (
              <div className="text-center py-10 text-gray-500">Memuat acara...</div>
           ) : acaraList.length === 0 ? (
-             <div className="text-center py-10 text-gray-500 bg-white rounded-xl p-6">Tidak ada acara mendatang untuk cabang Anda.</div>
+             <div className="text-center py-10 text-gray-500 bg-white rounded-xl p-6">Tidak ada acara Mainriang untuk cabang Anda.</div>
           ) : (
              <div className="space-y-3">
                {acaraList.map((item) => (
