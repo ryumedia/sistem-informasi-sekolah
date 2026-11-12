@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { format } from "date-fns";
 import { db } from "@/lib/firebase-admin";
 
 const normalizePhoneNumber = (value: unknown) => {
@@ -13,7 +14,39 @@ const renderTemplate = (template: string, data: Record<string, unknown>) =>
   template
     .replaceAll("{siswaNama}", String(data.siswaNama ?? ""))
     .replaceAll("{jumlahBayar}", String(data.jumlahBayar ?? ""))
-    .replaceAll("{jenisTagihan}", String(data.jenisTagihan ?? ""));
+    .replaceAll("{jenisTagihan}", String(data.jenisTagihan ?? ""))
+    .replaceAll("{tanggalBayar}", String(data.tanggalBayar ?? ""));
+
+// Field tanggalBayar di Firestore berisi Timestamp (bisa juga Date/ISO string).
+// Format ke zona waktu Indonesia: dd-mm-yyyy (hh:mm:ss)
+const formatTanggalBayar = (value: unknown) => {
+  if (!value) return "";
+
+  let date: Date | null = null;
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === "string") {
+    const parsed = new Date(value);
+    date = isNaN(parsed.getTime()) ? null : parsed;
+  } else if (typeof value === "object") {
+    // Firestore Timestamp / Admin SDK Timestamp
+    const obj = value as { toDate?: () => Date; seconds?: number; _seconds?: number };
+    if (typeof obj.toDate === "function") {
+      date = obj.toDate();
+    } else if (typeof obj.seconds === "number") {
+      date = new Date(obj.seconds * 1000);
+    } else if (typeof obj._seconds === "number") {
+      date = new Date(obj._seconds * 1000);
+    }
+  }
+
+  if (!date || isNaN(date.getTime())) return "";
+
+  // date-fns memakai zona waktu server; geser ke WIB (UTC+7)
+  const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+  const wib = new Date(date.getTime() + WIB_OFFSET_MS);
+  return format(wib, "dd-MM-yyyy (HH:mm:ss)");
+};
 
 // Pembayaran menyimpan tagihanIds (array), bukan nama tagihan.
 // Ambil dokumen tagihan_siswa untuk tiap ID lalu susun nama jenis biaya beserta periode.
@@ -122,6 +155,7 @@ export async function POST(request: Request) {
       ...payment,
       siswaNama: payment.siswaNama ?? siswa?.nama ?? "",
       jenisTagihan,
+      tanggalBayar: formatTanggalBayar(payment.tanggalBayar),
     });
     const endpoint = process.env.STARSENDER_API_URL || "https://api.starsender.online/api/send";
 
