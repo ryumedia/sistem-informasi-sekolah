@@ -18,6 +18,7 @@ import {
 } from "firebase/firestore";
 import { Plus, Pencil, Trash2, X, Loader2, Eye, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
+import { isGuruRole } from "@/lib/roles";
 
 // Define interfaces for our data structures
 interface Cabang {
@@ -148,7 +149,7 @@ export default function AktivitasHarianPage() {
         let allCabang = cabangSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabang));
 
         // Filter Cabang jika Caregiver/Guru
-        if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
+        if ((currentUser.role === "Caregiver" || isGuruRole(currentUser.role)) && currentUser.cabang) {
             allCabang = allCabang.filter(c => c.nama === currentUser.cabang);
         }
         setCabangList(allCabang);
@@ -156,7 +157,7 @@ export default function AktivitasHarianPage() {
         // --- Fetch Kelas ---
         let kelasQuery;
         // Logic: cari array 'guruKelas' berarti itu guru yang sedang log in
-        if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.nama) {
+        if ((currentUser.role === "Caregiver" || isGuruRole(currentUser.role)) && currentUser.nama) {
              kelasQuery = query(collection(db, "kelas"), where("guruKelas", "array-contains", currentUser.nama));
         } else {
              kelasQuery = query(collection(db, "kelas"), orderBy("namaKelas", "asc"));
@@ -166,7 +167,7 @@ export default function AktivitasHarianPage() {
         let allKelas = kelasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Kelas));
 
         // Extra safety: filter by branch if user has branch
-        if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
+        if ((currentUser.role === "Caregiver" || isGuruRole(currentUser.role)) && currentUser.cabang) {
             allKelas = allKelas.filter(k => k.cabang === currentUser.cabang);
         }
         setKelasList(allKelas);
@@ -271,7 +272,7 @@ export default function AktivitasHarianPage() {
   // Effect for page-level filtering
   useEffect(() => {
     // Jika user bukan admin, set filter cabang sesuai data user dan disable
-    if (currentUser && (currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
+    if (currentUser && (currentUser.role === "Caregiver" || isGuruRole(currentUser.role)) && currentUser.cabang) {
         const userCabang = cabangList.find(c => c.nama === currentUser.cabang);
         if (userCabang) setFilterCabang(userCabang.id);
     }
@@ -321,7 +322,7 @@ export default function AktivitasHarianPage() {
     // Only reset if not editing or if values are invalid
     if (!editingLaporanId) {
         // If user is restricted and has only 1 class, don't reset if it matches
-        if (!((currentUser?.role === "Caregiver" || currentUser?.role === "Guru") && kelasList.length === 1)) {
+        if (!((currentUser?.role === "Caregiver" || isGuruRole(currentUser?.role)) && kelasList.length === 1)) {
              setFormData((prev: any) => ({ ...prev, kelasId: "", siswaId: "" }));
         }
     }
@@ -412,11 +413,11 @@ export default function AktivitasHarianPage() {
       let defaultCabangId = "";
       let defaultKelasId = "";
 
-      if ((currentUser?.role === "Caregiver" || currentUser?.role === "Guru") && cabangList.length > 0) {
+      if ((currentUser?.role === "Caregiver" || isGuruRole(currentUser?.role)) && cabangList.length > 0) {
           defaultCabangId = cabangList[0].id;
       }
       // If only one class available (common for teachers), select it
-      if ((currentUser?.role === "Caregiver" || currentUser?.role === "Guru") && kelasList.length === 1) {
+      if ((currentUser?.role === "Caregiver" || isGuruRole(currentUser?.role)) && kelasList.length === 1) {
           defaultKelasId = kelasList[0].id;
       }
 

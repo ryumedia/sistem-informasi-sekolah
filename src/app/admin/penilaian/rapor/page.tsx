@@ -5,6 +5,7 @@ import { collection, getDocs, query, orderBy, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Printer, Loader2 } from 'lucide-react';
 import TemplateRapor from '@/components/TemplateRapor';
+import { isGuruRole } from '@/lib/roles';
 
 interface Html2PdfOptions {
   margin?: any;
@@ -61,7 +62,17 @@ interface Kelas {
   namaKelas: string;
   cabang: string;
   guruKelas?: string[];
+  asistenGuru?: string[];
+  guruKelasIds?: string[];
+  asistenGuruIds?: string[];
 }
+
+// Kelas dianggap milik guru jika ia terdaftar sebagai guru kelas ATAU asisten guru.
+// Diutamakan ID guru; nama dipakai sebagai fallback untuk kelas data lama.
+const isKelasMilikGuru = (k: Kelas, nama?: string, guruId?: string) => {
+  if (guruId && (k.guruKelasIds?.includes(guruId) || k.asistenGuruIds?.includes(guruId))) return true;
+  return !!nama && (!!k.guruKelas?.includes(nama) || !!k.asistenGuru?.includes(nama));
+};
 
 const RaporPage = () => {
   const [siswaList, setSiswaList] = useState<Siswa[]>([]);
@@ -75,6 +86,8 @@ const RaporPage = () => {
   const [userRole, setUserRole] = useState<string>("");
   // Nama guru yang sedang login (untuk membatasi kelas yang boleh dipilih)
   const [guruNama, setGuruNama] = useState<string>("");
+  // ID dokumen guru (untuk mencocokkan penugasan kelas lewat guruKelasIds/asistenGuruIds)
+  const [guruId, setGuruId] = useState<string>("");
   // Penanda agar fetch master data hanya berjalan sekali (StrictMode dev menjalankan effect 2x)
   const hasFetchedRef = useRef(false);
 
@@ -142,18 +155,20 @@ const RaporPage = () => {
             const userData = querySnapshot.docs[0].data();
             setUserRole(userData.role);
             setGuruNama(userData.nama || "");
+            setGuruId(querySnapshot.docs[0].id);
 
-            if (userData.role === "Kepala Sekolah" || userData.role === "Guru") {
+            if (userData.role === "Kepala Sekolah" || isGuruRole(userData.role)) {
               const userCabangName = userData.cabang;
               const foundCabang = cabangList.find(c => c.nama === userCabangName);
               
               if (foundCabang) {
                 setSelectedCabangId(foundCabang.id);
                 
-                if (userData.role === "Guru") {
+                if (isGuruRole(userData.role)) {
                    const guruName = userData.nama;
-                   // Ambil SEMUA kelas yang diampu guru ini di cabangnya
-                   const guruKelasList = kelasListData.filter(k => k.guruKelas && k.guruKelas.includes(guruName) && k.cabang === userCabangName);
+                   const guruIdLogin = querySnapshot.docs[0].id;
+                   // Ambil SEMUA kelas yang diampu guru ini di cabangnya (sebagai guru kelas / asisten guru)
+                   const guruKelasList = kelasListData.filter(k => isKelasMilikGuru(k, guruName, guruIdLogin) && k.cabang === userCabangName);
                    // Jika hanya 1 kelas, langsung pilih kelas tersebut.
                    // Jika lebih dari 1, biarkan kosong agar guru memilih sendiri.
                    if (guruKelasList.length === 1) {
@@ -173,12 +188,12 @@ const RaporPage = () => {
 
   // Daftar kelas yang diampu guru yang sedang login (kosong jika bukan Guru)
   const guruKelasOptions = useMemo(() => {
-    if (userRole !== "Guru" || !guruNama) return [];
-    return kelasListData.filter(k => k.guruKelas && k.guruKelas.includes(guruNama));
-  }, [userRole, guruNama, kelasListData]);
+    if (!isGuruRole(userRole) || !guruNama) return [];
+    return kelasListData.filter(k => isKelasMilikGuru(k, guruNama, guruId));
+  }, [userRole, guruNama, guruId, kelasListData]);
 
   // Guru hanya boleh memilih kelasnya sendiri; jika hanya punya 1 kelas, dropdown dikunci
-  const isKelasLocked = userRole === "Guru" && guruKelasOptions.length <= 1;
+  const isKelasLocked = isGuruRole(userRole) && guruKelasOptions.length <= 1;
 
   // Filter Kelas based on Selected Cabang (dan dibatasi ke kelas milik guru)
   const filteredKelasOptions = useMemo(() => {
@@ -186,11 +201,11 @@ const RaporPage = () => {
     const selectedCabang = cabangList.find(c => c.id === selectedCabangId);
     if (!selectedCabang) return [];
     const kelasCabang = kelasListData.filter(k => k.cabang === selectedCabang.nama);
-    if (userRole === "Guru") {
-      return kelasCabang.filter(k => k.guruKelas && k.guruKelas.includes(guruNama));
+    if (isGuruRole(userRole)) {
+      return kelasCabang.filter(k => isKelasMilikGuru(k, guruNama, guruId));
     }
     return kelasCabang;
-  }, [selectedCabangId, cabangList, kelasListData, userRole, guruNama]);
+  }, [selectedCabangId, cabangList, kelasListData, userRole, guruNama, guruId]);
 
   const filteredSiswa = useMemo(() => {
     let students = siswaList;
@@ -206,7 +221,7 @@ const RaporPage = () => {
     // Filter by Selected Kelas
     if (selectedKelas) {
       students = students.filter(s => s.kelas === selectedKelas);
-    } else if (userRole === "Guru") {
+    } else if (isGuruRole(userRole)) {
       // Guru tanpa kelas terpilih: batasi ke siswa di kelas yang diampu saja
       const kelasGuru = guruKelasOptions.map(k => k.namaKelas);
       students = students.filter(s => kelasGuru.includes(s.kelas));
@@ -332,8 +347,8 @@ const RaporPage = () => {
               id="cabang-select"
               value={selectedCabangId}
               onChange={handleCabangChange}
-              className={`w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 transition ${userRole === "Kepala Sekolah" || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
-              disabled={userRole === "Kepala Sekolah" || userRole === "Guru"}
+              className={`w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 transition ${userRole === "Kepala Sekolah" || isGuruRole(userRole) ? "bg-gray-100 cursor-not-allowed" : ""}`}
+              disabled={userRole === "Kepala Sekolah" || isGuruRole(userRole)}
             >
               <option value="">-- Pilih Cabang --</option>
               {cabangList.map(c => (
@@ -372,7 +387,7 @@ const RaporPage = () => {
               disabled={!selectedCabangId || isKelasLocked}
               className={`w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 transition ${!selectedCabangId || isKelasLocked ? "bg-gray-100 cursor-not-allowed" : ""}`}
             >
-              <option value="">{userRole === "Guru" ? "-- Pilih Kelas --" : "-- Semua Kelas --"}</option>
+              <option value="">{isGuruRole(userRole) ? "-- Pilih Kelas --" : "-- Semua Kelas --"}</option>
               {filteredKelasOptions.map(k => (
                 <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>
               ))}

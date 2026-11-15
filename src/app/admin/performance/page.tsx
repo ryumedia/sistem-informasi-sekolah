@@ -6,6 +6,7 @@ import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { Plus, X, Pencil, Trash2, Search, ListChecks } from "lucide-react";
+import { isGuruRole } from "@/lib/roles";
 
 interface KeyResult {
   id: string;
@@ -334,7 +335,7 @@ export default function PerformancePage() {
     const matchPeriode = filterPeriode ? item.periodeId === filterPeriode : true;
 
     // Role-based data visibility and other filters
-    if (['Guru', 'Caregiver'].includes(currentUserData.role)) {
+    if (isGuruRole(currentUserData.role) || currentUserData.role === 'Caregiver') {
       const matchGuruId = item.guruId === currentUserData.id;
       return matchPeriode && matchGuruId; // Combine universal and specific filter
     }
@@ -353,7 +354,7 @@ export default function PerformancePage() {
   });
 
   const openTambahModal = () => {
-    if (['Guru', 'Caregiver'].includes(currentUserData?.role)) handleGuruChange({ target: { value: currentUserData.id } } as any);
+    if (isGuruRole(currentUserData?.role) || currentUserData?.role === 'Caregiver') handleGuruChange({ target: { value: currentUserData.id } } as any);
     
     // Set default semester
     const defaultPeriode = periodeList.find(p => p.isDefault);
@@ -428,7 +429,7 @@ export default function PerformancePage() {
           {periodeList.map((p) => <option key={p.id} value={p.id}>{p.namaPeriode}</option>)}
         </select>
 
-        {currentUserData && !['Guru', 'Caregiver'].includes(currentUserData.role) && (
+        {currentUserData && !(isGuruRole(currentUserData.role) || currentUserData.role === 'Caregiver') && (
           <>
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
@@ -555,7 +556,7 @@ export default function PerformancePage() {
                   className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900"
                   value={formData.guruId} 
                   onChange={handleGuruChange}
-                  disabled={!!editId || ['Guru', 'Caregiver'].includes(currentUserData?.role)} // Disable changing guru on edit or if user is a Guru/Caregiver
+                  disabled={!!editId || isGuruRole(currentUserData?.role) || currentUserData?.role === 'Caregiver'} // Disable changing guru on edit or if user is a Guru/Caregiver
                 >
                   <option value="">Pilih Guru</option>
                   {guruList
@@ -563,7 +564,7 @@ export default function PerformancePage() {
                       if (currentUserData?.role === 'Kepala Sekolah') {
                         return g.cabang === currentUserData.cabang;
                       }
-                      if (['Guru', 'Caregiver'].includes(currentUserData?.role)) {
+                      if (isGuruRole(currentUserData?.role) || currentUserData?.role === 'Caregiver') {
                         return g.id === currentUserData.id;
                       }
                       return true; // Admin, Direktur, Yayasan see all

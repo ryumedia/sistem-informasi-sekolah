@@ -6,6 +6,7 @@ import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, deleteDoc, doc, query, orderBy, addDoc, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { Edit, Trash2, CalendarClock, Plus, Loader2, X, Save, Filter } from "lucide-react";
+import { isGuruRole } from "@/lib/roles";
 
 export default function JadwalPage() {
   const [dataJadwal, setDataJadwal] = useState<any[]>([]);
@@ -95,12 +96,12 @@ export default function JadwalPage() {
             const userData = querySnapshot.docs[0].data();
             setUserRole(userData.role);
 
-            if (userData.role === "Kepala Sekolah" || userData.role === "Guru") {
+            if (userData.role === "Kepala Sekolah" || isGuruRole(userData.role)) {
               const userCabangName = userData.cabang;
               setFilterCabang(userCabangName);
               setUserCabang(userCabangName);
 
-              if (userData.role === "Guru") {
+              if (isGuruRole(userData.role)) {
                  const guruName = userData.nama;
                  const foundKelas = kelasList.find((k: any) => {
                     if (k.cabang !== userCabangName) return false;
@@ -274,13 +275,13 @@ export default function JadwalPage() {
         </div>
 
         <select
-          className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] ${userRole === "Kepala Sekolah" || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
+          className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] ${userRole === "Kepala Sekolah" || isGuruRole(userRole) ? "bg-gray-100 cursor-not-allowed" : ""}`}
           value={filterCabang}
           onChange={(e) => {
             setFilterCabang(e.target.value);
             setFilterKelas("");
           }}
-          disabled={userRole === "Kepala Sekolah" || userRole === "Guru"}
+          disabled={userRole === "Kepala Sekolah" || isGuruRole(userRole)}
         >
           <option value="">Semua Cabang</option>
           {cabangList.map((c) => (
@@ -289,10 +290,10 @@ export default function JadwalPage() {
         </select>
 
         <select
-          className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] ${!filterCabang || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
+          className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] ${!filterCabang || isGuruRole(userRole) ? "bg-gray-100 cursor-not-allowed" : ""}`}
           value={filterKelas}
           onChange={(e) => setFilterKelas(e.target.value)}
-          disabled={!filterCabang || userRole === "Guru"}
+          disabled={!filterCabang || isGuruRole(userRole)}
         >
           <option value="">Semua Kelas</option>
           {kelasList
@@ -381,10 +382,10 @@ export default function JadwalPage() {
                 <label className="block text-xs font-medium text-gray-700 mb-1">Cabang</label>
                 <select
                   required
-                  className={`w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none ${userRole === "Kepala Sekolah" || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                  className={`w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none ${userRole === "Kepala Sekolah" || isGuruRole(userRole) ? "bg-gray-100 cursor-not-allowed" : ""}`}
                   value={formData.cabang}
                   onChange={(e) => setFormData({ ...formData, cabang: e.target.value, kelas: "" })}
-                  disabled={userRole === "Kepala Sekolah" || userRole === "Guru"}
+                  disabled={userRole === "Kepala Sekolah" || isGuruRole(userRole)}
                 >
                   <option value="">Pilih Cabang</option>
                   {cabangList.map((c) => (
@@ -396,8 +397,8 @@ export default function JadwalPage() {
                 <label className="block text-xs font-medium text-gray-700 mb-1">Kelas</label>
                 <select
                   required
-                  disabled={!formData.cabang || userRole === "Guru"}
-                  className={`w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none ${!formData.cabang || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                  disabled={!formData.cabang || isGuruRole(userRole)}
+                  className={`w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none ${!formData.cabang || isGuruRole(userRole) ? "bg-gray-100 cursor-not-allowed" : ""}`}
                   value={formData.kelas}
                   onChange={(e) => setFormData({ ...formData, kelas: e.target.value })}
                 >

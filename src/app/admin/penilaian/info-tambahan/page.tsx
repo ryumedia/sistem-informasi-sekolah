@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { Plus, Pencil, Trash2, X, Save, Loader2, FileText, Filter } from "lucide-react";
 import Link from "next/link";
+import { isGuruRole } from "@/lib/roles";
 
 export default function InfoTambahanPage() {
   const [dataList, setDataList] = useState<any[]>([]);
@@ -28,6 +29,18 @@ export default function InfoTambahanPage() {
   const [userRole, setUserRole] = useState<string>("");
   const [userCabang, setUserCabang] = useState<string>("");
   const [userKelas, setUserKelas] = useState<string>("");
+  const [guruNama, setGuruNama] = useState<string>("");
+
+  // Kelas milik guru yang sedang login (guru kelas ATAU asisten guru)
+  const kelasMilikGuru = useMemo(
+    () =>
+      kelasList.filter(
+        (k) =>
+          !!guruNama &&
+          (!!k.guruKelas?.includes(guruNama) || !!k.asistenGuru?.includes(guruNama))
+      ),
+    [kelasList, guruNama]
+  );
 
   // Form State
   const [formData, setFormData] = useState({
@@ -100,17 +113,24 @@ export default function InfoTambahanPage() {
             const userData = querySnapshot.docs[0].data();
             setUserRole(userData.role);
 
-            if (userData.role === "Kepala Sekolah" || userData.role === "Guru") {
+            if (userData.role === "Kepala Sekolah" || isGuruRole(userData.role)) {
               const userCabangName = userData.cabang;
               setFilterCabang(userCabangName);
               setUserCabang(userCabangName);
 
-              if (userData.role === "Guru") {
+              if (isGuruRole(userData.role)) {
                  const guruName = userData.nama;
-                 const foundKelas = kelasList.find((k: any) => k.guruKelas && k.guruKelas.includes(guruName) && k.cabang === userCabangName);
-                 if (foundKelas) {
-                   setFilterKelas(foundKelas.namaKelas);
-                   setUserKelas(foundKelas.namaKelas);
+                 setGuruNama(guruName || "");
+                 // Kelas milik guru = sebagai guru kelas maupun asisten guru
+                 const kelasGuru = kelasList.filter((k: any) =>
+                   guruName &&
+                   k.cabang === userCabangName &&
+                   (k.guruKelas?.includes(guruName) || k.asistenGuru?.includes(guruName))
+                 );
+                 // Jika hanya punya 1 kelas, langsung pilih kelas tersebut
+                 if (kelasGuru.length === 1) {
+                   setFilterKelas(kelasGuru[0].namaKelas);
+                   setUserKelas(kelasGuru[0].namaKelas);
                  }
               }
             }
@@ -188,7 +208,16 @@ export default function InfoTambahanPage() {
     const matchCabang = filterCabang ? item.cabang === filterCabang : true;
     const matchKelas = filterKelas ? item.kelas === filterKelas : true;
     const matchSemester = filterSemester ? item.semester === filterSemester : true;
-    return matchCabang && matchKelas && matchSemester;
+
+    // Guru/Asisten Guru: tabel hanya menampilkan data kelas miliknya.
+    // Jika belum ada kelas yang terdeteksi, jangan tampilkan data apa pun.
+    let matchGuruKelas = true;
+    if (isGuruRole(userRole)) {
+      const namaKelasMilik = kelasMilikGuru.map((k) => k.namaKelas as string);
+      matchGuruKelas = namaKelasMilik.length > 0 && namaKelasMilik.includes(item.kelas);
+    }
+
+    return matchCabang && matchKelas && matchSemester && matchGuruKelas;
   });
 
   return (
@@ -219,13 +248,13 @@ export default function InfoTambahanPage() {
         </div>
 
         <select
-          className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] ${userRole === "Kepala Sekolah" || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
+          className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] ${userRole === "Kepala Sekolah" || isGuruRole(userRole) ? "bg-gray-100 cursor-not-allowed" : ""}`}
           value={filterCabang}
           onChange={(e) => {
             setFilterCabang(e.target.value);
             setFilterKelas("");
           }}
-          disabled={userRole === "Kepala Sekolah" || userRole === "Guru"}
+          disabled={userRole === "Kepala Sekolah" || isGuruRole(userRole)}
         >
           <option value="">Semua Cabang</option>
           {cabangList.map((c) => (
@@ -234,13 +263,16 @@ export default function InfoTambahanPage() {
         </select>
 
         <select
-          className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] ${!filterCabang || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
+          className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] ${!filterCabang ? "bg-gray-100 cursor-not-allowed" : ""}`}
           value={filterKelas}
           onChange={(e) => setFilterKelas(e.target.value)}
-          disabled={!filterCabang || userRole === "Guru"}
+          disabled={!filterCabang}
         >
-          <option value="">Semua Kelas</option>
-          {kelasList.filter(k => k.cabang === filterCabang).map((k) => (
+          <option value="">{isGuruRole(userRole) ? "Semua Kelas Saya" : "Semua Kelas"}</option>
+          {(isGuruRole(userRole)
+            ? kelasMilikGuru
+            : kelasList.filter(k => k.cabang === filterCabang)
+          ).map((k) => (
             <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>
           ))}
         </select>
@@ -321,10 +353,10 @@ export default function InfoTambahanPage() {
                 <label className="block text-xs font-medium text-gray-700 mb-1">Cabang</label>
                 <select
                   required
-                  className={`w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none ${userRole === "Kepala Sekolah" || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                  className={`w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none ${userRole === "Kepala Sekolah" || isGuruRole(userRole) ? "bg-gray-100 cursor-not-allowed" : ""}`}
                   value={formData.cabang}
                   onChange={(e) => setFormData({ ...formData, cabang: e.target.value, kelas: "" })}
-                  disabled={userRole === "Kepala Sekolah" || userRole === "Guru"}
+                  disabled={userRole === "Kepala Sekolah" || isGuruRole(userRole)}
                 >
                   <option value="">Pilih Cabang</option>
                   {cabangList.map(c => <option key={c.id} value={c.nama}>{c.nama}</option>)}
@@ -334,13 +366,16 @@ export default function InfoTambahanPage() {
                 <label className="block text-xs font-medium text-gray-700 mb-1">Kelas</label>
                 <select
                   required
-                  disabled={!formData.cabang || userRole === "Guru"}
-                  className={`w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none ${!formData.cabang || userRole === "Guru" ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                  disabled={isGuruRole(userRole) ? kelasMilikGuru.length <= 1 : !formData.cabang}
+                  className={`w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-[#581c87] outline-none ${(isGuruRole(userRole) ? kelasMilikGuru.length <= 1 : !formData.cabang) ? "bg-gray-100 cursor-not-allowed" : ""}`}
                   value={formData.kelas}
                   onChange={(e) => setFormData({ ...formData, kelas: e.target.value })}
                 >
                   <option value="">Pilih Kelas</option>
-                  {kelasList.filter(k => k.cabang === formData.cabang).map(k => (
+                  {(isGuruRole(userRole)
+                    ? kelasMilikGuru
+                    : kelasList.filter(k => k.cabang === formData.cabang)
+                  ).map(k => (
                     <option key={k.id} value={k.namaKelas}>{k.namaKelas}</option>
                   ))}
                 </select>

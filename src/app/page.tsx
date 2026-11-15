@@ -313,7 +313,7 @@ export default function UserHome() {
               </div>
 
               <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                {["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Caregiver"].includes(userData?.role) && (
+                {["Admin", "Kepala Sekolah", "Direktur", "Yayasan", "Guru", "Asisten Guru", "Caregiver"].includes(userData?.role) && (
                   <Link href="/admin" className="flex items-center gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 transition">
                     <div className="bg-[#581c87]/10 p-2 rounded-lg text-[#581c87]">
                       <Shield className="w-5 h-5" />

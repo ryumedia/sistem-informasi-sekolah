@@ -8,6 +8,8 @@ import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
 import { Plus, X, Pencil, Trash2, Search, Lock, FileText, Upload, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Download, FileArchive } from "lucide-react";
+import { isGuruRole, isRoleIn } from "@/lib/roles";
+import { fetchKelasGuru } from "@/lib/kelasGuru";
 
 interface Siswa {
   id: string;
@@ -310,18 +312,18 @@ export default function DataSiswaPage() {
           if (userData) {
             setUserRole(userData.role);
             // Otomatis set filter cabang untuk role tertentu
-            if (["Kepala Sekolah", "Guru", "Caregiver"].includes(userData.role)) {
+            if (isRoleIn(userData.role, ["Kepala Sekolah", "Guru", "Caregiver"])) {
               setFilterCabang(userData.cabang);
             }
-            // Role Guru: kunci filter kelas sesuai kelas yang diampu
-            if (userData.role === "Guru" && userData.nama) {
-              const qKelasGuru = query(
-                collection(db, "kelas"),
-                where("cabang", "==", userData.cabang),
-                where("guruKelas", "array-contains", userData.nama)
-              );
-              const kelasGuruSnap = await getDocs(qKelasGuru);
-              const namaKelasGuru: string[] = kelasGuruSnap.docs
+            // Role Guru (termasuk Asisten Guru): kunci filter kelas sesuai kelas yang diampu
+            if (isGuruRole(userData.role) && userData.nama) {
+              // Berbasis ID guru (guruKelasIds/asistenGuruIds) dengan fallback nama untuk data lama
+              const kelasGuruDocs = await fetchKelasGuru(db, {
+                id: guruSnapshot.empty ? undefined : guruSnapshot.docs[0].id,
+                nama: userData.nama,
+                cabang: userData.cabang,
+              });
+              const namaKelasGuru: string[] = kelasGuruDocs
                 .map((d) => d.data().namaKelas as string)
                 .filter(Boolean)
                 .sort((a, b) => a.localeCompare(b));
@@ -862,7 +864,7 @@ export default function DataSiswaPage() {
   };
 
   // Role yang filter cabangnya dikunci
-  const isGuru = userRole === "Guru";
+  const isGuru = isGuruRole(userRole);
   const isCabangLocked = userRole === "Kepala Sekolah" || isGuru;
   // Guru dengan 1 kelas (atau tanpa kelas) -> filter kelas dikunci penuh
   const isKelasLocked = isGuru && guruKelasList.length <= 1;

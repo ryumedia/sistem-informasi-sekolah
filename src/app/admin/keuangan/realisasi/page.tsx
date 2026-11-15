@@ -6,6 +6,7 @@ import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, query, orderBy, where, doc, updateDoc, addDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { FileText, Filter, X, Save, Eye, Wallet, TrendingUp, TrendingDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { isGuruRole, isRoleIn } from "@/lib/roles";
 
 interface Pengajuan {
   id: string;
@@ -118,7 +119,7 @@ export default function RealisasiPage() {
               ...docData,
               role: role,
             });
-            if (["Kepala Sekolah", "Guru", "Caregiver"].includes(role) && docData.cabang) {
+            if (isRoleIn(role, ["Kepala Sekolah", "Guru", "Caregiver"]) && docData.cabang) {
               setFilterCabang(docData.cabang);
             }
           } else {
@@ -144,7 +145,7 @@ export default function RealisasiPage() {
       // Ambil data yang statusnya Disetujui atau Disetujui (Realokasi)
       const constraints: any[] = [where("status", "in", ["Disetujui", "Disetujui (Realokasi)"])];
 
-      if (["Guru", "Caregiver"].includes(currentUser.role)) {
+      if (isGuruRole(currentUser.role) || currentUser.role === "Caregiver") {
          constraints.push(where("userId", "==", currentUser.uid || currentUser.id));
       } else if (currentUser.role === "Kepala Sekolah" && currentUser.cabang) {
          constraints.push(where("cabang", "==", currentUser.cabang));
@@ -308,9 +309,9 @@ export default function RealisasiPage() {
             className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900 ${["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role) ? "bg-gray-100 cursor-not-allowed" : ""}`} 
             value={filterCabang} 
             onChange={(e) => setFilterCabang(e.target.value)}
-            disabled={["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role)}
+            disabled={isRoleIn(currentUser?.role, ["Kepala Sekolah", "Guru", "Caregiver"])}
           >
-            {!["Kepala Sekolah", "Guru", "Caregiver"].includes(currentUser?.role) && <option value="">Semua Cabang</option>}
+            {!isRoleIn(currentUser?.role, ["Kepala Sekolah", "Guru", "Caregiver"]) && <option value="">Semua Cabang</option>}
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
           <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterNomenklatur} onChange={(e) => setFilterNomenklatur(e.target.value)}>

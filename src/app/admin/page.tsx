@@ -16,6 +16,7 @@ import {
   Unsubscribe
 } from 'firebase/firestore';
 import { Building, Users, UserSquare, Star, ArrowDown, ArrowUp, Scale, Loader2, PieChart, BarChart3, Wallet } from 'lucide-react';
+import { isGuruRole } from '@/lib/roles';
 
 type TabName = 'umum' | 'keuangan' | 'kelas';
 
@@ -95,7 +96,7 @@ export default function AdminDashboard() {
 
   // Fetch data when activeTab or selectedCabang changes
   useEffect(() => {
-    if (!isAuthDataLoaded || (userRole && ["Guru", "Caregiver"].includes(userRole))) {
+    if (!isAuthDataLoaded || (userRole && (isGuruRole(userRole) || ["Caregiver"].includes(userRole)))) {
       return;
     }
 
@@ -235,7 +236,7 @@ export default function AdminDashboard() {
             disabled={userRole === "Kepala Sekolah"}
             className={`border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] ${userRole === "Kepala Sekolah" ? "bg-gray-100 cursor-not-allowed" : ""}`}
           >
-            {userRole !== "Kepala Sekolah" && userRole !== "Guru" && <option value="">Semua Cabang</option>}
+            {userRole !== "Kepala Sekolah" && !isGuruRole(userRole) && <option value="">Semua Cabang</option>}
             {cabangList.map(c => <option key={c.id} value={c.nama}>{c.nama}</option>)}
           </select>
         </div>

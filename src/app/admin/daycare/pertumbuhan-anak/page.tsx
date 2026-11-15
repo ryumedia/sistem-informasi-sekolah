@@ -5,6 +5,7 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, o
 import { onAuthStateChanged } from 'firebase/auth';
 import { Plus, Pencil, Trash2, X, Loader2, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
+import { isGuruRole } from '@/lib/roles';
 
 const ITEMS_PER_PAGE = 20;
 const NAMA_BULAN = [
@@ -118,13 +119,13 @@ const PertumbuhanAnakPage = () => {
                 const { id, ...data } = { id: doc.id, ...doc.data() };
                 return { id, ...data } as Cabang;
             });
-            if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
+            if ((currentUser.role === "Caregiver" || isGuruRole(currentUser.role)) && currentUser.cabang) {
                 allCabang = allCabang.filter(c => c.nama === currentUser.cabang);
             }
             setCabangList(allCabang);
 
             // Fetch Kelas
-            const kelasQuery = (currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.nama
+            const kelasQuery = (currentUser.role === "Caregiver" || isGuruRole(currentUser.role)) && currentUser.nama
                 ? query(collection(db, "kelas"), where("guruKelas", "array-contains", currentUser.nama))
                 : query(collection(db, "kelas"), orderBy("namaKelas", "asc"));
 
@@ -137,7 +138,7 @@ const PertumbuhanAnakPage = () => {
 
             // Filter kelas sesuai cabang user jika bukan admin
             let userKelas = fetchedKelas;
-            if ((currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
+            if ((currentUser.role === "Caregiver" || isGuruRole(currentUser.role)) && currentUser.cabang) {
                 userKelas = userKelas.filter(k => k.cabang === currentUser.cabang);
             }
 
@@ -220,7 +221,7 @@ const PertumbuhanAnakPage = () => {
   // Effect for page-level filtering
   useEffect(() => {
     // Jika user bukan admin, set filter cabang sesuai data user dan disable
-    if (currentUser && (currentUser.role === "Caregiver" || currentUser.role === "Guru") && currentUser.cabang) {
+    if (currentUser && (currentUser.role === "Caregiver" || isGuruRole(currentUser.role)) && currentUser.cabang) {
         const userCabang = cabangList.find(c => c.nama === currentUser.cabang);
         if (userCabang) setFilterCabang(userCabang.nama);
     }
@@ -327,7 +328,7 @@ const PertumbuhanAnakPage = () => {
       beratBadan: '',
     };
 
-    if ((currentUser?.role === "Caregiver" || currentUser?.role === "Guru") && cabangList.length === 1) {
+    if ((currentUser?.role === "Caregiver" || isGuruRole(currentUser?.role)) && cabangList.length === 1) {
         initial.cabang = cabangList[0].nama;
         if (kelasList.length === 1) initial.kelas = kelasList[0].namaKelas;
     }

@@ -9,6 +9,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { ArrowLeft, Loader2, Eye } from "lucide-react";
 import Link from "next/link";
+import { fetchKelasGuru } from "@/lib/kelasGuru";
 
 export default function GuruTrilogiPage() {
   const router = useRouter();
@@ -45,28 +46,14 @@ export default function GuruTrilogiPage() {
     if (!guruData) return;
     const fetchSiswa = async () => {
       try {
-        // Cari kelas dimana guru ini terdaftar (sebagai guru kelas maupun asisten guru)
-        const [kelasSnapGuru, kelasSnapAsisten] = await Promise.all([
-          getDocs(query(
-            collection(db, "kelas"),
-            where("cabang", "==", guruData.cabang),
-            where("guruKelas", "array-contains", guruData.nama)
-          )),
-          getDocs(query(
-            collection(db, "kelas"),
-            where("cabang", "==", guruData.cabang),
-            where("asistenGuru", "array-contains", guruData.nama)
-          )),
-        ]);
-        const kelasDocs = [...kelasSnapGuru.docs];
-        kelasSnapAsisten.docs.forEach(d => {
-          if (!kelasDocs.some(existing => existing.id === d.id)) kelasDocs.push(d);
-        });
+        // Cari kelas dimana guru ini terdaftar (sebagai guru kelas maupun asisten guru).
+        // Berbasis ID guru (guruKelasIds/asistenGuruIds) dengan fallback nama untuk data lama.
+        const kelasDocs = await fetchKelasGuru(db, guruData);
 
         const classes: string[] = [];
         kelasDocs.forEach(doc => {
             const d = doc.data();
-            if (d.namaKelas) classes.push(d.namaKelas);
+            if (typeof d.namaKelas === "string" && d.namaKelas) classes.push(d.namaKelas);
         });
         setNamaKelas(classes.join(", "));
         // (Data nilai & trilogi kini diambil di halaman detail per siswa)

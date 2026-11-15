@@ -9,6 +9,11 @@ import { UserProvider } from "@/contexts/UserContext";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { ChevronDown, ChevronRight, ArrowLeft, Menu, X, Loader2 } from "lucide-react";
+import { normalizeRole } from "@/lib/roles";
+
+// "Asisten Guru" memiliki akses yang sama dengan "Guru" di Panel Admin
+const hasRoleAccess = (allowedRoles: string[] | undefined, role: string) =>
+  !role ? true : !!allowedRoles && allowedRoles.includes(normalizeRole(role));
 
 interface AdminUserData {
   id?: string;
@@ -88,7 +93,7 @@ export default function AdminLayout({
 
     const dashboardRoles = ["Admin", "Kepala Sekolah", "Direktur", "Yayasan"];
     if (pathname === '/admin') {
-      const role = userData?.role;
+      const role = normalizeRole(userData?.role);
       if (role && !dashboardRoles.includes(role)) {
         router.replace('/admin/performance');
       }
@@ -258,14 +263,14 @@ export default function AdminLayout({
   ];
 
   // Filter menu items based on user's role
-  const currentRole = userData?.role || "";
+  const currentRole = normalizeRole(userData?.role);
   const menuItems = allMenuItems
-    .filter(item => !currentRole ? true : (item.roles && item.roles.includes(currentRole)))
+    .filter(item => hasRoleAccess(item.roles, currentRole))
     .map(item => {
       if (item.submenu) {
         return {
           ...item,
-          submenu: item.submenu.filter(subItem => !currentRole ? true : (subItem.roles && subItem.roles.includes(currentRole)))
+          submenu: item.submenu.filter(subItem => hasRoleAccess(subItem.roles, currentRole))
         };
       }
       return item;

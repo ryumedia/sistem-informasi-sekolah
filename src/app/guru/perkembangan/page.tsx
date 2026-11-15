@@ -9,6 +9,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
 import { ArrowLeft, Loader2, Eye } from "lucide-react";
 import Link from "next/link";
+import { fetchKelasGuru } from "@/lib/kelasGuru";
 
 export default function GuruPerkembanganPage() {
   const router = useRouter();
@@ -46,24 +47,10 @@ export default function GuruPerkembanganPage() {
     if (!guruData) return;
     const fetchSiswa = async () => {
       try {
-        // Cari kelas dimana guru ini terdaftar (sebagai guru kelas maupun asisten guru)
-        const [kelasSnapGuru, kelasSnapAsisten] = await Promise.all([
-          getDocs(query(
-            collection(db, "kelas"),
-            where("cabang", "==", guruData.cabang),
-            where("guruKelas", "array-contains", guruData.nama)
-          )),
-          getDocs(query(
-            collection(db, "kelas"),
-            where("cabang", "==", guruData.cabang),
-            where("asistenGuru", "array-contains", guruData.nama)
-          )),
-        ]);
-        const kelasDocs = [...kelasSnapGuru.docs];
-        kelasSnapAsisten.docs.forEach(d => {
-          if (!kelasDocs.some(existing => existing.id === d.id)) kelasDocs.push(d);
-        });
-        const classes = kelasDocs.map(doc => doc.data().namaKelas);
+        // Cari kelas dimana guru ini terdaftar (sebagai guru kelas maupun asisten guru).
+        // Berbasis ID guru (guruKelasIds/asistenGuruIds) dengan fallback nama untuk data lama.
+        const kelasDocs = await fetchKelasGuru(db, guruData);
+        const classes = kelasDocs.map(doc => doc.data().namaKelas as string).filter(Boolean);
         setNamaKelas(classes.join(", "));
 
         if (classes.length > 0) {

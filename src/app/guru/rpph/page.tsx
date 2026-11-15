@@ -6,6 +6,7 @@ import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { ArrowLeft, Loader2, Eye, X, BookOpen, Calendar } from "lucide-react";
+import { fetchKelasGuru } from "@/lib/kelasGuru";
 
 export default function RPPHGuruPage() {
   const router = useRouter();
@@ -54,24 +55,12 @@ export default function RPPHGuruPage() {
 
     const fetchRPPH = async () => {
       try {
-        // 1. Cari kelas dimana guru ini mengajar (sebagai guru kelas maupun asisten guru)
-        const [kelasSnapGuru, kelasSnapAsisten] = await Promise.all([
-          getDocs(query(
-            collection(db, "kelas"),
-            where("guruKelas", "array-contains", guruData.nama)
-          )),
-          getDocs(query(
-            collection(db, "kelas"),
-            where("asistenGuru", "array-contains", guruData.nama)
-          )),
-        ]);
-        const kelasDocs = [...kelasSnapGuru.docs];
-        kelasSnapAsisten.docs.forEach(d => {
-          if (!kelasDocs.some(existing => existing.id === d.id)) kelasDocs.push(d);
-        });
+        // 1. Cari kelas dimana guru ini mengajar (sebagai guru kelas maupun asisten guru).
+        // Berbasis ID guru (guruKelasIds/asistenGuruIds) dengan fallback nama untuk data lama.
+        const kelasDocs = await fetchKelasGuru(db, guruData);
 
         // 2. Kumpulkan semua jenjang kelas yang unik dari kelas-kelas tersebut
-        const jenjangKelasGuru = [...new Set(kelasDocs.map(doc => doc.data().jenjangKelas))];
+        const jenjangKelasGuru = [...new Set(kelasDocs.map(doc => doc.data().jenjangKelas as string))].filter(Boolean);
 
         if (jenjangKelasGuru.length > 0) {
           // 3. Ambil RPPH yang jenjang kelasnya cocok dengan daftar jenjang yang diajar guru

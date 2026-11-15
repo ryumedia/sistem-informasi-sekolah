@@ -13,6 +13,9 @@ interface Kelas {
   cabang: string;
   guruKelas: string[]; // Array of teacher names
   asistenGuru?: string[];
+  // ID dokumen "guru" — sumber kebenaran penugasan (tahan rename guru)
+  guruKelasIds?: string[];
+  asistenGuruIds?: string[];
 }
 
 interface Guru {
@@ -45,12 +48,16 @@ export default function PengaturanKelasPage() {
     cabang: string;
     guruKelas: string[];
     asistenGuru: string[];
+    guruKelasIds: string[];
+    asistenGuruIds: string[];
   }>({
     namaKelas: "",
     jenjangKelas: "",
     cabang: "",
     guruKelas: [],
     asistenGuru: [],
+    guruKelasIds: [],
+    asistenGuruIds: [],
   });
 
   // Fetch all necessary data
@@ -155,14 +162,31 @@ export default function PengaturanKelasPage() {
     }
   };
 
+  // Kelas lama hanya menyimpan nama. Saat diedit, ID diisi otomatis dari nama
+  // (fallback) agar penyimpanan berikutnya langsung memakai ID.
+  const resolveIdsByNama = (names: string[] | undefined, list: Guru[]) =>
+    (names || [])
+      .map((nama) => list.find((g) => g.nama === nama)?.id)
+      .filter((id): id is string => !!id);
+
   const handleEdit = (kelas: Kelas) => {
     setEditId(kelas.id);
+    const guruKelasIds =
+      kelas.guruKelasIds && kelas.guruKelasIds.length > 0
+        ? kelas.guruKelasIds
+        : resolveIdsByNama(kelas.guruKelas, guruList);
+    const asistenGuruIds =
+      kelas.asistenGuruIds && kelas.asistenGuruIds.length > 0
+        ? kelas.asistenGuruIds
+        : resolveIdsByNama(kelas.asistenGuru, asistenList);
     setFormData({
       namaKelas: kelas.namaKelas,
       jenjangKelas: kelas.jenjangKelas || "",
       cabang: kelas.cabang,
       guruKelas: kelas.guruKelas || [], // Ensure it's an array
       asistenGuru: kelas.asistenGuru || [],
+      guruKelasIds,
+      asistenGuruIds,
     });
     setIsModalOpen(true);
   };
@@ -170,24 +194,54 @@ export default function PengaturanKelasPage() {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditId(null);
-    setFormData({ namaKelas: "", jenjangKelas: "", cabang: "", guruKelas: [], asistenGuru: [] });
+    setFormData({
+      namaKelas: "",
+      jenjangKelas: "",
+      cabang: "",
+      guruKelas: [],
+      asistenGuru: [],
+      guruKelasIds: [],
+      asistenGuruIds: [],
+    });
   };
 
   // Handle multi-select change for teachers
+  // Nilai <option> = ID guru; nama ikut disimpan sebagai cache/fallback untuk
+  // query `array-contains` berbasis nama & kompatibilitas data lama.
   const handleGuruSelection = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
-    setFormData({ ...formData, guruKelas: selectedOptions });
+    const selectedIds = Array.from(e.target.selectedOptions, option => option.value);
+    const selectedNames = selectedIds
+      .map(id => guruList.find(g => g.id === id)?.nama)
+      .filter((n): n is string => !!n);
+    setFormData({ ...formData, guruKelasIds: selectedIds, guruKelas: selectedNames });
   };
 
   // Handle multi-select change for assistants
   const handleAsistenSelection = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
-    setFormData({ ...formData, asistenGuru: selectedOptions });
+    const selectedIds = Array.from(e.target.selectedOptions, option => option.value);
+    const selectedNames = selectedIds
+      .map(id => asistenList.find(g => g.id === id)?.nama)
+      .filter((n): n is string => !!n);
+    setFormData({ ...formData, asistenGuruIds: selectedIds, asistenGuru: selectedNames });
   };
 
   const filteredKelasList = kelasList.filter(kelas => {
     return filterCabang ? kelas.cabang === filterCabang : true;
   });
+
+  // Tampilkan nama berdasarkan ID (data terbaru), dengan fallback ke nama tersimpan
+  // untuk kelas lama yang belum memiliki field ID.
+  const namaGuruKelas = (kelas: Kelas) =>
+    (kelas.guruKelasIds || [])
+      .map(id => guruList.find(g => g.id === id)?.nama)
+      .filter((n): n is string => !!n)
+      .join(', ') || kelas.guruKelas?.join(', ') || '-';
+
+  const namaAsistenGuru = (kelas: Kelas) =>
+    (kelas.asistenGuruIds || [])
+      .map(id => asistenList.find(g => g.id === id)?.nama)
+      .filter((n): n is string => !!n)
+      .join(', ') || kelas.asistenGuru?.join(', ') || '-';
 
   return (
     <div className="space-y-6">
@@ -249,8 +303,8 @@ export default function PengaturanKelasPage() {
                   <td className="p-4 font-medium text-gray-900">{kelas.namaKelas}</td>
                   <td className="p-4">{kelas.jenjangKelas}</td>
                   <td className="p-4">{kelas.cabang}</td>
-                  <td className="p-4">{kelas.guruKelas.join(", ")}</td>
-                  <td className="p-4">{kelas.asistenGuru?.join(", ") || "-"}</td>
+                  <td className="p-4">{namaGuruKelas(kelas)}</td>
+                  <td className="p-4">{namaAsistenGuru(kelas)}</td>
                   <td className="p-4 flex gap-2">
                     <button onClick={() => handleEdit(kelas)} className="p-2 text-[#581c87] hover:bg-[#581c87]/10 rounded-lg transition" title="Edit">
                       <Pencil className="w-4 h-4" />
@@ -309,13 +363,13 @@ export default function PengaturanKelasPage() {
                   multiple 
                   required
                   className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none h-32 text-gray-900"
-                  value={formData.guruKelas} 
+                  value={formData.guruKelasIds} 
                   onChange={handleGuruSelection}
                 >
                   {guruList
                     .filter((guru) => !formData.cabang || guru.cabang === formData.cabang)
                     .map((guru) => (
-                    <option key={guru.id} value={guru.nama}>{guru.nama}</option>
+                    <option key={guru.id} value={guru.id}>{guru.nama}</option>
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">Tahan Ctrl (atau Cmd di Mac) untuk memilih beberapa guru.</p>
@@ -326,13 +380,13 @@ export default function PengaturanKelasPage() {
                 <select 
                   multiple 
                   className="w-full border rounded-lg p-2 bg-white focus:ring-2 focus:ring-[#581c87] outline-none h-24 text-gray-900"
-                  value={formData.asistenGuru} 
+                  value={formData.asistenGuruIds} 
                   onChange={handleAsistenSelection}
                 >
                   {asistenList
                     .filter((guru) => !formData.cabang || guru.cabang === formData.cabang)
                     .map((guru) => (
-                    <option key={guru.id} value={guru.nama}>{guru.nama}</option>
+                    <option key={guru.id} value={guru.id}>{guru.nama}</option>
                   ))}
                 </select>
                 <p className="text-xs text-gray-500 mt-1">Tahan Ctrl (atau Cmd di Mac) untuk memilih beberapa asisten.</p>
