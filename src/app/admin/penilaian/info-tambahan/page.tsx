@@ -8,6 +8,21 @@ import { Plus, Pencil, Trash2, X, Save, Loader2, FileText, Filter } from "lucide
 import Link from "next/link";
 import { isGuruRole } from "@/lib/roles";
 
+interface KelasRef {
+  guruKelas?: string[];
+  asistenGuru?: string[];
+  guruKelasIds?: string[];
+  asistenGuruIds?: string[];
+}
+
+// Kelas dianggap milik guru jika ia terdaftar sebagai guru kelas ATAU asisten guru.
+// Diutamakan ID guru (guruKelasIds/asistenGuruIds) — sumber kebenaran penugasan;
+// nama hanya fallback untuk kelas data lama yang belum punya field ID.
+const isKelasMilikGuru = (k: KelasRef, nama?: string, guruId?: string) => {
+  if (guruId && (k.guruKelasIds?.includes(guruId) || k.asistenGuruIds?.includes(guruId))) return true;
+  return !!nama && (!!k.guruKelas?.includes(nama) || !!k.asistenGuru?.includes(nama));
+};
+
 export default function InfoTambahanPage() {
   const [dataList, setDataList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,16 +45,17 @@ export default function InfoTambahanPage() {
   const [userCabang, setUserCabang] = useState<string>("");
   const [userKelas, setUserKelas] = useState<string>("");
   const [guruNama, setGuruNama] = useState<string>("");
+  // ID dokumen guru (untuk mencocokkan penugasan kelas lewat guruKelasIds/asistenGuruIds)
+  const [guruId, setGuruId] = useState<string>("");
 
   // Kelas milik guru yang sedang login (guru kelas ATAU asisten guru)
   const kelasMilikGuru = useMemo(
     () =>
       kelasList.filter(
         (k) =>
-          !!guruNama &&
-          (!!k.guruKelas?.includes(guruNama) || !!k.asistenGuru?.includes(guruNama))
+          (!!guruId || !!guruNama) && isKelasMilikGuru(k, guruNama, guruId)
       ),
-    [kelasList, guruNama]
+    [kelasList, guruNama, guruId]
   );
 
   // Form State
@@ -105,7 +121,8 @@ export default function InfoTambahanPage() {
   // Auth & Role Logic
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser && cabangList.length > 0) {
+      // Tunggu master data kelas selesai dimuat agar daftar kelas guru tidak kosong.
+      if (currentUser && cabangList.length > 0 && kelasList.length > 0) {
         try {
           const q = query(collection(db, "guru"), where("email", "==", currentUser.email));
           const querySnapshot = await getDocs(q);
@@ -120,12 +137,13 @@ export default function InfoTambahanPage() {
 
               if (isGuruRole(userData.role)) {
                  const guruName = userData.nama;
+                 const guruIdLogin = querySnapshot.docs[0].id;
                  setGuruNama(guruName || "");
+                 setGuruId(guruIdLogin);
                  // Kelas milik guru = sebagai guru kelas maupun asisten guru
                  const kelasGuru = kelasList.filter((k: any) =>
-                   guruName &&
                    k.cabang === userCabangName &&
-                   (k.guruKelas?.includes(guruName) || k.asistenGuru?.includes(guruName))
+                   isKelasMilikGuru(k, guruName, guruIdLogin)
                  );
                  // Jika hanya punya 1 kelas, langsung pilih kelas tersebut
                  if (kelasGuru.length === 1) {

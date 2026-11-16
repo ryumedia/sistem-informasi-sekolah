@@ -9,10 +9,53 @@ const normalizePhoneNumber = (value: unknown) => {
   return `62${digits}`;
 };
 
+// Field tanggal di Firestore berformat "YYYY-MM-DD", waktu berformat "HH:mm".
+// Tanggal diformat ke bahasa Indonesia: Senin, 17 November 2026
+const formatTanggalTrial = (value: unknown) => {
+  if (value && typeof value === "object") {
+    const obj = value as { toDate?: () => Date; seconds?: number; _seconds?: number };
+    if (typeof obj.toDate === "function") {
+      const date = obj.toDate();
+      return isNaN(date.getTime())
+        ? ""
+        : date.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    }
+    if (typeof obj.seconds === "number") {
+      return formatTanggalTrial(new Date(obj.seconds * 1000));
+    }
+    if (typeof obj._seconds === "number") {
+      return formatTanggalTrial(new Date(obj._seconds * 1000));
+    }
+  }
+  if (value instanceof Date) {
+    return isNaN(value.getTime())
+      ? ""
+      : value.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  }
+
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    return isNaN(date.getTime())
+      ? raw
+      : date.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  }
+
+  const parsed = new Date(raw);
+  return isNaN(parsed.getTime())
+    ? raw
+    : parsed.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+};
+
 const renderTemplate = (template: string, data: Record<string, unknown>) =>
   template
     .replaceAll("{namaAnak}", String(data.namaAnak ?? ""))
-    .replaceAll("{lokasi}", String(data.lokasi ?? ""));
+    .replaceAll("{lokasi}", String(data.lokasi ?? ""))
+    .replaceAll("{tanggal}", formatTanggalTrial(data.tanggal))
+    .replaceAll("{waktu}", String(data.waktu ?? ""));
 
 export async function POST(request: Request) {
   try {

@@ -81,8 +81,10 @@ export default function NotifikasiTrialClassPage() {
               className="w-full min-w-[280px] min-h-[220px] resize border rounded-lg p-3 text-sm text-gray-900 focus:ring-2 focus:ring-[#581c87] focus:border-[#581c87] outline-none"
             />
             <p className="text-xs text-gray-500 mt-2">
-              Variabel yang tersedia: <code className="bg-gray-100 px-1 py-0.5 rounded">{'{namaAnak}'}</code>{" "}
-              dan <code className="bg-gray-100 px-1 py-0.5 rounded">{'{lokasi}'}</code>
+              Variabel yang tersedia: <code className="bg-gray-100 px-1 py-0.5 rounded">{'{namaAnak}'}</code>,{" "}
+              <code className="bg-gray-100 px-1 py-0.5 rounded">{'{lokasi}'}</code>,{" "}
+              <code className="bg-gray-100 px-1 py-0.5 rounded">{'{tanggal}'}</code>, dan{" "}
+              <code className="bg-gray-100 px-1 py-0.5 rounded">{'{waktu}'}</code>
             </p>
             <button
               type="button"
