@@ -3,9 +3,9 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { db, auth } from "@/lib/firebase";
-import { collection, getDocs, query, orderBy, doc, updateDoc, where, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, doc, updateDoc, where, deleteDoc, addDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
-import { Eye, CheckCircle, XCircle, Filter, X, Pencil, Trash2, Save, ChevronLeft, ChevronRight } from "lucide-react";
+import { Eye, CheckCircle, XCircle, Filter, X, Pencil, Trash2, Save, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { isGuruRole, isRoleIn } from "@/lib/roles";
 
 interface Pengajuan {
@@ -37,6 +37,7 @@ export default function PengajuanPage() {
   const [filterNama, setFilterNama] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterNomenklatur, setFilterNomenklatur] = useState("");
+  const [filterJenis, setFilterJenis] = useState("");
   const [cabangList, setCabangList] = useState<any[]>([]);
   const [nomenklaturList, setNomenklaturList] = useState<any[]>([]);
   
@@ -55,6 +56,20 @@ export default function PengajuanPage() {
     barang: "",
     hargaSatuan: 0,
     qty: 0,
+    jenisPengajuan: "Baru",
+  });
+
+  // State Modal Tambah
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addSubmitting, setAddSubmitting] = useState(false);
+  const [addFormData, setAddFormData] = useState({
+    tanggal: formatDate(now),
+    cabang: "",
+    pengaju: "",
+    nomenklatur: "",
+    barang: "",
+    hargaSatuan: 0,
+    qty: 1,
     jenisPengajuan: "Baru",
   });
 
@@ -193,8 +208,13 @@ export default function PengajuanPage() {
     const matchNama = filterNama ? (item.pengaju || "").toLowerCase().includes(filterNama.toLowerCase()) : true;
     const matchStatus = filterStatus ? item.status === filterStatus : true;
     const matchNomenklatur = filterNomenklatur ? item.nomenklatur === filterNomenklatur : true;
+    const matchJenis = filterJenis
+      ? filterJenis === "Baru"
+        ? !item.jenisPengajuan || item.jenisPengajuan === "Baru"
+        : item.jenisPengajuan === filterJenis
+      : true;
 
-    return matchCabang && matchStatus && matchNama && matchNomenklatur;
+    return matchCabang && matchStatus && matchNama && matchNomenklatur && matchJenis;
   });
 
   // Pagination Logic
@@ -205,7 +225,7 @@ export default function PengajuanPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [startDate, endDate, filterCabang, filterStatus, filterNama, filterNomenklatur]);
+  }, [startDate, endDate, filterCabang, filterStatus, filterNama, filterNomenklatur, filterJenis]);
 
   // 5. Logic Approval Berjenjang
   const handleApprove = async (item: Pengajuan) => {
@@ -351,7 +371,58 @@ export default function PengajuanPage() {
     }
   };
 
-  // 8. Logic Checkbox
+  // 8. Logic Tambah Pengajuan
+  const openAddModal = () => {
+    setAddFormData({
+      tanggal: formatDate(new Date()),
+      cabang: isRoleIn(currentUser?.role, ["Kepala Sekolah", "Guru", "Caregiver"])
+        ? (currentUser?.cabang || "")
+        : "",
+      pengaju: currentUser?.nama || currentUser?.email || "",
+      nomenklatur: "",
+      barang: "",
+      hargaSatuan: 0,
+      qty: 1,
+      jenisPengajuan: "Baru",
+    });
+    setAddModalOpen(true);
+  };
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addFormData.pengaju.trim()) return alert("Nama pengaju wajib diisi.");
+
+    setAddSubmitting(true);
+    try {
+      const initialStatus = addFormData.cabang === 'Main Riang Pusat' ? 'Menunggu Direktur' : 'Menunggu KS';
+
+      await addDoc(collection(db, "pengajuan"), {
+        tanggal: addFormData.tanggal,
+        pengaju: addFormData.pengaju,
+        cabang: addFormData.cabang,
+        jenisPengajuan: addFormData.jenisPengajuan,
+        nomenklatur: addFormData.nomenklatur,
+        barang: addFormData.barang,
+        hargaSatuan: Number(addFormData.hargaSatuan),
+        qty: Number(addFormData.qty),
+        total: Number(addFormData.hargaSatuan) * Number(addFormData.qty),
+        status: initialStatus,
+        userId: currentUser?.uid || currentUser?.id || "",
+        createdAt: new Date(),
+      });
+
+      alert("Pengajuan berhasil ditambahkan!");
+      setAddModalOpen(false);
+      fetchData();
+    } catch (error) {
+      console.error("Error adding pengajuan:", error);
+      alert("Gagal menambahkan pengajuan.");
+    } finally {
+      setAddSubmitting(false);
+    }
+  };
+
+  // 9. Logic Checkbox
   const handleSelectItem = (id: string) => {
     setSelectedItems(prev =>
       prev.includes(id) ? prev.filter(itemId => itemId !== id) : [...prev, id]
@@ -379,7 +450,12 @@ export default function PengajuanPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
-        <h1 className="text-2xl font-bold text-gray-800">Daftar Pengajuan Anggaran</h1>
+        <div className="flex items-center justify-between gap-4 w-full xl:w-auto">
+          <h1 className="text-2xl font-bold text-gray-800">Daftar Pengajuan Anggaran</h1>
+          <button onClick={openAddModal} className="bg-[#581c87] text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-[#45156b] transition">
+            <Plus className="w-4 h-4" /> Tambah Pengajuan
+          </button>
+        </div>
 
         {/* Filter Area */}
         <div className="flex flex-wrap gap-2">
@@ -407,6 +483,11 @@ export default function PengajuanPage() {
           >
             {!isRoleIn(currentUser?.role, ["Kepala Sekolah", "Guru", "Caregiver"]) && <option value="">Semua Cabang</option>}
             {cabangList.map((c) => <option key={c.id} value={c.nama}>{c.nama}</option>)}
+          </select>
+          <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterJenis} onChange={(e) => setFilterJenis(e.target.value)}>
+            <option value="">Semua Jenis</option>
+            <option value="Baru">Baru</option>
+            <option value="Realokasi">Realokasi</option>
           </select>
           <select className="border rounded-lg p-2 text-sm bg-white outline-none focus:ring-2 focus:ring-[#581c87] text-gray-900" value={filterNomenklatur} onChange={(e) => setFilterNomenklatur(e.target.value)}>
             <option value="">Semua Nomenklatur</option>
@@ -716,6 +797,100 @@ export default function PengajuanPage() {
               </div>
               <button disabled={submitting} type="submit" className="w-full bg-[#581c87] text-white py-2 rounded-lg hover:bg-[#45156b] transition font-medium mt-2 flex justify-center items-center gap-2">
                 <Save className="w-4 h-4" /> {submitting ? "Menyimpan..." : "Simpan Perubahan"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tambah Pengajuan */}
+      {addModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50 sticky top-0">
+              <h3 className="font-bold text-gray-800">Form Pengajuan Anggaran</h3>
+              <button onClick={() => setAddModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleAddSubmit} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Tanggal</label>
+                  <input required type="date" className="w-full border rounded-lg p-2 text-sm text-gray-900"
+                    value={addFormData.tanggal} onChange={(e) => setAddFormData({...addFormData, tanggal: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Cabang</label>
+                  {isRoleIn(currentUser?.role, ["Kepala Sekolah", "Guru", "Caregiver"]) ? (
+                    <input readOnly type="text" className="w-full border rounded-lg p-2 text-sm bg-gray-100 text-gray-600"
+                      value={addFormData.cabang} />
+                  ) : (
+                    <select className="w-full border rounded-lg p-2 text-sm bg-white text-gray-900"
+                      value={addFormData.cabang} onChange={(e) => setAddFormData({...addFormData, cabang: e.target.value})}>
+                      <option value="">Pilih Cabang</option>
+                      {cabangList.map((c) => (
+                        <option key={c.id} value={c.nama}>{c.nama}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Nama Pengaju</label>
+                <input required type="text" className="w-full border rounded-lg p-2 text-sm text-gray-900" placeholder="Nama pengaju"
+                  value={addFormData.pengaju} onChange={(e) => setAddFormData({...addFormData, pengaju: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Jenis Pengajuan</label>
+                <select required className="w-full border rounded-lg p-2 text-sm bg-white text-gray-900"
+                  value={addFormData.jenisPengajuan} onChange={(e) => setAddFormData({...addFormData, jenisPengajuan: e.target.value})}>
+                  <option value="Baru">Baru</option>
+                  <option value="Realokasi">Realokasi</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Nomenklatur (Pos Anggaran)</label>
+                <select required className="w-full border rounded-lg p-2 text-sm bg-white text-gray-900"
+                  value={addFormData.nomenklatur} onChange={(e) => setAddFormData({...addFormData, nomenklatur: e.target.value})}>
+                  <option value="">Pilih Nomenklatur</option>
+                  {nomenklaturList.map((item) => (
+                    <option key={item.id} value={item.nama}>{item.nama}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Nama Barang / Jasa</label>
+                <input required type="text" className="w-full border rounded-lg p-2 text-sm text-gray-900" placeholder="Contoh: Kertas HVS A4"
+                  value={addFormData.barang} onChange={(e) => setAddFormData({...addFormData, barang: e.target.value})} />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Harga Satuan (Rp)</label>
+                  <input required type="text" className="w-full border rounded-lg p-2 text-sm text-gray-900"
+                    value={addFormData.hargaSatuan === 0 ? "" : addFormData.hargaSatuan.toLocaleString("id-ID")}
+                    onChange={(e) => {
+                      const rawValue = e.target.value.replace(/\./g, "");
+                      if (!isNaN(Number(rawValue))) {
+                        setAddFormData({...addFormData, hargaSatuan: Number(rawValue)});
+                      }
+                    }}
+                    placeholder="0" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Qty</label>
+                  <input required type="number" min="1" className="w-full border rounded-lg p-2 text-sm text-gray-900"
+                    value={addFormData.qty} onChange={(e) => setAddFormData({...addFormData, qty: Number(e.target.value)})} />
+                </div>
+              </div>
+              <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Total Harga</label>
+                <div className="text-lg font-bold text-[#581c87]">
+                  Rp {(addFormData.hargaSatuan * addFormData.qty).toLocaleString("id-ID")}
+                </div>
+              </div>
+              <button disabled={addSubmitting} type="submit" className="w-full bg-[#581c87] text-white py-3 rounded-lg hover:bg-[#45156b] transition font-medium mt-2 flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                <Save className="w-4 h-4" /> {addSubmitting ? "Mengirim..." : "Kirim Pengajuan"}
               </button>
             </form>
           </div>
