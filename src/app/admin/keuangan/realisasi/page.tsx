@@ -194,17 +194,17 @@ export default function RealisasiPage() {
     setCurrentPage(1);
   }, [startDate, endDate, filterCabang, filterNomenklatur, filterNama]);
 
-  // Total Anggaran: Hanya hitung dari pengajuan 'Baru'
+  // ===== Ringkasan Kartu Atas =====
+  // Total Anggaran: tetap seperti logika sebelumnya — hanya pengajuan berstatus 'Baru'
+  // (status 'Disetujui'), item 'Realokasi' tidak ikut dihitung.
   const totalAnggaran = filteredData
     .filter(item => item.status !== 'Disetujui (Realokasi)')
     .reduce((acc, curr) => acc + (curr.total || 0), 0);
-  // Total Realisasi: Hitung dari pengajuan biasa yang sudah direalisasikan.
-  // Pengajuan 'Realokasi' dikecualikan agar simetris dengan Total Anggaran (yang juga
-  // mengecualikan Realokasi), karena dananya berasal dari anggaran asal — sehingga
-  // Total Selisih tidak akan pernah minus.
-  const totalRealisasi = filteredData
-    .filter(item => item.status !== 'Disetujui (Realokasi)')
-    .reduce((acc, curr) => acc + (curr.realisasi || 0), 0);
+
+  // Total Realisasi: SEMUA nominal realisasi yang sudah dilaporkan, baik dari pengajuan
+  // biasa (status 'Disetujui') maupun dari pengajuan Realokasi (status 'Disetujui (Realokasi)').
+  const totalRealisasi = filteredData.reduce((acc, curr) => acc + (curr.realisasi || 0), 0);
+
   const totalSelisih = totalAnggaran - totalRealisasi;
 
 
