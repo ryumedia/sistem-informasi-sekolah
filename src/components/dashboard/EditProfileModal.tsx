@@ -166,6 +166,7 @@ export default function EditProfileModal({ user, userData, onClose, onProfileUpd
         <h4 className="text-md font-semibold text-gray-800">A. Data Pribadi</h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-900">
           <div><label className="block font-medium text-gray-700 mb-1">Nama Siswa</label><input type="text" name="nama" value={formData.nama || ''} onChange={handleChange} className="w-full p-2 border rounded-md text-gray-900" /></div>
+          <div><label className="block font-medium text-gray-700 mb-1">Nama Panggilan</label><input type="text" name="namaPanggilan" placeholder="Contoh: Aisyah" value={formData.namaPanggilan || ''} onChange={handleChange} className="w-full p-2 border rounded-md text-gray-900" /></div>
           <div><label className="block font-medium text-gray-700 mb-1">Jenis Kelamin</label><select name="jenisKelamin" value={formData.jenisKelamin || ''} onChange={handleChange} className="w-full p-2 border rounded-md bg-white text-gray-900"><option value="Laki-laki">Laki-laki</option><option value="Perempuan">Perempuan</option></select></div>
           <div><label className="block font-medium text-gray-700 mb-1">Kewarganegaraan</label><input type="text" name="kewarganegaraan" value={formData.kewarganegaraan || ''} onChange={handleChange} className="w-full p-2 border rounded-md text-gray-900" /></div>
           <div><label className="block font-medium text-gray-700 mb-1">NIK</label><input type="text" name="nik" value={formData.nik || ''} onChange={handleChange} className="w-full p-2 border rounded-md text-gray-900" /></div>
@@ -275,6 +276,10 @@ export default function EditProfileModal({ user, userData, onClose, onProfileUpd
       <div className="text-sm">
         <label className="block font-medium text-gray-700 mb-1">Nama Lengkap</label>
         <input type="text" name="nama" value={formData.nama || ''} onChange={handleChange} className="w-full p-2 border rounded-md text-gray-900" />
+      </div>
+      <div className="text-sm">
+        <label className="block font-medium text-gray-700 mb-1">Nama Panggilan</label>
+        <input type="text" name="namaPanggilan" placeholder="Contoh: Aisyah" value={formData.namaPanggilan || ''} onChange={handleChange} className="w-full p-2 border rounded-md text-gray-900" />
       </div>
       <div className="text-sm">
         <label className="block font-medium text-gray-700 mb-1">NIY</label>

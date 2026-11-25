@@ -39,6 +39,7 @@ interface Html2PdfOptions {
 interface Siswa {
   id: string;
   nama: string;
+  namaPanggilan?: string;
   kelas: string;
   nis: string;
   nisn: string;

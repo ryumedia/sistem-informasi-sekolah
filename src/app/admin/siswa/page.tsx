@@ -21,6 +21,7 @@ interface Siswa {
   uid?: string;
 
   // Data Pribadi
+  namaPanggilan?: string;
   jenisKelamin: string;
   kewarganegaraan?: string;
   nik?: string;
@@ -103,6 +104,7 @@ export default function DataSiswaPage() {
   // State Form
   const [formData, setFormData] = useState({
     nama: "",
+    namaPanggilan: "",
     email: "",
     password: "",
     status: "Aktif",
@@ -385,6 +387,7 @@ export default function DataSiswaPage() {
 
         const dataToUpdate: Partial<Siswa> = {
           nama: formData.nama,
+          namaPanggilan: formData.namaPanggilan,
           email: formData.email,
           status: formData.status,
           cabang: formData.cabang,
@@ -462,6 +465,7 @@ export default function DataSiswaPage() {
         // 2. Simpan ke Firestore dengan Role 'Siswa' & UID
         const dataToAdd: Omit<Siswa, 'id'> = {
           nama: formData.nama,
+          namaPanggilan: formData.namaPanggilan,
           email: formData.email,
           status: formData.status,
           cabang: formData.cabang,
@@ -572,6 +576,7 @@ export default function DataSiswaPage() {
     setEditId(siswa.id);
     setFormData({
       nama: siswa.nama,
+      namaPanggilan: siswa.namaPanggilan || "",
       email: siswa.email,
       password: "", // Password tidak di-load saat edit
       status: siswa.status,
@@ -629,6 +634,7 @@ export default function DataSiswaPage() {
     setEditId(null);
     setFormData({
       nama: "",
+      namaPanggilan: "",
       email: "",
       password: "",
       status: "Aktif",
@@ -810,6 +816,7 @@ export default function DataSiswaPage() {
       const dataToExport = filteredSiswa.map((siswa) => ({
         // A. DATA PRIBADI
         'Nama Siswa': siswa.nama,
+        'Nama Panggilan': siswa.namaPanggilan,
         'Jenis Kelamin': siswa.jenisKelamin,
         'Kewarganegaraan': siswa.kewarganegaraan,
         'NIK': siswa.nik,
@@ -1012,7 +1019,12 @@ export default function DataSiswaPage() {
                   <td className="p-4 text-center">{indexOfFirstItem + index + 1}</td>
                   <td className="p-4 font-medium text-gray-900">
                     <div className="flex items-center gap-2">
-                      <span>{siswa.nama}</span>
+                      <div>
+                        <div>{siswa.nama}</div>
+                        {siswa.namaPanggilan && (
+                          <div className="text-xs text-gray-500">&quot;{siswa.namaPanggilan}&quot;</div>
+                        )}
+                      </div>
                       {siswa.isDaycare && (
                         <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2 py-0.5 rounded-full">Daycare</span>
                       )}
@@ -1146,6 +1158,10 @@ export default function DataSiswaPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Nama Siswa</label>
                     <input required type="text" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.nama} onChange={(e) => setFormData({...formData, nama: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nama Panggilan</label>
+                    <input type="text" placeholder="Contoh: Aisyah" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-[#581c87] outline-none text-gray-900" value={formData.namaPanggilan} onChange={(e) => setFormData({...formData, namaPanggilan: e.target.value})} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Jenis Kelamin</label>
@@ -1484,6 +1500,9 @@ export default function DataSiswaPage() {
                   )}
                   <div className="mt-4 text-center">
                     <h4 className="font-bold text-gray-900">{viewDetail.nama}</h4>
+                    {viewDetail.namaPanggilan && (
+                      <p className="text-sm text-gray-600">&quot;{viewDetail.namaPanggilan}&quot;</p>
+                    )}
                     <p className="text-sm text-gray-500">{viewDetail.nisn || "-"}</p>
                     <span className={`mt-2 inline-block px-2 py-1 rounded-full text-xs font-medium ${viewDetail.status === 'Aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                       {viewDetail.status}

@@ -142,6 +142,12 @@ export default function UserHome() {
     setEditProfileModalOpen(false);
   };
 
+  // Sapaan: prioritaskan nama panggilan, jika belum ada gunakan nama depan seperti sebelumnya
+  const namaSapaan =
+    (typeof userData?.namaPanggilan === "string" ? userData.namaPanggilan.trim() : "") ||
+    userData?.nama?.split(" ")[0] ||
+    "User";
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gray-100 text-gray-500">Memuat...</div>;
   }
@@ -163,7 +169,7 @@ export default function UserHome() {
                 />
               </div>
               <div className="text-center">
-                <h1 className="text-xl font-bold">Halo, {userData?.nama?.split(" ")[0] || "User"}!</h1>
+                <h1 className="text-xl font-bold">Halo, {namaSapaan}!</h1>
                 <p className="text-purple-200 text-sm">Selamat datang di SIS Main Riang</p>
                 {userData?.cabang && <p className="text-xs text-purple-100 mt-1 font-medium">{userData.cabang}</p>}
               </div>

@@ -12,6 +12,7 @@ import Image from "next/image";
 interface Guru {
   id: string;
   nama: string;
+  namaPanggilan?: string;
   email: string;
   role: string;
   status: string;
@@ -32,6 +33,7 @@ interface Guru {
 
 const initialFormData = {
   nama: "",
+  namaPanggilan: "",
   email: "",
   password: "",
   role: "Guru",
@@ -339,7 +341,12 @@ export default function DataGuruPage() {
                 filteredGuruList.map((guru, index) => (
                   <tr key={guru.id} className="hover:bg-gray-50">
                     <td className="p-4 text-center">{index + 1}</td>
-                    <td className="p-4 font-medium text-gray-900">{guru.nama}</td>
+                    <td className="p-4 font-medium text-gray-900">
+                      <div>{guru.nama}</div>
+                      {guru.namaPanggilan && (
+                        <div className="text-xs text-gray-500">&quot;{guru.namaPanggilan}&quot;</div>
+                      )}
+                    </td>
                     <td className="p-4">{guru.email}</td>
                     <td className="p-4"><span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-medium border border-gray-200">{guru.role}</span></td>
                     <td className="p-4 text-gray-600">{guru.cabang || "-"}</td>
@@ -369,6 +376,7 @@ export default function DataGuruPage() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <InputGroup label="Nama Lengkap" required value={formData.nama} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({...formData, nama: e.target.value})} />
+                <InputGroup label="Nama Panggilan" placeholder="Contoh: Aisyah" value={formData.namaPanggilan} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({...formData, namaPanggilan: e.target.value})} />
                 <InputGroup label="Email" type="email" required value={formData.email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({...formData, email: e.target.value})} />
               </div>
               
@@ -434,6 +442,7 @@ export default function DataGuruPage() {
                         </div>
                     )}
                     <DetailItem label="Nama Lengkap" value={selectedGuruDetail.nama} />
+                    <DetailItem label="Nama Panggilan" value={selectedGuruDetail.namaPanggilan} />
                     <DetailItem label="Email" value={selectedGuruDetail.email} />
                     <DetailItem label="NIY" value={selectedGuruDetail.niy} />
                     <DetailItem label="No. KTP" value={selectedGuruDetail.noKtp} />

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, documentId, doc, getDoc, orderBy } from 'firebase/firestore';
-import { getGuruIds, getGuruNames, type KelasGuruFields } from '@/lib/kelasGuru';
 
 interface Siswa {
   id: string;
   nama: string;
+  // Nama panggilan siswa (opsional). Dipakai untuk sapaan "Ananda" di Trilogi Mainriang.
+  namaPanggilan?: string;
   kelas: string;
   nis: string;
   nisn: string;
@@ -63,32 +64,11 @@ interface InfoTambahan {
  * Cukup pakai `minHeight` kecil yang sama untuk SEMUA baris, sehingga setiap kotak
  * teks setinggi isinya dan baris satu kolom tetap sejajar dengan kolom sebelahnya.
  */
-// Helper tipe & nilai untuk tanda tangan (base64 data-URL dari field `tandaTangan` di koleksi "guru")
-type TandaTanganOpt = string | null | undefined;
-// Normalisasi nama untuk pencocokan: huruf kecil, buang gelar dalam tanda kurung,
-// dan sisakan hanya huruf/angka. Contoh: "Ustadzah Ani, S.Pd." → "ustadzahani".
-const normalizeNama = (nama?: string) =>
-  (nama || "")
-    .replace(/\([^)]*\)/g, " ")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-
-
 // Kotak tetap untuk area tanda tangan (px).
-// Tinggi kolom TTD TIDAK bergantung pada rasio gambar: gambar diskalakan agar
-// muat (object-contain) di dalam kotak ini, jadi tinggi kolom selalu sama baik
-// tanda tangan ada, tidak ada, maupun rasionya berbeda-beda.
+// Area tanda tangan sengaja dibiarkan KOSONG (tanpa gambar), tetapi kotak dengan
+// ukuran tetap ini dipertahankan agar jarak/space tanda tangan tetap sama.
 const TTD_BOX_WIDTH = 160;
 const TTD_BOX_HEIGHT = 70;
-
-// Style gambar tanda tangan: mengisi kotak, tidak pernah meluber / memotong.
-const signatureImgStyle: CSSProperties = {
-  display: 'block',
-  margin: '0 auto',
-  maxWidth: '100%',
-  maxHeight: '100%',
-  objectFit: 'contain',
-};
 
 const CELL_MIN_HEIGHT = 24; // px — 1 baris 12px + sedikit ruang; tidak ada sisa ruang besar
 // Untuk sel/element satu baris. Tanpa lineHeight dan tanpa overflow, jadi tidak memotong teks.
@@ -108,11 +88,11 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, catatanGuru, semes
   const [namaWaliKelas, setNamaWaliKelas] = useState<string>("-");
   // Guru Pendamping = Asisten Guru pada data kelas siswa
   const [namaGuruPendamping, setNamaGuruPendamping] = useState<string>("-");
-  // Tanda tangan (base64) masing-masing penanda tangan, diambil dari field `tandaTangan` koleksi "guru"
-  const [ttdWaliKelas, setTtdWaliKelas] = useState<TandaTanganOpt>(null);
-  const [ttdGuruPendamping, setTtdGuruPendamping] = useState<TandaTanganOpt>(null);
-  const [ttdKepalaSekolah, setTtdKepalaSekolah] = useState<TandaTanganOpt>(null);
   const [kota, setKota] = useState<string>("-");
+  // Nama panggilan siswa untuk sapaan Trilogi Mainriang.
+  // Diambil dari prop siswa, tapi juga dicari di koleksi "siswa" berdasarkan ID
+  // agar tetap terpakai walaupun data siswa dari halaman pemanggil belum memuat field ini.
+  const [namaPanggilanSiswa, setNamaPanggilanSiswa] = useState<string>("");
   const [titimangsa, setTitimangsa] = useState<string>("-");
   const [infoTambahan, setInfoTambahan] = useState<InfoTambahan | null>(null);
   const [jenjangUsia, setJenjangUsia] = useState<string>("");
@@ -134,7 +114,17 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, catatanGuru, semes
       setJenjangKelas("");
       setKota("-");
       setTitimangsa("-");
+      setNamaPanggilanSiswa("");
       try {
+        // Nama panggilan siswa (untuk sapaan Trilogi). Jika prop siswa dari halaman
+        // pemanggil belum memuat field ini, ambil langsung dari dokumen koleksi "siswa".
+        if (!siswa.namaPanggilan) {
+          const siswaSnap = await getDoc(doc(db, "siswa", siswa.id));
+          const panggilan = siswaSnap.exists() ? siswaSnap.data().namaPanggilan : "";
+          if (!cancelled && typeof panggilan === "string") {
+            setNamaPanggilanSiswa(panggilan.trim());
+          }
+        }
         // 0. Fetch Kriteria Nilai untuk "Nilai Perkembangan"
         const katQuery = query(collection(db, "kategori_penilaian"), where("nama", "==", "Nilai Perkembangan"));
         const katSnap = await getDocs(katQuery);
@@ -305,10 +295,8 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, catatanGuru, semes
             if (!ksSnap.empty) {
                 const ksData = ksSnap.docs[0].data();
                 setNamaKepalaSekolah(ksData.nama);
-                setTtdKepalaSekolah((ksData.tandaTangan as string) || null);
             } else {
                 setNamaKepalaSekolah("-");
-                setTtdKepalaSekolah(null);
             }
 
             // Fetch Kota dari Cabang
@@ -355,88 +343,28 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, catatanGuru, semes
                 setNamaGuruPendamping("-");
             }
 
-            // --- Fetch tanda tangan Wali Kelas & Guru Pendamping dari koleksi "guru" ---
-            // Sumber kebenaran: `guruKelasIds` / `asistenGuruIds` pada data kelas.
-            // Mencocokkan lewat ID tahan terhadap perubahan nama guru.
-            // Data lama yang belum punya field ID tetap didukung lewat pencocokan nama
-            // yang dinormalisasi (buang spasi, tanda baca, gelar).
-            const kelasAkhir = kelasSnap.docs[0]?.data() as KelasGuruFields | undefined;
-
-            const waliIds = getGuruIds(kelasAkhir, "wali");
-            const asistenIds = getGuruIds(kelasAkhir, "asisten");
-            const waliKelasList = getGuruNames(kelasAkhir, "wali");
-            const asistenList = getGuruNames(kelasAkhir, "asisten");
-
-            const ttdById = new Map<string, string>();
-            const ttdByNama = new Map<string, string>();
-
-            // 1) Utamakan lookup berdasarkan ID
-            // Nama juga diambil dari dokumen guru (bukan dari cache nama di data kelas),
-            // supaya perubahan nama di Data Guru langsung terpakai tanpa update kelas.
+            // Nama penanda tangan diambil dari dokumen guru via ID kelas (guruKelasIds / asistenGuruIds).
+            // Tanda tangan gambar TIDAK diambil lagi — area TTD dibiarkan kosong.
+            const idsKeyWali = "guruKelasIds";
+            const idsKeyAsisten = "asistenGuruIds";
+            const kelasAkhir = (kelasSnap.docs[0]?.data() || {}) as Record<string, unknown>;
+            const waliIds = Array.isArray(kelasAkhir[idsKeyWali]) ? (kelasAkhir[idsKeyWali] as string[]) : [];
+            const asistenIds = Array.isArray(kelasAkhir[idsKeyAsisten]) ? (kelasAkhir[idsKeyAsisten] as string[]) : [];
             const namaById = new Map<string, string>();
             const cariGuruById = async (ids: string[]) => {
                 for (let i = 0; i < ids.length; i += 10) {
                     const chunk = ids.slice(i, i + 10);
                     const snap = await getDocs(query(collection(db, "guru"), where(documentId(), "in", chunk)));
                     snap.forEach(d => {
-                        const data = d.data();
-                        const ttd = data.tandaTangan as string | undefined;
-                        if (ttd) ttdById.set(d.id, ttd);
-                        if (typeof data.nama === "string" && data.nama.trim()) {
-                            namaById.set(d.id, data.nama);
-                        }
+                        const nama = d.data().nama;
+                        if (typeof nama === "string" && nama.trim()) namaById.set(d.id, nama);
                     });
                 }
             };
             await cariGuruById(waliIds);
             await cariGuruById(asistenIds);
-
-            // 2) Fallback nama untuk kelas lama (belum punya ID) atau ID yang guru-nya terhapus
-            const namaCari = new Set<string>();
-            [...waliKelasList, ...asistenList].forEach(n => {
-                const key = normalizeNama(n);
-                if (key) namaCari.add(key);
-            });
-            const masihButuhNama =
-                (waliIds.length === 0 || !waliIds.some(id => ttdById.has(id))) ||
-                (asistenIds.length === 0 || !asistenIds.some(id => ttdById.has(id)));
-
-            if (namaCari.size > 0 && masihButuhNama) {
-                const ttdSnap = await getDocs(query(collection(db, "guru"), where("cabang", "==", siswa.cabang)));
-                ttdSnap.forEach(d => {
-                    const data = d.data();
-                    const ttd = data.tandaTangan as string | undefined;
-                    if (!ttd) return;
-                    const key = normalizeNama(data.nama);
-                    if (key) ttdByNama.set(key, ttd);
-                });
-
-                const belumKetemu = Array.from(namaCari).filter(n => !ttdByNama.has(n));
-                if (belumKetemu.length > 0) {
-                    const semuaGuru = await getDocs(collection(db, "guru"));
-                    semuaGuru.forEach(d => {
-                        const data = d.data();
-                        const ttd = data.tandaTangan as string | undefined;
-                        if (!ttd) return;
-                        const key = normalizeNama(data.nama);
-                        if (key && belumKetemu.includes(key) && !ttdByNama.has(key)) {
-                            ttdByNama.set(key, ttd);
-                        }
-                    });
-                }
-            }
-
-            setTtdWaliKelas(
-                (waliIds[0] && ttdById.get(waliIds[0])) || ttdByNama.get(normalizeNama(waliKelasList[0])) || null
-            );
-            setTtdGuruPendamping(
-                (asistenIds[0] && ttdById.get(asistenIds[0])) || ttdByNama.get(normalizeNama(asistenList[0])) || null
-            );
-
-            // Nama penanda tangan: prioritas dari dokumen guru via ID, fallback nama tersimpan
             const namaWaliDariId = (waliIds[0] && namaById.get(waliIds[0])) || "";
             const namaAsistenDariId = (asistenIds[0] && namaById.get(asistenIds[0])) || "";
-
             if (namaWaliDariId) setNamaWaliKelas(namaWaliDariId);
             if (namaAsistenDariId) {
                 setNamaGuruPendamping(namaAsistenDariId);
@@ -504,8 +432,17 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, catatanGuru, semes
     return groups;
   }, [nilaiIndikator]);
 
+  // Nama panggilan untuk sapaan "Ananda". Jika belum ada nama panggilan,
+  // gunakan nama depan siswa (perilaku sebelumnya).
+  const namaSapaan = useMemo(() => {
+    const panggilan = (namaPanggilanSiswa || (siswa?.namaPanggilan || "")).trim();
+    if (panggilan) return panggilan;
+    const namaDepan = (siswa?.nama || "").trim().split(" ")[0] || "Ananda";
+    return namaDepan;
+  }, [namaPanggilanSiswa, siswa?.namaPanggilan, siswa?.nama]);
+
   // Trilogi dikelompokkan per nama Trilogi (mis. "5 Basic Area"),
-  // tiap sub trilogi ditampilkan sebagai kalimat: "Ananda <Nilai> dalam <Sub Trilogi>."
+  // tiap sub trilogi ditampilkan sebagai kalimat: "<Nama panggilan> <Nilai> dalam <Sub Trilogi>."
   const groupedTrilogi = useMemo(() => {
     const groups = new Map<string, { habit: string; sentence: string }[]>();
     nilaiTrilogi.forEach((item) => {
@@ -517,7 +454,7 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, catatanGuru, semes
       const subTrilogi = (item.namaSubTrilogi || "").trim().replace(/[.;]+$/, "");
       groups.get(groupName)!.push({
         habit: (item.habit || "").trim(),
-        sentence: `Ananda ${nilaiText} dalam ${subTrilogi}.`,
+        sentence: `${namaSapaan} ${nilaiText} dalam ${subTrilogi}.`,
       });
     });
     // Urutkan sub trilogi di tiap grup secara alfabetis berdasarkan Habit
@@ -527,7 +464,7 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, catatanGuru, semes
       items.sort((a, b) => a.habit.localeCompare(b.habit, "id", { numeric: true, sensitivity: "base" }));
     });
     return groups;
-  }, [nilaiTrilogi, kriteriaTrilogi]);
+  }, [nilaiTrilogi, kriteriaTrilogi, namaSapaan]);
 
   // Rapor Playgroup tidak menampilkan Indikator Belajar & Kehadiran.
   // Pencocokan dibuat longgar (huruf kecil, tanpa spasi) agar "Play Group" / "PLAYGROUP" tetap terdeteksi.
@@ -547,13 +484,10 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, catatanGuru, semes
   };
 
   // Jika kelas tidak punya Asisten Guru, kolom kanan TTD diisi Kepala Sekolah
-  // (sejajar dengan Wali Kelas) dan baris "Mengetahui" di bawah tidak ditampilkan.
+  // (sejajar dengan Wali Kelas) dan baris "Kepala Sekolah" di bawah tidak ditampilkan.
   const adaGuruPendamping = !!namaGuruPendamping && namaGuruPendamping.trim() !== "" && namaGuruPendamping.trim() !== "-";
   const namaKolomKanan = adaGuruPendamping ? namaGuruPendamping : namaKepalaSekolah;
   const labelKolomKanan = adaGuruPendamping ? "Guru Pendamping," : "Kepala Sekolah,";
-  // Tanda tangan kolom kanan ikut berganti: milik Guru Pendamping, atau Kepala Sekolah
-  // jika kelas tidak punya Asisten Guru.
-  const ttdKolomKanan = adaGuruPendamping ? ttdGuruPendamping : ttdKepalaSekolah;
 
   if (!siswa) {
     return <div className="text-center p-10">Silakan pilih siswa untuk melihat rapor.</div>;
@@ -882,57 +816,33 @@ const TemplateRapor: React.FC<TemplateRaporProps> = ({ siswa, catatanGuru, semes
                     <tr>
                         <td className="align-top w-1/2">
                             <p className="mb-1">Wali Kelas,</p>
+                            {/* Area tanda tangan dibiarkan kosong (tanpa gambar); ukuran tetap dipertahankan */}
                             <div
-                                className="mx-auto flex items-center justify-center"
+                                className="mx-auto"
                                 style={{ width: TTD_BOX_WIDTH, height: TTD_BOX_HEIGHT }}
-                            >
-                                {ttdWaliKelas && (
-                                    // eslint-disable-next-line @next/next/no-img-element -- base64 data-URL, bukan aset Next
-                                    <img
-                                        src={ttdWaliKelas}
-                                        alt={`Tanda tangan ${namaWaliKelas}`}
-                                        style={signatureImgStyle}
-                                    />
-                                )}
-                            </div>
+                            />
                             <p className="font-bold underline">{namaWaliKelas}</p>
                         </td>
                         <td className="align-top w-1/2">
                             <p className="mb-1">{labelKolomKanan}</p>
+                            {/* Area tanda tangan dibiarkan kosong (tanpa gambar); ukuran tetap dipertahankan */}
                             <div
-                                className="mx-auto flex items-center justify-center"
+                                className="mx-auto"
                                 style={{ width: TTD_BOX_WIDTH, height: TTD_BOX_HEIGHT }}
-                            >
-                                {ttdKolomKanan && (
-                                    // eslint-disable-next-line @next/next/no-img-element -- base64 data-URL, bukan aset Next
-                                    <img
-                                        src={ttdKolomKanan}
-                                        alt={`Tanda tangan ${namaKolomKanan}`}
-                                        style={signatureImgStyle}
-                                    />
-                                )}
-                            </div>
+                            />
                             <p className="font-bold underline">{namaKolomKanan}</p>
                         </td>
                     </tr>
-                    {/* Baris 2: Mengetahui, Kepala Sekolah (tengah) — hanya jika ada Guru Pendamping */}
+                    {/* Baris 2: Kepala Sekolah (tengah) — hanya jika ada Guru Pendamping */}
                     {adaGuruPendamping && (
                         <tr>
                             <td colSpan={2} className="pt-12">
-                                <p className="mb-1">Mengetahui,</p>
+                                <p className="mb-1">Kepala Sekolah</p>
+                                {/* Area tanda tangan dibiarkan kosong (tanpa gambar); ukuran tetap dipertahankan */}
                                 <div
-                                    className="mx-auto flex items-center justify-center"
+                                    className="mx-auto"
                                     style={{ width: TTD_BOX_WIDTH, height: TTD_BOX_HEIGHT }}
-                                >
-                                    {ttdKepalaSekolah && (
-                                        // eslint-disable-next-line @next/next/no-img-element -- base64 data-URL, bukan aset Next
-                                        <img
-                                            src={ttdKepalaSekolah}
-                                            alt={`Tanda tangan ${namaKepalaSekolah}`}
-                                            style={signatureImgStyle}
-                                        />
-                                    )}
-                                </div>
+                                />
                                 <p className="font-bold underline">{namaKepalaSekolah}</p>
                             </td>
                         </tr>
