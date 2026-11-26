@@ -240,6 +240,7 @@ export default function SiswaBaruPage() {
       email: pendaftar.email,
       noWA: pendaftar.noWaIbu || pendaftar.noWaAyah,
       cabang: pendaftar.lokasi,
+      jenjangUsia: pendaftar.kelompokUsia,
     };
 
     // Simpan data di localStorage untuk diambil oleh halaman selanjutnya
